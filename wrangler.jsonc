@@ -1,7 +1,8 @@
 {
   "$schema": "https://unpkg.com/wrangler/config-schema.json",
-  "name": "city-and-metro",
+  // 必须与新 Pages 项目名一致。*.pages.dev 全局唯一，不能沿用上游的 city-and-metro；
+  // 改名后同步 部署说明.md §2 与 §9.2。
+  "name": "metrogame",
   "pages_build_output_dir": "./dist",
   "compatibility_date": "2026-10-17"
 }
-
