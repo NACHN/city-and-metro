@@ -30,7 +30,7 @@ const BOUND_ERROR = 24;
 const REQUIRED_META = ['id', 'name', 'title', 'sub', 'desc', 'region', 'tagline', 'intro', 'kind',
   'scenario', 'mapVersion', 'difficulty', 'tags', 'modes', 'facts', 'features', 'highlights', 'cam', 'data', 'geo', 'cfg'];
 const KINDS = ['real', 'fictional'];
-const MODES = ['challenge', 'free'];
+const MODES = ['challenge', 'free', 'tycoon'];
 const TRIP_KEYS = ['hw', 'sc', 'sh', 'md', 'lz', 'hb'];
 const LAYERS = ['water', 'parks', 'reserves', 'woods', 'admin', 'roads', 'rail'];
 

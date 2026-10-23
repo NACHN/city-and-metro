@@ -1670,7 +1670,7 @@
     const g = this.game, city = g.city, model = g.model, W = city.W, H = city.H, LO = this.layerOpt, lay = this.layer;
     const access = lay === 'cover' || lay === 'gap' ? model.net : null;
     const dyn = lay === 'fac' || lay === 'gap';
-    const key = lay + ':' + city.version + ':' + g.clock.y + ':' + g.clock.m + ':' + (lay === 'cover' ? g.netVersion + ':' + LO.cover : '') + (lay === 'fac' ? LO.facP + ':' + LO.facDt : '') + (lay === 'gap' ? LO.gapDt + ':' + g.netVersion : '') + (dyn ? ':' + model.cycles + ':' + (model.settled ? 's' : '') : '');
+    const key = lay + ':' + city.version + ':' + g.clock.y + ':' + g.clock.m + ':' + (lay === 'cover' ? g.netVersion + ':' + LO.cover : '') + (lay === 'land' ? g.netVersion + ':' + (city.landStat ? city.landStat.mean : 0) : '') + (lay === 'fac' ? LO.facP + ':' + LO.facDt : '') + (lay === 'gap' ? LO.gapDt + ':' + g.netVersion : '') + (dyn ? ':' + model.cycles + ':' + (model.settled ? 's' : '') : '');
     const old = this.heatLayers.get(lay);
     if (old && old.key === key && old.access === access) { this.heat = old.cv; this.heatKey = key; return; }
     this.heatKey = key;
@@ -1708,6 +1708,12 @@
       gapCell = this.zoneToCells(zv, this.cellWeights('all'));
     }
     const stCol = function (k) { const hsh = (k * 2654435761) >>> 0; return [40 + (hsh & 127), 110 + ((hsh >> 7) & 100), 60 + ((hsh >> 14) & 140)]; };
+    // 地价：对数色阶，用 P10–P90 做自适应区间（绝对值跨度太大，线性色阶会只剩一片深色）
+    const lp = lay === 'land' ? city.landPrice : null;
+    const ls = city.landStat;
+    const lLo = ls && ls.p10 > 0 ? ls.p10 : 1;
+    const lHi = ls && ls.p90 > lLo ? ls.p90 : lLo * 2;
+    const lK = Math.log(lHi / lLo);
     for (let c = 0; c < W * H; c++) {
       let col = null, a = 0;
       const p = city.pop[c] / 0.0625, jb = city.jobs[c] / 0.0625;
@@ -1725,6 +1731,13 @@
       } else if (this.layer === 'jobs') {
         const t = p + jb;
         if (t > 300) { const sh = p / t; col = U.mixc([52, 104, 214], [240, 150, 60], sh); a = U.clamp(0.12 + 0.4 * Math.sqrt(t / 90000), 0, 0.5); }
+      } else if (lay === 'land') {
+        const v = lp ? lp[c] : 0;
+        if (v > 0) {
+          const t = lK > 0 ? U.clamp(Math.log(v / lLo) / lK, 0, 1) : 0;
+          col = U.ramp([[0, [238, 232, 210]], [0.45, [226, 148, 58]], [1, [152, 38, 32]]], t);
+          a = 0.16 + 0.46 * t;
+        }
       } else if (this.layer === 'cover') {
         const w = acc ? acc.cellWalk[c] : Infinity;
         const m = w / CFG.walk.mPerMin;
@@ -1818,7 +1831,7 @@
     ctx.globalAlpha = 1;
     // ---- 图层（地面） ----
     const layerOn = this.layer !== 'none';
-    if (layerOn && ['pop', 'jobs', 'cover', 'region', 'fac', 'gap'].indexOf(this.layer) >= 0) {
+    if (layerOn && ['pop', 'jobs', 'land', 'cover', 'region', 'fac', 'gap'].indexOf(this.layer) >= 0) {
       this.buildHeat();
       setWorld();
       ctx.imageSmoothingEnabled = true;

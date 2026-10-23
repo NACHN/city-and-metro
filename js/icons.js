@@ -89,6 +89,7 @@
     // 分析图层（实心剪影 + 粗线条，小尺寸下也清楚）
     lyPop: F('<circle cx="8.6" cy="7.6" r="3.3"/><path d="M2.6 20c0-3.9 2.7-6.6 6-6.6s6 2.7 6 6.6z"/><circle cx="17" cy="8.8" r="2.7"/><path d="M15.4 13.9c.5-.1 1-.2 1.6-.2 2.8 0 4.9 2.3 4.9 6.3h-5.3c0-2.6-.4-4.6-1.2-6.1z"/>'),
     lyJobs: F('<path d="M2.5 20.5v-8.6L8 7.6l5.5 4.3v8.6H9.9v-4.2H6.1v4.2z"/><path fill-rule="evenodd" d="M14.7 3.6h6.8v16.9h-6.8zM16.6 6.4v1.8h3V6.4zm0 3.6v1.8h3V10zm0 3.6v1.8h3v-1.8z"/>'),
+    lyLand: F('<path d="M2.4 21.2h19.2v1.6H2.4z"/><path d="M4.4 19.2V13h4v6.2zM9.9 19.2V8.6h4v10.6zM15.4 19.2V4h4v15.2z"/>'),
     lyCong: F('<path fill-rule="evenodd" d="M10.4 2.4h3.2a3 3 0 0 1 3 3v13.2a3 3 0 0 1-3 3h-3.2a3 3 0 0 1-3-3V5.4a3 3 0 0 1 3-3zM12 4.7a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 5.3a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 5.3a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/><path d="M5.6 6.2l1.8 1.1v2.4L5.6 8.6zM18.4 6.2l-1.8 1.1v2.4l1.8-1.1z"/>'),
     lyFlow: S('<g stroke-width="2.4"><path d="M3.5 8h14"/><path d="M14 4.2L17.8 8 14 11.8"/><path d="M20.5 16h-14"/><path d="M10 12.2L6.2 16l3.8 3.8"/></g>'),
     lyCover: S('<g stroke-width="2.1"><circle cx="12" cy="12" r="2.6" fill="currentColor"/><circle cx="12" cy="12" r="6.2"/><circle cx="12" cy="12" r="9.6" stroke-dasharray="2.4 2.6"/></g>'),

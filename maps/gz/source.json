@@ -17,7 +17,8 @@
     ],
     "modes": [
       "challenge",
-      "free"
+      "free",
+      "tycoon"
     ],
     "kind": "real",
     "scenario": "gz-1990",

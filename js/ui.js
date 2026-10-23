@@ -10,6 +10,7 @@
   const LAYERS = [
     { id: 'pop', group: 'city', name: '人口密度', icon: 'lyPop', color: '#e9641f', desc: '各街区常住人口' },
     { id: 'jobs', group: 'city', name: '住宅与就业', icon: 'lyJobs', color: '#6447dc', desc: '居住与岗位的分布' },
+    { id: 'land', group: 'city', name: '地价', icon: 'lyLand', color: '#b45309', desc: '各街区地价（仅经营模式）', need: 'land' },
     { id: 'fac', group: 'city', name: '设施出行需求', icon: 'lyFac', color: '#c2410c', desc: '重要设施与各片区吸引的出行（按目的）' },
     { id: 'cong', group: 'traffic', name: '道路拥堵', icon: 'lyCong', color: '#df3030', desc: '主要道路当前的拥堵程度' },
     { id: 'flow', group: 'traffic', name: '出行方向', icon: 'lyFlow', color: '#2557d6', desc: '各片区的主要出行方向' },
@@ -913,9 +914,16 @@
   UI.prototype.renderDock = function () {
     const card = this.legendCard;
     if (card.contains(document.activeElement)) document.activeElement.blur();
-    for (const x of LAYERS) this.dockBtns[x.id].classList.toggle('on', this.layer === x.id);
+    const g0 = this.g();
+    for (const x of LAYERS) {
+      const b = this.dockBtns[x.id];
+      // need：该图层依赖的模式能力（例如地价只在经营模式可用）
+      const ok = !x.need || !!(g0 && g0.econ && g0.econ.caps && g0.econ.caps[x.need]);
+      b.style.display = ok ? '' : 'none';   // 用 display 而不是 .hidden：避免留下空白按钮位
+      b.classList.toggle('on', this.layer === x.id);
+    }
     const L = LAYERS.find((x) => x.id === this.layer);
-    const hidden = !L || !this.g();
+    const hidden = !L || !g0 || (!!L.need && !(g0.econ && g0.econ.caps && g0.econ.caps[L.need]));
     card.inert = hidden; card.setAttribute('aria-hidden', hidden ? 'true' : 'false');
     if (hidden) { card.classList.add('hidden'); this.placeFeed(); return; }
     card.innerHTML = '';
@@ -943,6 +951,14 @@
     switch (id) {
       case 'pop': grad(['#ffe296', '#f99e4c', '#de5434'], '0', '6 万人/km²'); note = '每个街区的常住人口密度（每月更新）。'; break;
       case 'jobs': li('#f0963c', '以住宅为主'); li('#9aa0b0', '职住混合'); li('#3468d6', '以就业岗位为主'); note = '颜色越深，人口与岗位越密集。'; break;
+      case 'land': {
+        const st = self.g() && self.g().city.landStat;
+        const fmt = function (v) { return v >= 10000 ? (v / 10000).toFixed(1) + ' 万元/㎡' : (v / 1000).toFixed(1) + ' 千元/㎡'; };
+        grad(['#eee8d2', '#e2943a', '#982620'], st ? fmt(st.p10) : '低', st ? fmt(st.p90) : '高');
+        li('rgba(152,38,32,0.5)', '核心区：地价高，拆迁与改造也贵');
+        note = '对数色阶。地价 = 基准 × POI × 站点可达性 × 密度，每月随城市与线网更新；只在经营模式可用。';
+        break;
+      }
       case 'cong': li(CC[0], '畅通', 'line'); li(CC[1], '缓行', 'line'); li(CC[2], '拥堵', 'line'); li(CC[3], '严重拥堵', 'line'); note = '主要道路（快速路与主干道）当前时刻的拥堵程度（流量 ÷ 通行能力），随早晚高峰实时变化，夜间与平峰多为畅通；线越粗道路等级越高。'; break;
       case 'flow': opts('flow', [['all', '全部'], ['car', '汽车'], ['metro', '地铁']]); if (R.layerOpt.flow === 'all') { li('#80869a', '汽车出行', 'line'); li('#2166cc', '其中乘地铁（箭头中间的蓝色部分）', 'line'); } note = '每个片区当前时段最主要的出行方向（第二方向接近时也画出）：箭头从片区指向目的地，尖端标出目的地名称；两个片区互为主要方向时画成双向箭头。线越粗出行越多，新区域开放、修建地铁后会随之变化。'; break;
       case 'cover': opts('cover', [['time', '步行时间'], ['station', '所属车站']]);
