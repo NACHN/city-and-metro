@@ -1320,15 +1320,19 @@
     if (idx == null || S.layers.regions === false) return;
     var shapes = regionShapesOf(idx);
     if (!shapes.length) return;
+    // 区域多边形是格网坐标：先套用世界→屏幕变换，否则会画在画布左上角
+    var z = MAP.cam.z, cw = MAP.cv.clientWidth, ch = MAP.cv.clientHeight;
+    c.save();
+    c.translate(cw / 2 - MAP.cam.x * z, ch / 2 - MAP.cam.y * z);
+    c.scale(z, z);
     fillShapes(c, shapes, ST.region, null, idx === S.regionSel ? 0.22 : 0.09);
     if (idx === S.regionSel) {
-      c.save();
-      c.strokeStyle = ST.region; c.lineWidth = 2.4;
+      c.strokeStyle = ST.region; c.lineWidth = 2.4 / z;
       shapes.forEach(function (s) {
         for (var r = 0; r < s.rings.length; r++) { c.beginPath(); traceRing(c, s.rings[r]); c.stroke(); }
       });
-      c.restore();
     }
+    c.restore();
   }
 
   function drawRadiusHalos(c) {
