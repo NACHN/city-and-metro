@@ -924,20 +924,27 @@
     const ind = U.priceIndex(year, CFG.cost.inflation, CFG.econBase || 1990);
     const walk = acc && acc.cellWalk ? acc.cellWalk : null;
     const P = new Float32Array(N);
+    // 按交通小区（1 km²）聚合，供片区详情展示：平均地价 + 三项分项指数
+    const ZW = (W / CFG.ZONE) | 0, ZH = (H / CFG.ZONE) | 0, ZN = ZW * ZH;
+    const zP = new Float64Array(ZN), zPoi = new Float64Array(ZN), zAcc = new Float64Array(ZN), zDen = new Float64Array(ZN), zN = new Uint16Array(ZN);
     let sum = 0, n = 0, mx = 0;
     const vals = [];
     for (let c = 0; c < N; c++) {
       if (this.landFrac[c] < 0.5 || this.lu[c] === LU.WATER) continue;
-      let mul = 1 + L.poiGain * poi[c];
-      if (walk) { const wm = Math.min(walk[c] || 0, 4000); mul *= 1 + L.accessGain * Math.exp(-wm / L.accessScale); }
+      const poiMul = 1 + L.poiGain * poi[c];
+      let accMul = 1;
+      if (walk) { const wm = Math.min(walk[c] || 0, 4000); accMul = 1 + L.accessGain * Math.exp(-wm / L.accessScale); }
       const dens = Math.min(L.densCap, (this.pop[c] + 1.5 * this.jobs[c]) / L.densRef);
-      mul *= 1 + L.densGain * Math.pow(dens, L.densPow);
-      mul *= 1 + L.jobGain * Math.min(3, this.jobs[c] / L.jobRef);
+      const denMul = (1 + L.densGain * Math.pow(dens, L.densPow)) * (1 + L.jobGain * Math.min(3, this.jobs[c] / L.jobRef));
+      let mul = poiMul * accMul * denMul;
       if (mul > L.maxMul) mul = L.maxMul;
       const v = L.base * ind * mul;
       P[c] = v; sum += v; n++; if (v > mx) mx = v;
       vals.push(v);
+      const z = this.zoneOf(c);
+      zP[z] += v; zPoi[z] += poiMul; zAcc[z] += accMul; zDen[z] += denMul; zN[z]++;
     }
+    this.landZone = { price: zP, poi: zPoi, acc: zAcc, dens: zDen, n: zN };
     vals.sort(function (a, b) { return a - b; });
     this.landPrice = P;
     this.landStat = {

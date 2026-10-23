@@ -531,6 +531,24 @@
       ['工作日早高峰出发地铁占比', P.zTrips[z] > 0 ? U.fmtPct(P.zMetro[z] / P.zTrips[z]) : '—'],
       ['工作日早高峰道路拥堵指数', g.zoneCong(z, 'wd').toFixed(2)],
     ]));
+    // 地价（经营模式）：平均地价 + 三项分项指数，回答"这里为什么贵"
+    const lz = g.city.landZone, ls = g.city.landStat;
+    if (g.econ.caps.land && lz && ls && lz.n[z]) {
+      const zn = lz.n[z], avg = lz.price[z] / zn;
+      const money = function (v) { return v >= 10000 ? (v / 10000).toFixed(2) + ' 万元/㎡' : Math.round(v) + ' 元/㎡'; };
+      const rel = avg / Math.max(1, ls.p50);
+      el.appendChild(this.sec('z-land', '地价', rel >= 1.25 ? '明显偏高' : (rel >= 1.05 ? '偏高' : (rel <= 0.8 ? '偏低' : '接近全城')), function () {
+        const box = h('div');
+        box.appendChild(self.kv([
+          ['平均地价', money(avg)],
+          ['全城中位', money(ls.p50)],
+          ['相对全城', rel.toFixed(2) + '×'],
+          ['分项指数', 'POI ×' + (lz.poi[z] / zn).toFixed(2) + ' · 可达 ×' + (lz.acc[z] / zn).toFixed(2) + ' · 密度 ×' + (lz.dens[z] / zn).toFixed(2)],
+        ]));
+        box.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } }, '地价 = 基准 × POI × 站点可达性 × 密度，每月随城市与线网更新。核心区地价高，拆迁与线路改造也更贵。'));
+        return box;
+      }, true));
+    }
     // 普通设施（按片区汇总）吸引的出行：分目的，工作日与周末（模拟结果）
     if (model.facData('wd') && model.facData('we')) {
       const Z = model.Z, a = model.facDaily.wd, b = model.facDaily.we, TR = CFG.trips;
