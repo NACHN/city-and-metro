@@ -1,7 +1,12 @@
 {
   "$schema": "https://unpkg.com/wrangler/config-schema.json",
-  "name": "city-and-metro",
+  "name": "metrogame",
   "pages_build_output_dir": "./dist",
-  "compatibility_date": "2026-10-17"
+  "compatibility_date": "2026-10-17",
+  "assets": {
+    "directory": "./dist",
+    // dist/404.html 由 scripts/build.mjs 生成；未知路径返回它，而不是 Cloudflare 默认页
+    "not_found_handling": "404-page"
+  }
 }
 
