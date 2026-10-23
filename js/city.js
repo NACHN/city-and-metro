@@ -924,6 +924,8 @@
     const ind = U.priceIndex(year, CFG.cost.inflation, CFG.econBase || 1990);
     const walk = acc && acc.cellWalk ? acc.cellWalk : null;
     const P = new Float32Array(N);
+    // 相对乘子（不含基准与物价指数）：拆迁计价要用 1990 年价，所以单独存一份
+    const MUL = new Float32Array(N);
     // 按交通小区（1 km²）聚合，供片区详情展示：平均地价 + 三项分项指数
     const ZW = (W / CFG.ZONE) | 0, ZH = (H / CFG.ZONE) | 0, ZN = ZW * ZH;
     const zP = new Float64Array(ZN), zPoi = new Float64Array(ZN), zAcc = new Float64Array(ZN), zDen = new Float64Array(ZN), zN = new Uint16Array(ZN);
@@ -939,7 +941,7 @@
       let mul = poiMul * accMul * denMul;
       if (mul > L.maxMul) mul = L.maxMul;
       const v = L.base * ind * mul;
-      P[c] = v; sum += v; n++; if (v > mx) mx = v;
+      P[c] = v; MUL[c] = mul; sum += v; n++; if (v > mx) mx = v;
       vals.push(v);
       const z = this.zoneOf(c);
       zP[z] += v; zPoi[z] += poiMul; zAcc[z] += accMul; zDen[z] += denMul; zN[z]++;
@@ -947,6 +949,7 @@
     this.landZone = { price: zP, poi: zPoi, acc: zAcc, dens: zDen, n: zN };
     vals.sort(function (a, b) { return a - b; });
     this.landPrice = P;
+    this.landMul = MUL;
     this.landStat = {
       year: year, cells: n, mean: n ? sum / n : 0, max: mx,
       p10: n ? vals[Math.floor(n * 0.1)] : 0,
@@ -955,6 +958,17 @@
       gradient: n ? vals[Math.floor(n * 0.9)] / Math.max(1, vals[Math.floor(n * 0.1)]) : 0,
     };
     return this.landStat;
+  };
+
+  // 拆迁补偿（每格，万元，1990 年价）：市价 × clearFactor × 格面积；调用方仍按物价指数折算。
+  // 没有地价（自由建造 / 经营挑战）时回落到既有固定口径，旧模式的数值完全不变。
+  // 与"地下线不买地"的规则配合：地下区间 demolishFactor 为 0，地面/高架才需要为地付钱。
+  City.prototype.clearPerCell = function (c) {
+    const L = CFG.land;
+    if (!this.landMul || !L || !L.clearFactor) return CFG.cost.demolishPerCell;
+    const m = this.landMul[c];
+    if (!(m > 0)) return 0;
+    return L.base * m * L.clearFactor * CELL_KM2 * 1e6 / 10000;
   };
 
   // ---------------- 建筑高度 ----------------

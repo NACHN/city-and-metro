@@ -953,7 +953,7 @@
       case 'jobs': li('#f0963c', '以住宅为主'); li('#9aa0b0', '职住混合'); li('#3468d6', '以就业岗位为主'); note = '颜色越深，人口与岗位越密集。'; break;
       case 'land': {
         const st = self.g() && self.g().city.landStat;
-        const fmt = function (v) { return v >= 10000 ? (v / 10000).toFixed(1) + ' 万元/㎡' : (v / 1000).toFixed(1) + ' 千元/㎡'; };
+        const fmt = function (v) { return v >= 10000 ? (v / 10000).toFixed(1) + ' 万元/㎡' : (v >= 1000 ? (v / 1000).toFixed(1) + ' 千元/㎡' : Math.round(v) + ' 元/㎡'); };
         grad(['#eee8d2', '#e2943a', '#982620'], st ? fmt(st.p10) : '低', st ? fmt(st.p90) : '高');
         li('rgba(152,38,32,0.5)', '核心区：地价高，拆迁与改造也贵');
         note = '对数色阶。地价 = 基准 × POI × 站点可达性 × 密度，每月随城市与线网更新；只在经营模式可用。';

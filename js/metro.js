@@ -547,7 +547,7 @@
       const fr = Math.min(0.6, len * 0.16) * f * (scale === undefined ? 1 : scale);
       const df = M.devFactor(city, c);
       if (df <= 0 || fr <= 0) return;
-      cost += CFG.cost.demolishPerCell * df * fr;
+      cost += city.clearPerCell(c) * df * fr;
       cells.push({ c: c, frac: fr * 0.6 });
     });
     return { cost: cost * costIndex(year), cells: cells };
@@ -611,7 +611,7 @@
         const df = M.devFactor(city, c);
         const fr = CFG.cost.demolishFactor.station[s.type] * 0.35;
         if (df > 0 && fr > 0) {
-          item('demolition', '车站拆迁 ' + s.name, C.demolishPerCell * df * fr * ci, id);
+          item('demolition', '车站拆迁 ' + s.name, city.clearPerCell(c) * df * fr * ci, id);
           res.demolitions.push({ c: c, frac: fr * 0.7 });
         }
       }

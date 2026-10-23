@@ -194,10 +194,13 @@
     },
 
     // 地价（仅经营模式）：每月由 POI、站点可达性与岗位密度重算的派生量，不存档、不参与既有模式的任何计算。
-    // 基准 P0 直接沿用现有拆迁口径：demolishPerCell 30000 万元 ÷ 62500 ㎡ ≈ 4,800 元/㎡（1990 年价），
-    // 名义值随 cost.inflation 上涨。绝对水平跟随物价，相对梯度（核心 : 外围）承担玩法。
+    // 这里的是**市场地价**（元/㎡ 土地面积），用于热力图、物业与增值分成。
+    // 拆迁补偿另算：clearFactor 倍市价（含房屋补偿、安置与拆除），见 City.clearPerCell。
+    // 基准取史实量级：1988 年广州首次招拍挂（芳村花地湾）楼面地价 218 元/㎡、土地约 260 元/㎡；
+    // 1990 年广州住宅均价 1,203 元/㎡（地价约占房价 25–40%）。base 是外围基准，核心由梯度乘出来。
     land: {
-      base: 4800,               // 元/㎡（1990 年价）
+      base: 300,                // 元/㎡（1990 年价，外围基准）
+      clearFactor: 1.4,         // 拆迁补偿 = 市价 × 该系数（补偿高于纯地价，但远低于旧口径）
       poiGain: 0.9,             // POI 核密度对地价的加成系数
       poiGroup: { '交通枢纽': 1.0, '商业': 0.8, '教育': 0.5, '医疗': 0.5, '旅游休闲': 0.4 },
       poiRadius: 4,             // POI 影响半径 = 设施场地半径 × 该系数（格）
@@ -232,7 +235,7 @@
   CM.modeName = function (mode) { return (CM.MODES[mode] || CM.MODES.challenge).name; };
 
   // 随地图切换的配置键（maps.js 用它做切图，编辑器与校验器用它判断 cfg 是否合法）
-  CM.MAP_CFG_KEYS = ['W', 'H', 'START', 'growth', 'money', 'econBase', 'cost', 'ops', 'fareDefault', 'fareRange', 'economy', 'macro', 'choice', 'road', 'workWeek'];
+  CM.MAP_CFG_KEYS = ['W', 'H', 'START', 'growth', 'land', 'money', 'econBase', 'cost', 'ops', 'fareDefault', 'fareRange', 'economy', 'macro', 'choice', 'road', 'workWeek'];
 
   // 共用用地配方（放在配置里，不再由广州数据文件提供）：每份配方是各类用地在同一街区内的占比，合计为 1。
   // city.js 按区域声明中的 plan 名称取用；未声明 plan 的区域取 res。地图可以整表覆盖（data.plans）。

@@ -535,7 +535,7 @@
     const lz = g.city.landZone, ls = g.city.landStat;
     if (g.econ.caps.land && lz && ls && lz.n[z]) {
       const zn = lz.n[z], avg = lz.price[z] / zn;
-      const money = function (v) { return v >= 10000 ? (v / 10000).toFixed(2) + ' 万元/㎡' : Math.round(v) + ' 元/㎡'; };
+      const money = function (v) { return v >= 10000 ? (v / 10000).toFixed(2) + ' 万元/㎡' : (v >= 1000 ? (v / 1000).toFixed(1) + ' 千元/㎡' : Math.round(v) + ' 元/㎡'); };
       const rel = avg / Math.max(1, ls.p50);
       el.appendChild(this.sec('z-land', '地价', rel >= 1.25 ? '明显偏高' : (rel >= 1.05 ? '偏高' : (rel <= 0.8 ? '偏低' : '接近全城')), function () {
         const box = h('div');
