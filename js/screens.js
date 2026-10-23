@@ -166,7 +166,7 @@
       else {
         acts.appendChild(modeBtn('challenge', 'trophy', 'b-gold', '经营挑战', '新游戏 · 初始资金 ' + U.fmtMoney(mp.cfg.economy.startFunds, undefined, mp.cfg.money) + '，拨款随城市经济变化', true));
         // 经营模式：只在地图声明支持时出现。目前只是地价的观察入口，玩法仍在开发中
-        if ((mp.data.modes || []).indexOf('tycoon') >= 0) acts.appendChild(modeBtn('tycoon', 'coin', 'b-violet', '经营模式（试验）', '新游戏 · 地价每月重算，可开「地价」图层查看；经济与车辆系统仍在开发', false));
+        if ((mp.modes || []).indexOf('tycoon') >= 0) acts.appendChild(modeBtn('tycoon', 'coin', 'b-violet', '经营模式（试验）', '新游戏 · 地价每月重算，可开「地价」图层查看；经济与车辆系统仍在开发', false));
         acts.appendChild(modeBtn('free', 'sparkle', 'b-teal', '自由建造', '新游戏 · 资金不限，任务仅供参考', false));
       }
       acts.appendChild(h('button', { class: 'map-mode sub', disabled: latest ? null : true, 'data-tip': latest ? latest.name + ' · ' + fmtDate(latest) : null, onclick: function () { if (latest) self.loadSlot(latest.slotId); } },
