@@ -19,7 +19,8 @@
 
   function Economy(mode, y, m) {
     this.mode = mode;
-    this.funds = mode === 'free' ? 0 : CFG.economy.startFunds;   // 一般资金（拨款、票款等；运营、利息与还本只能从这里支付）
+    this.caps = CM.modeCaps(mode);   // 能力标志：见 config.js 的 CM.MODES
+    this.funds = this.caps.budget ? CFG.economy.startFunds : 0;   // 一般资金（拨款、票款等；运营、利息与还本只能从这里支付）
     this.capex = 0;            // 建设专项资金：债券募集，只能用于地铁建设及改扩建
     this.bonds = [];           // 已发行的债券
     this.bondIssued = {};      // 每年已发行额 { 年份: { local, ct } }
@@ -42,7 +43,8 @@
   }
   CM.Economy = Economy;
 
-  Economy.prototype.isFree = function () { return this.mode === 'free'; };
+  // 资金不受限 = 没有预算约束。保留这个别名，调用点不必关心具体模式名
+  Economy.prototype.isFree = function () { return !this.caps.budget; };
   // 只检查新增的现金支出：零费用操作（如拆除既有设施）在负余额时也允许，便于止损
   Economy.prototype.canAfford = function (amount) { return this.isFree() || amount <= MONEY_EPS || this.funds >= amount; };
   Economy.prototype.spend = function (kind, amount) {
@@ -545,7 +547,7 @@
   Tasks.prototype.monthly = function (g) {
     const y = g.clock.y, m = g.clock.m, ym = U.ymIndex(y, m);
     const out = [];
-    const challenge = g.econ.mode === 'challenge';
+    const caps = g.econ.caps;   // 任务奖励与后果由模式能力决定，不再比较模式名
     // 发布历史参考任务
     for (const h of D.histTasks) {
       if (this.issued[h.id]) continue;
@@ -585,12 +587,12 @@
       if (complete) {
         t.status = 'done'; t.closedAt = [y, m];
         this.active.splice(this.active.indexOf(t), 1); this.done.push(t);
-        if (challenge) { g.econ.income('reward', t.reward); g.econ.log('reward', t.reward, 'gen', '任务奖励：' + t.title, { y: y, m: m, d: 1 }); g.econ.mods.push({ kind: 'sat', delta: 4, until: ym + 5, reason: '完成任务「' + t.title + '」' }); }
+        if (caps.rewards) { g.econ.income('reward', t.reward); g.econ.log('reward', t.reward, 'gen', '任务奖励：' + t.title, { y: y, m: m, d: 1 }); g.econ.mods.push({ kind: 'sat', delta: 4, until: ym + 5, reason: '完成任务「' + t.title + '」' }); }
         out.push({ type: 'done', task: t });
       } else if (ym >= U.ymIndex(t.deadline[0], t.deadline[1])) {
         t.status = 'failed'; t.closedAt = [y, m];
         this.active.splice(this.active.indexOf(t), 1); this.failed.push(t);
-        if (challenge) {
+        if (caps.rewards) {
           const E = CFG.economy;
           g.econ.mods.push({ kind: 'grant', factor: E.failGrantFactor, until: ym + E.failGrantMonths - 1, reason: '任务未完成：' + t.title });
           g.econ.mods.push({ kind: 'sat', delta: E.failSat, until: ym + E.failGrantMonths - 1, reason: '任务未完成：' + t.title });
@@ -655,7 +657,7 @@
       cands.push({ type: 'ridership', basis: 'avg', target: Math.round(model.daily.metro * 1.2 / 1000) * 1000, title: '提升地铁客运量', desc: '在期限内使日均地铁客运量较当前提高 20%（可通过新线、延长线、换乘或调整票价实现）。统计口径：周平均（5 个工作日 + 2 个周末日）。', months: 24, reward: 40000 * ci });
     }
     // 经营：票款覆盖
-    if (g.econ.mode === 'challenge' && model.daily && model.daily.metro > 50000 && free('recovery', 'recovery')) {
+    if (g.econ.caps.opsTasks && model.daily && model.daily.metro > 50000 && free('recovery', 'recovery')) {
       cands.push({ type: 'recovery', target: 0.7, sustain: 3, title: '改善运营收支', desc: '连续 3 个月票款收入不低于运营费用的 70%。', months: 24, reward: 40000 * ci });
     }
     // 重要设施的地铁接驳（v1.9）：到访量较大、乘地铁比例很低的设施；口径按设施类型（见 Tasks.facBasis）

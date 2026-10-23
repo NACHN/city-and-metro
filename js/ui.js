@@ -1627,7 +1627,7 @@
           input.addEventListener('input', function () { status.textContent = ''; status.classList.remove('bad'); input.removeAttribute('aria-invalid'); });
           grp.insertBefore(editor, grp.children[1] || null); input.focus(); input.select();
         } }, ic('pencil'), '重命名');
-        grp.appendChild(h('div', { class: 'h save-name-heading' }, ic(gm.mode === 'free' ? 'sparkle' : 'trophy'), title, h('span', { class: 'tag' }, gm.mode === 'free' ? '自由建造' : '经营挑战'), mapId ? null : h('span', { class: 'tag info' }, (CM.MAPS[gm.map || 'gz'] || { name: gm.map }).name),
+        grp.appendChild(h('div', { class: 'h save-name-heading' }, ic(CM.modeCaps(gm.mode).budget ? 'trophy' : 'sparkle'), title, h('span', { class: 'tag' }, CM.modeName(gm.mode)), mapId ? null : h('span', { class: 'tag info' }, (CM.MAPS[gm.map || 'gz'] || { name: gm.map }).name),
           h('div', { class: 'save-name-actions' }, rename,
             h('button', { class: 'btn sm ghost danger', onclick: function () { self.confirm('删除整个进度？', '「' + gm.name + '」的全部 ' + gm.slots.length + ' 个存档将被永久删除。', '删除', function () { CM.Save.removeGame(gm.gameId); self.showSaveManager(inGame, mapId); }, true, 'trash'); } }, ic('trash'), '删除进度'))));
         for (const sl of gm.slots) grp.appendChild(self.slotRow(sl, inGame));

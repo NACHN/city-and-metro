@@ -135,7 +135,7 @@
       const start = function (mode) {
         snd('build');
         if (mp.tutorial) CM.newGame({ map: sel, mode: 'free', tutorial: true, name: '新手教程 · ' + mp.data.city });
-        else CM.newGame({ map: sel, mode: mode, name: (mode === 'free' ? '自由建造' : '经营挑战') + ' · ' + mp.data.city + ' ' + y0 });
+        else CM.newGame({ map: sel, mode: mode, name: CM.modeName(mode) + ' · ' + mp.data.city + ' ' + y0 });
       };
       const modeBtn = function (mode, icon, badge, title, desc, primary) {
         return h('button', { class: 'map-mode' + (primary ? ' primary' : ''), onclick: function () { start(mode); } },

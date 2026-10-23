@@ -278,7 +278,7 @@
       return store.put(key, str).then(function (where) {
         const idx2 = readIndex();
         idx2.games[gameId] = { gameId: gameId, name: name, mode: p.meta.mode, map: p.meta.map || 'gz', createdAt: p.meta.createdAt, updatedAt: env.savedAt };
-        idx2.slots[slotId] = { slotId: slotId, key: key, store: where, gameId: gameId, kind: 'manual', label: '导入的存档', date: [p.clock.y, p.clock.m, p.clock.d], savedAt: env.savedAt, size: str.length, mode: p.meta.mode, map: p.meta.map || 'gz', name: name, stations: Object.keys(p.net.stations || {}).length, funds: p.econ.mode === 'free' ? null : p.econ.funds };
+        idx2.slots[slotId] = { slotId: slotId, key: key, store: where, gameId: gameId, kind: 'manual', label: '导入的存档', date: [p.clock.y, p.clock.m, p.clock.d], savedAt: env.savedAt, size: str.length, mode: p.meta.mode, map: p.meta.map || 'gz', name: name, stations: Object.keys(p.net.stations || {}).length, funds: p.econ.isFree() ? null : p.econ.funds };
         try { writeIndex(idx2); } catch (e) { store.del(key, where); throw new Error(errMsg(e)); }
         return { slotId: slotId, gameId: gameId, name: name, map: p.meta.map || 'gz' };
       }, function (e) { throw new Error(errMsg(e)); });

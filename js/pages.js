@@ -1200,7 +1200,7 @@
     return h('span', { class: 'tk-ring ' + (cls || ''), html: '<svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="17" class="bg"/><circle cx="20" cy="20" r="17" class="fg" stroke-dasharray="' + C.toFixed(2) + '" stroke-dashoffset="' + (C * (1 - p)).toFixed(2) + '"/></svg><b>' + Math.round(p * 100) + '<small>%</small></b>' });
   };
   UI.prototype.page_tasks = function (id) {
-    const g = this.g(), T = g.tasks, self = this, ch = g.econ.mode === 'challenge', E = CFG.economy;
+    const g = this.g(), T = g.tasks, self = this, ch = g.econ.caps.rewards, E = CFG.economy;
     const ym = g.ym();
     const tab = id || this.taskTab || 'active';
     this.taskTab = tab;
@@ -1289,7 +1289,7 @@
     const s = this.save;
     const saved = this.isSaved();
     el.appendChild(h('div', { class: 'callout ' + (s.state === 'error' ? 'bad' : (saved ? 'good' : 'info')) }, s.state === 'error' ? '最近一次保存失败：' + s.msg + '。建议立即「导出当前进度」作为备份。' : this.saveStatusText() + (s.at ? '，保存于 ' + new Date(s.at).toLocaleString('zh-CN') : '') + (saved ? '' : '。')));
-    el.appendChild(this.kv([['进度名称', g.name], ['游戏模式', g.mode === 'free' ? '自由建造' : '经营挑战'], ['游戏日期', g.clock.y + '年' + g.clock.m + '月' + g.clock.d + '日']]));
+    el.appendChild(this.kv([['进度名称', g.name], ['游戏模式', CM.modeName(g.mode)], ['游戏日期', g.clock.y + '年' + g.clock.m + '月' + g.clock.d + '日']]));
     el.appendChild(h('div', { class: 'row', style: { margin: '10px 0', flexWrap: 'wrap' } },
       h('button', { class: 'btn sm primary', onclick: function () { self.manualSave(); } }, '手动保存'),
       h('button', { class: 'btn sm', onclick: function () { try { CM.Save.exportGame(g); self.toast('已导出存档文件', 'good'); } catch (e) { self.toast('导出失败：' + e.message, 'bad'); } } }, '导出当前进度'),
@@ -1311,7 +1311,7 @@
     const self = this;
     const d = sl.date || [0, 0, 0];
     return h('div', { class: 'slot' },
-      h('div', { class: 'info' }, h('div', { class: 't' }, sl.label + (sl.kind === 'auto' ? '' : '')), h('div', { class: 'tiny muted' }, '游戏日期 ' + d[0] + '年' + d[1] + '月' + d[2] + '日 · ' + (sl.mode === 'free' ? '自由建造' : '经营挑战') + ' · ' + sl.stations + ' 站 · 保存于 ' + new Date(sl.savedAt).toLocaleString('zh-CN'))),
+      h('div', { class: 'info' }, h('div', { class: 't' }, sl.label + (sl.kind === 'auto' ? '' : '')), h('div', { class: 'tiny muted' }, '游戏日期 ' + d[0] + '年' + d[1] + '月' + d[2] + '日 · ' + CM.modeName(sl.mode) + ' · ' + sl.stations + ' 站 · 保存于 ' + new Date(sl.savedAt).toLocaleString('zh-CN'))),
       h('button', { class: 'btn sm', onclick: function () { self.loadSlot(sl.slotId); } }, '载入'),
       h('button', { class: 'btn sm ghost', title: '导出为文件', onclick: function () { CM.Save.exportSlot(sl.slotId).catch(function (e) { self.toast('导出失败：' + e.message, 'bad'); }); } }, '导出'),
       inGame && sl.kind === 'manual' && sl.gameId === (self.g() && self.g().id) ? h('button', { class: 'btn sm ghost', title: '用当前进度覆盖此存档', onclick: function () { self.confirm('覆盖存档？', '将用当前进度覆盖「' + sl.label + '」（' + d[0] + '年' + d[1] + '月）。', '覆盖', function () { self.manualSave(sl.slotId, sl.label); }); } }, '覆盖') : null,
