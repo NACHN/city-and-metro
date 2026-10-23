@@ -4,18 +4,19 @@
 // 本文件补充游戏规则：区域开放年份、道路通车年份、地标、人口中心、历史事件与任务。人口与就业为估算，2020 年之后为模拟。
 (function (CM) {
   // 以真实地名定位（OSM 地名表），找不到时用备用坐标
+  const G = CM.GEOS && CM.GEOS.gz;
   const PL = {};
-  for (const p of (CM.GEO && CM.GEO.places) || []) PL[p[0]] = p;
+  for (const p of (G && G.places) || []) PL[p[0]] = p;
   const at = function (name, fx, fy, dx, dy) { const p = PL[name]; return { x: (p ? p[1] : fx) + (dx || 0), y: (p ? p[2] : fy) + (dy || 0) }; };
   const anchor = function (label, place, r, fx, fy) { return Object.assign({ name: label, r: r }, at(place, fx, fy)); };
-  const GP = (CM.GEO && CM.GEO.proj) || { lon0: 113.2, lat0: 23.215, kx: 409.6, ky: 443 };
+  const GP = (G && G.proj) || { lon0: 113.2, lat0: 23.215, kx: 409.6, ky: 443 };
   const ll = function (lat, lon) { return [+((lon - GP.lon0) * GP.kx).toFixed(2), +((GP.lat0 - lat) * GP.ky).toFixed(2)]; };
   const pa = function (name, fx, fy) { const p = at(name, fx, fy); return [p.x, p.y]; };
 
   const OLD_YUEXIU = ['东山街道', '人民街道', '光塔街道', '六榕街道', '农林街道', '北京街道', '华乐街道', '大东街道', '大塘街道', '建设街道', '梅花村街道', '洪桥街道', '流花街道', '珠光街道', '登峰街道', '白云街道', '矿泉街道', '黄花岗街道'];
   const OLD_LIWAN = ['沙面街道', '多宝街道', '龙津街道', '金花街道', '彩虹街道', '西村街道', '华林街道', '岭南街道', '逢源街道', '昌华街道', '南源街道', '站前街道', '桥中街道'];
 
-  CM.DATA = {
+  const data = {
     city: '广州',
     // 发展阶段：[截止年份（不含）, 名称]；史料截止年份（CFG.growth.histEnd）前的最后阶段为 stageLast
     stages: [[1997, '起步期（无地铁时代）'], [2005, '扩张期'], [2011, '亚运建设期']], stageLast: '网络化时期',
@@ -67,18 +68,7 @@
     ],
     defaultRegion: { id: 'outer', name: '外围地区', open: 2015, plan: 'res', pop: 7.0e6 },
 
-    plans: {
-      oldmix: { RES: 0.5, MIX: 0.35, COM: 0.1, INST: 0.05 },
-      cbd: { COM: 0.7, MIX: 0.2, RES: 0.1 },
-      mix: { RES: 0.45, MIX: 0.25, COM: 0.1, INST: 0.12, IND: 0.08 },
-      res: { RES: 0.7, MIX: 0.15, COM: 0.05, INST: 0.05, IND: 0.05 },
-      resind: { RES: 0.45, IND: 0.35, MIX: 0.1, COM: 0.05, INST: 0.05 },
-      port: { IND: 0.45, RES: 0.35, MIX: 0.15, COM: 0.05 },
-      ind: { IND: 0.6, RES: 0.25, MIX: 0.1, COM: 0.05 },
-      campus: { INST: 0.6, RES: 0.25, MIX: 0.1, COM: 0.05 },
-      expo: { COM: 0.45, MIX: 0.25, RES: 0.3 },
-      newtown: { RES: 0.45, MIX: 0.3, COM: 0.2, INST: 0.05 },
-    },
+    plans: CM.PLANS,   // 共用用地配方（config.js）；本图不需要单独覆盖
 
     // 1990 年人口与就业中心（估算，人/km²），以真实地名定位
     centers: [
@@ -284,13 +274,13 @@
       '#8e8c13', '#81312f', '#d9822b', '#4fa0a6', '#b36a9e', '#0047ba', '#9c8b6e', '#2c9f7a', '#201747', '#cd5a13'],
   };
   // 地名：OSM 地铁站、火车站与街区名（车站命名参考）
-  CM.DATA.places = ((CM.GEO && CM.GEO.places) || []).map(function (p) { return [p[0], p[1], p[2], p[3]]; });
+  data.places = ((G && G.places) || []).map(function (p) { return [p[0], p[1], p[2], p[3]]; });
 
   // 城市经济（macro.js）：地图范围 GDP、生产率趋势、价格、地方财政、产业结构与历史经济事件。
   // gdp0 为开局年地图范围 GDP（万元，估算：1990 年广州全市 GDP 约 320 亿元，地图覆盖其主要城区，约 240 亿元）；
   // prod 为扣除就业增长后的劳动生产率实际增速（模型校准值）；revRatio 为地方财政可支配收入占 GDP 比重（估算）；
   // struct 为外贸、金融、工业、旅游消费、房地产的暴露程度（0–1，决定各类事件的影响强弱）。
-  CM.CFG.macro = {
+  const GZ_MACRO = {
     area: '地图范围（老城区、天河、海珠、白云南部、芳村与黄埔等）', region: '中国内地',
     gdp0: 2400000, revRatio: [[1990, 0.2], [1994, 0.15], [2003, 0.17], [2010, 0.2], [2020, 0.18], [2040, 0.17]], revElastic: 1.5,
     prod: [[1990, 0.03], [1991, 0.09], [1993, 0.11], [1997, 0.09], [2000, 0.085], [2005, 0.09], [2008, 0.08], [2011, 0.07], [2015, 0.055], [2019, 0.045], [2025, 0.035], [2035, 0.022], [2050, 0.015], [2080, 0.012]],
@@ -309,4 +299,20 @@
       { id: 'covid2020', y: 2020, m: 1 },
     ],
   };
+
+  // 地图登记（广州与其他五图一致：元数据、地理、场景与配置都在本文件声明）
+  CM.registerMap({
+    id: 'gz', name: '广州', title: '广州 · 1990', sub: '真实地理 · 1990 年起 · 人民币',
+    desc: '从 1990 年尚无地铁的广州开始：珠江水系、道路与桥梁、街道边界和地标都来自真实地理，区域按历史年份逐步开放，并有参考广州地铁发展的历史任务。',
+    facts: [['范围', '30 km × 24 km'], ['起始', '1990 年'], ['人口', '约 300 万'], ['货币', '人民币（元）'], ['模式', '经营挑战 / 自由建造']],
+    modes: ['challenge', 'free'], kind: 'real', mapVersion: 1, scenario: 'gz-1990',
+    // 地图选择页：地区、一句话特色、介绍、特色卡、大事年表、难度（1–4）
+    region: '中国内地', tagline: '珠江两岸，从第一条线开始', difficulty: 2, tags: ['无地铁开局', '越江', '新区开放'],
+    intro: '1990 年的广州还没有一公里地铁。老城的街巷挤满公交与自行车，天河才刚刚起步，珠江新城仍是一片农田。你要在老城与天河之间画下第一条线，再跟着城市一路向东、向南跨过珠江。',
+    features: [['bridge', '珠江越江', '珠江把城市分成两岸，越江段可以建隧道或桥梁'], ['map', '27 个片区逐年开放', '珠江新城、番禺、大学城按真实年份开放'], ['building', '33 处真实地标', '中山纪念堂、广州塔、东塔按落成年份出现'], ['flag', '7 项历史任务', '参考广州地铁的发展需求，不要求复刻真实线路']],
+    highlights: [[1993, '珠江新城开始规划'], [1996, '广州东站建成'], [2000, '番禺撤市设区'], [2004, '新白云机场与大学城启用'], [2010, '亚运会，广州塔落成']],
+    geo: G, data: data,
+    cfg: { macro: GZ_MACRO },   // 其余配置沿用基线（config.js 默认值）
+    cam: { cx: 30, cy: 41, zoom: 18 },
+  });
 })(window.CM);

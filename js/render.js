@@ -974,9 +974,9 @@
   };
   const NEON_YEAR = { cn: 1992, hk: 1960, jp: 1955, tw: 1975 };
   const NEON_COL = ['#ff4fa3', '#36e0ff', '#ffd23f', '#7cff6b', '#ff6a3d', '#b98cff'];
-  const REGION_KEY = { '中国内地': 'cn', '中国香港': 'hk', '中国台湾': 'tw', '日本': 'jp' };
   function nightCol(c) { return [c[0] * 0.24 + 8, c[1] * 0.26 + 12, c[2] * 0.28 + 24]; }   // 与原夜景楼宇同一深度
-  Renderer.prototype.regionKey = function () { const m = CM.curMap ? CM.curMap() : null; return (m && REGION_KEY[m.region]) || 'cn'; };
+  // 地区风格键（cn / hk / tw / jp）：由 manifest.js 的 CM.Regions 统一提供，本文件不再维护映射表
+  Renderer.prototype.regionKey = function () { return CM.Regions.current(); };
   // 建筑年代（只用于外观，不影响模拟）：开局前已是城区的街区分散在开局前约 6–50 年；之后城市化的街区按城市化年份；
   // 较高的建筑只会出现在允许该高度的年代之后；建成 30 年以上的建筑逐步翻新（外观换新、高度不变）。
   Renderer.prototype.bldVintage = function (c, k, h) {

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const exists = async (p) => { try { await stat(p); return true; } catch { return false; } };
 const output = path.resolve(root, 'dist');
 const entries = ['index.html', 'css', 'img', 'js', 'LICENSE.txt', 'THIRD_PARTY_NOTICES.txt', 'licenses'];
 
@@ -45,6 +46,31 @@ for (const reference of references) {
   await stat(asset);
 }
 
+// 地图清单一致性：清单里声明的每张图，都必须有对应的 geo / data 资源、被 index.html 引入，
+// 并在数据文件里调用 CM.registerMap。漏一个 script 标签或漏一次登记，构建直接失败，不留到运行期。
+const vm = await import('node:vm');
+if (!references.includes('js/manifest.js')) throw new Error('index.html 没有引入 js/manifest.js（地图登记与地区风格键依赖它）');
+if (references.indexOf('js/manifest.js') > references.indexOf('js/data_gz.js')) throw new Error('js/manifest.js 必须在各数据文件之前引入');
+const manifestBox = { window: { CM: {} } };
+vm.createContext(manifestBox);
+vm.runInContext(await readFile(path.join(output, 'js', 'manifest.js'), 'utf8'), manifestBox, { filename: 'js/manifest.js' });
+const manifest = manifestBox.window.CM.MAP_MANIFEST || [];
+if (!manifest.length) throw new Error('js/manifest.js 没有声明 MAP_MANIFEST');
+const seen = new Set();
+for (const entry of manifest) {
+  if (!entry.id || seen.has(entry.id)) throw new Error(`地图清单存在空 id 或重复 id：${entry.id}`);
+  seen.add(entry.id);
+  const assets = [];
+  if (entry.geo) assets.push(`js/geo_${entry.geo}.js`);
+  assets.push(`js/data_${entry.data}.js`);
+  for (const file of assets) {
+    if (!references.includes(file)) throw new Error(`地图 ${entry.id} 的 ${file} 没有在 index.html 中引入`);
+    await stat(path.join(output, file));
+  }
+  const dataSource = await readFile(path.join(output, `js/data_${entry.data}.js`), 'utf8');
+  if (!dataSource.includes('CM.registerMap(')) throw new Error(`地图 ${entry.id} 的数据文件没有调用 CM.registerMap`);
+}
+
 let count = 0;
 let bytes = 0;
 async function inspect(directory) {
@@ -64,5 +90,30 @@ async function inspect(directory) {
   }
 }
 await inspect(output);
-console.log(JSON.stringify({ output: 'dist', files: count, bytes, htmlReferencesChecked: references.length }));
+
+// 地图数据校验：元数据、配置覆盖、场景数据、地理边界与存档指纹（详见 scripts/validate-map.mjs）。
+// 校验对象是即将发布的 dist，因此漏改脚本、数据写错、坐标越界都会在这里拦下来，而不是上线后才发现。
+const { validateMaps } = await import('./validate-map.mjs');
+const mapReport = await validateMaps(output);
+if (mapReport.errors.length) {
+  const lines = mapReport.errors.slice(0, 20).map(e => `- [${e.map}] ${e.msg}`);
+  if (mapReport.errors.length > 20) lines.push(`- 另有 ${mapReport.errors.length - 20} 个错误，运行 node scripts/validate-map.mjs 查看全部`);
+  throw new Error('地图数据校验失败：\n' + lines.join('\n'));
+}
+
+// source 漂移检查：maps/<id>/source.json 与 js/data_<id>.js 必须等价。
+// 两者是同一份数据的两种形态，任何一边被单独改动都会在这里暴露，避免「改了 source 忘了重新生成」。
+if (await exists(path.join(root, 'maps'))) {
+  const { spawnSync } = await import('node:child_process');
+  const res = spawnSync(process.execPath, [path.join(root, 'scripts', 'map-source.mjs'), 'check'], { encoding: 'utf8' });
+  if (res.status !== 0) {
+    throw new Error('maps/<id>/source.json 与 js/data_<id>.js 不一致：\n' + ((res.stdout || '') + (res.stderr || '')).trim() +
+      '\n（改完 source 后运行 node scripts/map-source.mjs build <id> --in-place；只想看差异运行 check）');
+  }
+}
+
+console.log(JSON.stringify({
+  output: 'dist', files: count, bytes, htmlReferencesChecked: references.length,
+  maps: mapReport.checked.length, mapWarnings: mapReport.warnings.length,
+}));
 

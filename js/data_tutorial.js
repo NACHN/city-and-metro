@@ -179,7 +179,7 @@
       { id: 'tech', name: '科技园（大学城）', streets: ['科技园街道'], open: 2003, plan: 'mix', pop: 4.7e5, note: '青江南岸东部的科技园与大学城开始开发' },
     ],
     defaultRegion: { id: 'outer', name: '外围地区', open: 2008, plan: 'res', pop: 5.6e5 },
-    plans: CM.DATA.plans,
+    plans: CM.PLANS,
     centers: [
       { x: 18.5, y: 15.0, pop: 32000, jobs: 36000, r: 2.2 },
       { x: 7.5, y: 15.5, pop: 26000, jobs: 8000, r: 2.0 },
@@ -230,7 +230,7 @@
     places: places.map(function (p) { return [p[0], p[1], p[2], p[3]]; }),
   };
 
-  (CM.MAP_LIST = CM.MAP_LIST || []).push({
+  CM.registerMap({
     id: 'tutorial', name: '青湾', title: '新手教程 · 青湾', sub: '虚构小城 · 12 个引导任务', tutorial: true,
     region: '虚构', tagline: '十几分钟学会规划地铁', difficulty: 1, tags: ['新手推荐', '不限资金'],
     intro: '一座约 42 万人的虚构小城，青江从城中穿过。12 个循序渐进的小任务带你学会移动地图、读图层、建站绘线、确认建设、跨江、换乘、查看客流与跟随列车。不限资金，随时可以跳过。',

@@ -22,3 +22,6 @@ node_modules/
 *.log
 *.tmp
 
+
+# Agent workspace (local memory and session data)
+.workbuddy/

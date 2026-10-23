@@ -39,7 +39,7 @@
       { id: 'xihuwest', name: '城西（蒋村·留下·三墩·转塘）', streets: ['蒋村街道', '留下街道', '三墩镇', '转塘街道', '双浦镇'], open: 2005, plan: 'res', pop: 3.6e6 },
     ],
     defaultRegion: { id: 'outer', name: '外围（余杭·临平等）', open: 2008, plan: 'res', pop: 4.2e6 },
-    plans: CM.DATA.plans,
+    plans: CM.PLANS,
     // 2000 年人口与就业中心（估算，人/km²；r 约为影响半径 km）
     centers: [
       at(30.2620, 120.1680, { pop: 30000, jobs: 60000, r: 1.2 }),   // 武林、湖滨
@@ -151,7 +151,7 @@
     places: (G.places || []).map(function (p) { return [p[0], p[1], p[2], p[3]]; }),
   };
 
-  (CM.MAP_LIST = CM.MAP_LIST || []).push({
+  CM.registerMap({
     id: 'hz', name: '杭州', title: '杭州 · 2000', sub: '真实地理 · 2000 年起 · 人民币',
     desc: '从 2000 年尚无地铁的杭州开始：城市围绕西湖与运河，钱塘江南岸的滨江、萧山即将并入市区。西湖风景区与西溪湿地不能开发，跨越钱塘江需要建设越江隧道。',
     facts: [['范围', '28 km × 22 km'], ['起始', '2000 年'], ['人口', '约 300 万'], ['货币', '人民币（元）'], ['模式', '经营挑战 / 自由建造']],

@@ -2,6 +2,9 @@
 // 启动与主循环
 (function (CM) {
   const CFG = CM.CFG;
+  // 开局激活广州：开始界面的背景动画、默认存档地图与 CM.DATA / CM.GEO 的初值都来自这张图。
+  // （所有地图一视同仁，此处只是产品选择，不是代码特权）
+  CM.useMap('gz');
   const canvas = document.getElementById('map');
   const R = new CM.Renderer(canvas);
   const ui = new CM.UI(R);

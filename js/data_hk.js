@@ -49,7 +49,7 @@
       { id: 'tko', name: '将军澳新市镇', district: ['西贡区'], open: 1982, plan: 'res', pop: 4.4e6, note: '1982 年起规划发展，主体建于填海土地（史实）' },
     ],
     defaultRegion: { id: 'outer', name: '新界外围', open: 1985, plan: 'res', pop: 4.6e6 },
-    plans: CM.DATA.plans,
+    plans: CM.PLANS,
     // 1970 年人口与就业中心（估算，人/km²；香港旧区人口密度极高）
     centers: [
       at(22.2840, 114.1550, { pop: 40000, jobs: 130000, r: 1.1 }),   // 中环、上环
@@ -165,7 +165,7 @@
     places: (G.places || []).map(function (p) { return [p[0], p[1], p[2], p[3]]; }),
   };
 
-  (CM.MAP_LIST = CM.MAP_LIST || []).push({
+  CM.registerMap({
     id: 'hk', name: '香港', title: '香港 · 1970', sub: '真实地理 · 1970 年起 · 港币',
     desc: '从 1970 年尚无地铁的香港开始：维多利亚港分隔港岛与九龙，山多地少、人口极其稠密；之后过海隧道、新市镇与大规模填海陆续出现。新土地随年份由系统填海形成后才能开发与建设。',
     facts: [['范围', '20 km × 20 km'], ['起始', '1970 年'], ['人口', '约 345 万'], ['货币', '港币（港元）'], ['模式', '经营挑战 / 自由建造']],

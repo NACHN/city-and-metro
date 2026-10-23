@@ -197,4 +197,34 @@
     // 动态对象上限（代表性展示）：汽车、车站行人、街道行人、列车上下车乘客（每帧）；声音：列车声部与同时播放的环境短音
     perf: { solverBudgetMs: 5, chunkBudgetMs: 6, cacheMaxPx: 24e6, maxCars: 320, maxPeds: 180, maxWalkers: 120, maxRiders: 120, trainVoices: 3, maxOneShots: 6 },
   };
+
+  // 随地图切换的配置键（maps.js 用它做切图，编辑器与校验器用它判断 cfg 是否合法）
+  CM.MAP_CFG_KEYS = ['W', 'H', 'START', 'growth', 'money', 'econBase', 'cost', 'ops', 'fareDefault', 'fareRange', 'economy', 'macro', 'choice', 'road', 'workWeek'];
+
+  // 共用用地配方（放在配置里，不再由广州数据文件提供）：每份配方是各类用地在同一街区内的占比，合计为 1。
+  // city.js 按区域声明中的 plan 名称取用；未声明 plan 的区域取 res。地图可以整表覆盖（data.plans）。
+  CM.PLANS = {
+    oldmix: { RES: 0.5, MIX: 0.35, COM: 0.1, INST: 0.05 },
+    cbd: { COM: 0.7, MIX: 0.2, RES: 0.1 },
+    mix: { RES: 0.45, MIX: 0.25, COM: 0.1, INST: 0.12, IND: 0.08 },
+    res: { RES: 0.7, MIX: 0.15, COM: 0.05, INST: 0.05, IND: 0.05 },
+    resind: { RES: 0.45, IND: 0.35, MIX: 0.1, COM: 0.05, INST: 0.05 },
+    port: { IND: 0.45, RES: 0.35, MIX: 0.15, COM: 0.05 },
+    ind: { IND: 0.6, RES: 0.25, MIX: 0.1, COM: 0.05 },
+    campus: { INST: 0.6, RES: 0.25, MIX: 0.1, COM: 0.05 },
+    expo: { COM: 0.45, MIX: 0.25, RES: 0.3 },
+    newtown: { RES: 0.45, MIX: 0.3, COM: 0.2, INST: 0.05 },
+  };
+
+  // 地标专属造型：数据里可以写哪些 style、它们画在哪些 kind 上。
+  // 形状本身仍由 render.js 的绘制代码实现（三维形体无法纯数据化）；这里只登记清单，
+  // 供校验器检查数据、供编辑器提供下拉选项。写错的 style 会安静回退到默认造型，因此必须校验。
+  // east 是超高层（skyscraper）的默认形状，一般不必显式写。
+  CM.LANDMARK_STYLES = {
+    east: { name: '方形分段收分', kinds: ['skyscraper'], desc: '分段收分的方塔 + 竖向窗带（超高层默认）' },
+    citic: { name: '方塔 + 双桅杆', kinds: ['skyscraper'], desc: '裙楼 + 两座公寓塔 + 双桅杆主塔' },
+    west: { name: '圆角三角筒', kinds: ['skyscraper'], desc: '圆角三角形玻璃筒 + 斜交网格' },
+    taipei101: { name: '竹节式分段', kinds: ['skyscraper'], desc: '截头方锥基座 + 8 节外倾竹节 + 塔尖' },
+    skytree: { name: '变截面桁架塔', kinds: ['lattice'], desc: '三角底座渐变为圆形的白色桁架' },
+  };
 })(window.CM);

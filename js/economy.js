@@ -408,17 +408,11 @@
 
   // 统计口径（v1.9）：通勤、上学与高峰类目标用工作日数据，旅游与商业休闲类可用周末数据，长期客流目标用周平均
   Tasks.BASIS = { wd: '工作日', we: '周末', avg: '周平均（5 个工作日 + 2 个周末日）', wdAM: '工作日早高峰', wdPeak: '工作日高峰小时', ledger: '上月实际账目', net: '线路连通', cover: '步行 15 分钟覆盖' };
+  // 统计口径：默认值由任务类型注册表给出；ridership / facShare 允许任务自带 basis
   Tasks.basisOf = function (t) {
-    switch (t.type) {
-      case 'connect': return 'net';
-      case 'coverage': case 'zoneCov': return 'cover';
-      case 'zoneCong': return 'wdAM';
-      case 'stationCrowd': return 'wdPeak';
-      case 'ridership': return t.basis || 'avg';
-      case 'recovery': return 'ledger';
-      case 'facShare': return t.basis || 'avg';
-      default: return null;
-    }
+    const H = TYPES[t.type];
+    if (!H) return null;
+    return typeof H.basis === 'function' ? H.basis(t) : H.basis;
   };
   // 重要设施任务的口径：枢纽按周平均，上学、就医、商务与会展按工作日，商圈、景点、公园与体育场馆按周末
   Tasks.facBasis = function (f) {
@@ -432,63 +426,120 @@
     return { vol: vol, share: vol > 0 ? m / vol : 0 };
   };
 
+  // 任务类型注册表：类型、参数与判定集中在一处。编辑器据此列出可选类型与必填参数，
+  // 校验器据此检查数据；新增一种任务只需在这里加一项，不必再改 evaluate 的分支链。
+  //   name    显示名
+  //   basis   默认统计口径（BASIS 的键），可为函数按任务取值
+  //   params  必填参数及说明，供表单提示与校验
+  //   evaluate(t, ctx) 返回 { ok, value, text }；ctx = { g, C, model, acc }
+  const TYPES = {
+    connect: {
+      name: '连通锚点', basis: 'net',
+      params: [['anchors', '锚点数组 { name, x, y, r }：每处都要有运营车站，且落在同一个连通分量里']],
+      evaluate: function (t, ctx) {
+        const C = ctx.C, acc = ctx.acc;
+        const comp = stationComponents(C, acc);
+        const anchorSets = t.anchors.map(function (a) {
+          const set = [];
+          C.stations.forEach(function (s, i) { if (C.serviced[i] && U.dist(s.x, s.y, a.x, a.y) <= a.r) set.push(i); });
+          return set;
+        });
+        const hits = anchorSets.map(function (s) { return s.length > 0; });
+        let ok = false;
+        if (hits.every(Boolean)) {
+          const roots = anchorSets.map(function (s) { return new Set(s.map(comp.find)); });
+          for (const r of roots[0]) if (roots.every(function (S) { return S.has(r); })) { ok = true; break; }
+        }
+        const n = hits.filter(Boolean).length;
+        return { ok: ok, value: ok ? 1 : n / (t.anchors.length + 1), text: t.anchors.map(function (a, i) { return (hits[i] ? '✓ ' : '✗ ') + a.name; }).join('；') + (hits.every(Boolean) && !ok ? '（车站尚未连通）' : '') };
+      },
+    },
+    coverage: {
+      name: '全网覆盖', basis: 'cover',
+      params: [['target', '步行 15 分钟覆盖率目标 0–1']],
+      evaluate: function (t, ctx) {
+        const acc = ctx.acc;
+        const v = acc ? acc.coverage : 0;
+        return { ok: v >= t.target, value: v / t.target, text: '当前覆盖 ' + U.fmtPct(v) + ' / 目标 ' + U.fmtPct(t.target, 0) };
+      },
+    },
+    zoneCong: {
+      name: '片区拥堵', basis: 'wdAM',
+      params: [['zone', '交通小区序号'], ['target', '工作日早高峰拥堵指数上限'], ['start', '起始拥堵指数（用于计算进度）']],
+      evaluate: function (t, ctx) {
+        const v = ctx.g.zoneCong(t.zone, 'wd');
+        return { ok: v <= t.target, value: U.clamp((t.start - v) / Math.max(0.01, t.start - t.target), 0, 1), text: '工作日早高峰拥堵指数 ' + v.toFixed(2) + ' / 目标 ≤ ' + t.target.toFixed(2) };
+      },
+    },
+    zoneCov: {
+      name: '片区覆盖', basis: 'cover',
+      params: [['zone', '交通小区序号'], ['target', '该片区覆盖率目标 0–1']],
+      evaluate: function (t, ctx) {
+        const acc = ctx.acc;
+        const v = acc ? acc.zCov[t.zone] : 0;
+        return { ok: v >= t.target, value: v / t.target, text: '该片区覆盖 ' + U.fmtPct(v) + ' / 目标 ' + U.fmtPct(t.target, 0) };
+      },
+    },
+    stationCrowd: {
+      name: '车站拥挤', basis: 'wdPeak',
+      params: [['station', '车站 id'], ['target', '工作日高峰负荷上限 0–1'], ['start', '起始负荷（用于计算进度）']],
+      evaluate: function (t, ctx) {
+        const C = ctx.C, model = ctx.model;
+        const i = C.sIndex.get(t.station);
+        if (i === undefined) return { ok: false, value: 0, text: '车站已拆除' };
+        const sd = model.stDailyWk || model.stDaily;
+        const peak = sd && !model.dailyStale ? sd.peak[i] || 0 : 0;
+        const cap = CFG.metro.stationCap[C.stations[i].size];
+        const v = peak / cap;
+        return { ok: v <= t.target, value: U.clamp((t.start - v) / Math.max(0.01, t.start - t.target), 0, 1), text: '工作日高峰负荷 ' + U.fmtPct(v, 0) + ' / 目标 ≤ ' + U.fmtPct(t.target, 0) };
+      },
+    },
+    ridership: {
+      name: '客运量', basis: function (t) { return t.basis || 'avg'; },
+      params: [['target', '日客运量目标（人次）'], ['basis', '统计口径：wd 工作日 / we 周末 / avg 周平均', true]],
+      evaluate: function (t, ctx) {
+        const model = ctx.model;
+        const b = Tasks.basisOf(t), d = model.dailyFor ? model.dailyFor(b) : model.daily;
+        const v = d ? d.metro : 0;
+        return { ok: v >= t.target, value: v / t.target, text: (b === 'wd' ? '工作日' : (b === 'we' ? '周末' : '日均（周平均）')) + '客运量 ' + U.fmtPeople(v) + ' / 目标 ' + U.fmtPeople(t.target) };
+      },
+    },
+    facShare: {
+      name: '设施分担率', basis: function (t) { return t.basis || 'avg'; },
+      params: [['fac', '设施 id'], ['target', '乘地铁比例目标 0–1'], ['basis', '统计口径：wd 工作日 / we 周末 / avg 周平均', true]],
+      evaluate: function (t, ctx) {
+        const model = ctx.model;
+        const f = CM.Fac && CM.Fac.byId(t.fac);
+        if (!f || model.facIndex(t.fac) < 0) return { ok: false, value: 0, text: '设施目前不在运营' };
+        const r = Tasks.facShareOf(model, f, t.basis);
+        if (!r) return { ok: false, value: 0, text: '客流计算中' };
+        return { ok: r.share >= t.target, value: U.clamp(r.share / t.target, 0, 1), text: (t.basis === 'we' ? '周末' : (t.basis === 'wd' ? '工作日' : '周平均')) + '乘地铁' + (f.T.hub ? '接驳' : '到访') + '比例 ' + U.fmtPct(r.share, 0) + ' / 目标 ' + U.fmtPct(t.target, 0) };
+      },
+    },
+    recovery: {
+      name: '票款回收率', basis: 'ledger',
+      params: [['target', '票款 / 运营费用 目标'], ['sustain', '需连续达标的月数', true]],
+      evaluate: function (t, ctx) {
+        const g = ctx.g;
+        const last = g.econ.ledger[g.econ.ledger.length - 1];
+        const v = last && last.ops > 0 ? last.fare / last.ops : 0;
+        return { ok: v >= t.target, value: v / t.target, text: '上月票款/运营费用 ' + U.fmtPct(v, 0) + ' / 目标 ' + U.fmtPct(t.target, 0) + (t.sustain ? '（需连续 ' + t.sustain + ' 个月，已 ' + (t.streak || 0) + ' 个月）' : '') };
+      },
+    },
+  };
+  Tasks.TYPES = TYPES;
+  // 供编辑器与校验器读取的类型清单（不含函数）
+  Tasks.typeList = function () {
+    return Object.keys(TYPES).map(function (k) {
+      return { type: k, name: TYPES[k].name, basis: typeof TYPES[k].basis === 'function' ? null : TYPES[k].basis, params: TYPES[k].params };
+    });
+  };
+
   Tasks.prototype.evaluate = function (t, g) {
-    const C = g.compiled, model = g.model, acc = model.net ? model.net.acc : null;
-    if (t.type === 'connect') {
-      const comp = stationComponents(C, acc);
-      const anchorSets = t.anchors.map(function (a) {
-        const set = [];
-        C.stations.forEach(function (s, i) { if (C.serviced[i] && U.dist(s.x, s.y, a.x, a.y) <= a.r) set.push(i); });
-        return set;
-      });
-      const hits = anchorSets.map(function (s) { return s.length > 0; });
-      let ok = false;
-      if (hits.every(Boolean)) {
-        const roots = anchorSets.map(function (s) { return new Set(s.map(comp.find)); });
-        for (const r of roots[0]) if (roots.every(function (S) { return S.has(r); })) { ok = true; break; }
-      }
-      const n = hits.filter(Boolean).length;
-      return { ok: ok, value: ok ? 1 : n / (t.anchors.length + 1), text: t.anchors.map(function (a, i) { return (hits[i] ? '✓ ' : '✗ ') + a.name; }).join('；') + (hits.every(Boolean) && !ok ? '（车站尚未连通）' : '') };
-    }
-    if (t.type === 'coverage') {
-      const v = acc ? acc.coverage : 0;
-      return { ok: v >= t.target, value: v / t.target, text: '当前覆盖 ' + U.fmtPct(v) + ' / 目标 ' + U.fmtPct(t.target, 0) };
-    }
-    if (t.type === 'zoneCong') {
-      const v = g.zoneCong(t.zone, 'wd');
-      return { ok: v <= t.target, value: U.clamp((t.start - v) / Math.max(0.01, t.start - t.target), 0, 1), text: '工作日早高峰拥堵指数 ' + v.toFixed(2) + ' / 目标 ≤ ' + t.target.toFixed(2) };
-    }
-    if (t.type === 'zoneCov') {
-      const v = acc ? acc.zCov[t.zone] : 0;
-      return { ok: v >= t.target, value: v / t.target, text: '该片区覆盖 ' + U.fmtPct(v) + ' / 目标 ' + U.fmtPct(t.target, 0) };
-    }
-    if (t.type === 'stationCrowd') {
-      const i = C.sIndex.get(t.station);
-      if (i === undefined) return { ok: false, value: 0, text: '车站已拆除' };
-      const sd = model.stDailyWk || model.stDaily;
-      const peak = sd && !model.dailyStale ? sd.peak[i] || 0 : 0;
-      const cap = CFG.metro.stationCap[C.stations[i].size];
-      const v = peak / cap;
-      return { ok: v <= t.target, value: U.clamp((t.start - v) / Math.max(0.01, t.start - t.target), 0, 1), text: '工作日高峰负荷 ' + U.fmtPct(v, 0) + ' / 目标 ≤ ' + U.fmtPct(t.target, 0) };
-    }
-    if (t.type === 'ridership') {
-      const b = Tasks.basisOf(t), d = model.dailyFor ? model.dailyFor(b) : model.daily;
-      const v = d ? d.metro : 0;
-      return { ok: v >= t.target, value: v / t.target, text: (b === 'wd' ? '工作日' : (b === 'we' ? '周末' : '日均（周平均）')) + '客运量 ' + U.fmtPeople(v) + ' / 目标 ' + U.fmtPeople(t.target) };
-    }
-    if (t.type === 'facShare') {
-      const f = CM.Fac && CM.Fac.byId(t.fac);
-      if (!f || model.facIndex(t.fac) < 0) return { ok: false, value: 0, text: '设施目前不在运营' };
-      const r = Tasks.facShareOf(model, f, t.basis);
-      if (!r) return { ok: false, value: 0, text: '客流计算中' };
-      return { ok: r.share >= t.target, value: U.clamp(r.share / t.target, 0, 1), text: (t.basis === 'we' ? '周末' : (t.basis === 'wd' ? '工作日' : '周平均')) + '乘地铁' + (f.T.hub ? '接驳' : '到访') + '比例 ' + U.fmtPct(r.share, 0) + ' / 目标 ' + U.fmtPct(t.target, 0) };
-    }
-    if (t.type === 'recovery') {
-      const last = g.econ.ledger[g.econ.ledger.length - 1];
-      const v = last && last.ops > 0 ? last.fare / last.ops : 0;
-      return { ok: v >= t.target, value: v / t.target, text: '上月票款/运营费用 ' + U.fmtPct(v, 0) + ' / 目标 ' + U.fmtPct(t.target, 0) + (t.sustain ? '（需连续 ' + t.sustain + ' 个月，已 ' + (t.streak || 0) + ' 个月）' : '') };
-    }
-    return { ok: false, value: 0, text: '' };
+    const H = TYPES[t.type];
+    if (!H) return { ok: false, value: 0, text: '' };
+    const model = g.model;
+    return H.evaluate(t, { g: g, C: g.compiled, model: model, acc: model.net ? model.net.acc : null });
   };
 
   Tasks.prototype.monthly = function (g) {

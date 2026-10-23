@@ -1,7 +1,7 @@
 'use strict';
 // 由 OpenStreetMap 数据生成（© OpenStreetMap 贡献者，ODbL）。坐标为游戏格（250 m），折线为增量编码，1/64 格精度。
 (function (CM) {
-  CM.GEO = {
+  (CM.GEOS = CM.GEOS || {}).gz = {
     proj: { lon0: 113.2, lat0: 23.215, kx: 409.6, ky: 443 },
     // 水域：[名称序号, 环…]（o 外环 / i 内环）或 [名称序号, 宽度(格), 中心线]
     water: [

@@ -1,0 +1,1301 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>地图编辑器 · 城市与地铁</title>
+<style>
+  :root{
+    --bg:#0e1319; --panel:#141c25; --panel2:#19232e; --line:#233040; --line2:#2e4054;
+    --tx:#e4ebf2; --tx2:#b3c0cd; --mut:#7d8b9a; --ac:#4aa8ff; --ac2:#2bd4a8;
+    --warn:#f0b54a; --err:#e5645c; --ok:#38c172;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{background:var(--bg);color:var(--tx);font:13.5px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column}
+  header{flex:0 0 auto;display:flex;align-items:center;gap:16px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+  .brand{font-weight:600;letter-spacing:.02em;white-space:nowrap}
+  .brand span{font-weight:400;color:var(--mut);margin-left:8px;font-size:12px}
+  .filebar{display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap}
+  .path{font-family:var(--mono);font-size:12px;color:var(--mut);max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  button{background:var(--panel2);color:var(--tx2);border:1px solid var(--line2);border-radius:7px;padding:6px 11px;font:inherit;font-size:12.5px;cursor:pointer}
+  button:hover:not(:disabled){border-color:#3d5a75;color:var(--tx)}
+  button:disabled{opacity:.45;cursor:default}
+  button.primary{background:#123a5c;border-color:#2b5f8a;color:#bcdcff}
+  button.primary:hover:not(:disabled){background:#164a73}
+  .layout{flex:1 1 auto;display:grid;grid-template-columns:190px minmax(0,1fr) 320px;min-height:0}
+  nav{border-right:1px solid var(--line);background:var(--panel);padding:10px 8px;overflow:auto}
+  nav .grp{font-size:11px;letter-spacing:.08em;color:var(--mut);text-transform:uppercase;margin:14px 8px 6px}
+  nav a{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 9px;border-radius:7px;color:var(--tx2);text-decoration:none;cursor:pointer;font-size:13px}
+  nav a:hover{background:var(--panel2)}
+  nav a.on{background:#12314a;color:#cfe6ff}
+  nav a .n{font-family:var(--mono);font-size:11px;color:var(--mut)}
+  nav a.on .n{color:#8ec6f5}
+  nav a .dot{width:6px;height:6px;border-radius:99px;background:var(--err);display:none}
+  nav a.bad .dot{display:block}
+  main{overflow:auto;padding:18px 22px 60px;min-width:0}
+  aside{border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:12px 12px 40px}
+  h2{font-size:17px;font-weight:600;margin:0 0 4px}
+  .sub{color:var(--mut);font-size:12.5px;margin:0 0 16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:14px 16px;margin-bottom:14px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px 16px}
+  .f{display:flex;flex-direction:column;gap:4px;min-width:0}
+  .f.wide{grid-column:1/-1}
+  .f label{font-size:12px;color:var(--tx2)}
+  .f .hint{font-size:11.5px;color:var(--mut);line-height:1.45}
+  input,select,textarea{background:#0d1620;border:1px solid var(--line2);border-radius:6px;color:var(--tx);font:inherit;font-size:13px;padding:5px 8px;width:100%;min-width:0}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:#3a6f9e;box-shadow:0 0 0 2px #12314a}
+  textarea{font-family:var(--mono);font-size:12px;line-height:1.5;resize:vertical}
+  input.bad,textarea.bad{border-color:var(--err);box-shadow:0 0 0 2px #3a1d1b}
+  .tbl-wrap{overflow:auto;border:1px solid var(--line);border-radius:9px}
+  table{border-collapse:collapse;width:100%;font-size:12.5px}
+  th{background:#101a24;color:var(--mut);font-weight:500;text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0;z-index:1}
+  td{padding:3px 4px;border-bottom:1px solid #1a2532;vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  td input,td select,td textarea{padding:3px 6px;font-size:12.5px;background:#0b141d}
+  td .del{color:#a4564f;background:none;border:none;padding:2px 5px;font-size:12px}
+  td .del:hover{color:var(--err)}
+  td.idx{font-family:var(--mono);color:#4d5b6a;text-align:right;padding-right:6px;width:1%}
+  .add{margin-top:8px}
+  .bar{display:flex;align-items:center;gap:8px;margin:0 0 10px;flex-wrap:wrap}
+  .bar .count{font-family:var(--mono);font-size:12px;color:var(--mut)}
+  .btn-s{font-size:12px;padding:4px 9px}
+  .kv{display:grid;grid-template-columns:150px minmax(0,1fr) minmax(0,1.4fr) 62px;gap:8px;align-items:start;padding:7px 0;border-bottom:1px solid #1a2532}
+  .kv:last-child{border-bottom:none}
+  .kv .k{font-family:var(--mono);font-size:12.5px;color:#a9c4dc;padding-top:5px}
+  .kv .base{font-family:var(--mono);font-size:11.5px;color:#5f7183;padding-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .kv .base.on{color:#7f94a6}
+  .kv .val{min-width:0}
+  .kv .tog{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--mut);padding-top:6px;cursor:pointer}
+  .iss{display:flex;gap:8px;padding:7px 8px;border-radius:7px;font-size:12.5px;margin-bottom:6px;cursor:pointer;border:1px solid transparent}
+  .iss:hover{background:var(--panel2)}
+  .iss .lv{flex:0 0 auto;font-size:10.5px;font-family:var(--mono);padding:2px 5px;border-radius:4px;height:18px;line-height:14px}
+  .iss.error{border-color:#3a1d1b}
+  .iss.error .lv{background:#3a1d1b;color:#f3a8a2}
+  .iss.warn{border-color:#3a2f16}
+  .iss.warn .lv{background:#3a2f16;color:#e6c073}
+  .iss .txt{min-width:0;word-break:break-word;color:var(--tx2)}
+  .side-h{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--mut);margin:2px 0 10px}
+  .empty{color:var(--mut);font-size:12.5px;padding:8px 2px}
+  .summary{font-size:12.5px;color:var(--tx2);line-height:1.8}
+  .summary b{color:var(--tx);font-weight:600}
+  .summary code{font-family:var(--mono);font-size:11.5px;background:#0d1620;border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+  .drop{position:fixed;inset:0;background:#0b1420ee;display:none;align-items:center;justify-content:center;font-size:18px;color:var(--ac);z-index:50;border:2px dashed #2b5f8a}
+  .drop.on{display:flex}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#16324a;border:1px solid #2b5f8a;color:#cfe6ff;padding:9px 16px;border-radius:9px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:60}
+  .toast.on{opacity:1}
+  .note{font-size:12px;color:var(--mut);line-height:1.6;margin-top:10px}
+  .note b{color:var(--warn);font-weight:500}
+  .mapwrap{position:relative;background:#080f16;border:1px solid var(--line);border-radius:11px;overflow:hidden;margin-bottom:12px}
+  .mapcv{display:block;width:100%;height:min(62vh,600px);cursor:crosshair;touch-action:none}
+  .mtool.on{background:#12314a;border-color:#2b5f8a;color:#cfe6ff}
+  .mapempty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--mut);pointer-events:none}
+  .insp{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 14px}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin:-2px 0 10px}
+  .legend i{display:inline-block;width:8px;height:8px;border-radius:99px;margin-right:5px;vertical-align:1px}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">地图编辑器<span>城市与地铁 · 开发内部用</span></div>
+  <div class="filebar">
+    <span class="path" id="path">未打开 source.json</span>
+    <button id="btnOpen">打开</button>
+    <button id="btnSave" disabled>保存</button>
+    <button id="btnSaveAs" disabled>另存</button>
+    <button id="btnCheck" disabled>重新校验</button>
+  </div>
+</header>
+
+<div class="layout">
+  <nav id="nav"></nav>
+  <main id="main">
+    <h2>还没有打开地图</h2>
+    <p class="sub">打开 <code>maps/&lt;id&gt;/source.json</code>，或把文件拖进窗口。</p>
+    <div class="card summary">
+      编辑流程：<br>
+      1. 打开 <code>maps/gz/source.json</code><br>
+      2. 改完点「保存」（支持就地写回时直接覆盖原文件）<br>
+      3. 在仓库根目录运行 <code>node scripts/map-source.mjs build gz --in-place</code> 生成 <code>js/data_gz.js</code><br>
+      4. 运行 <code>node scripts/validate-map.mjs</code> 做权威校验（本页只是预检）<br>
+      <br>
+      <b>注意</b>：生成会覆盖 <code>js/data_gz.js</code>，手写注释会丢失。
+    </div>
+  </main>
+  <aside>
+    <div class="side-h"><span>问题</span><span id="issCount">—</span></div>
+    <div id="issues"><div class="empty">打开文件后自动预检</div></div>
+    <div class="note">本页只做结构预检；几何边界、地图指纹、与产品的字段级一致性由 <code>node scripts/validate-map.mjs</code> 检查。</div>
+  </aside>
+</div>
+
+<input type="file" id="pick" accept=".json,application/json" hidden>
+<div class="drop" id="drop">松开以打开 source.json</div>
+<div class="toast" id="toast"></div>
+
+<script src="../js/util.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/manifest.js"></script>
+<script src="../js/facility.js"></script>
+<script src="../js/economy.js"></script>
+<script src="../js/geo.js"></script>
+<script>
+(function () {
+  'use strict';
+  var CM = window.CM;
+
+  // ============================================================ 状态
+
+  var S = { src: null, name: '', dir: '', dirty: false, section: 'meta', issues: [], handle: null };
+
+  // 依赖同仓库的 js/ 模块（数据字典唯一来源）。若这些脚本没能加载（例如被单独拷到别处打开），
+  // 给出明确提示而不是白屏。
+  if (!CM || !CM.Tasks || !CM.Fac || !CM.LANDMARK_STYLES || !CM.MAP_CFG_KEYS) {
+    var main0 = document.getElementById('main');
+    if (main0) {
+      main0.innerHTML = '<h2>无法加载游戏模块</h2>' +
+        '<p class="sub">本页依赖同仓库的 <code>../js/util.js</code>、<code>config.js</code>、<code>manifest.js</code>、' +
+        '<code>facility.js</code>、<code>economy.js</code>。</p>' +
+        '<div class="card summary">请把 <code>tools/editor.html</code> 放在仓库里打开：<br>' +
+        '① 直接双击（<code>file://</code>）；<br>② 或在仓库根目录运行 <code>python -m http.server 8000</code>，' +
+        '再访问 <code>http://localhost:8000/tools/editor.html</code>。<br><br>' +
+        '如果是用内置预览面板打开，面板只提供单个 HTML 文件，读不到旁边的 <code>js/</code> 目录。</div>';
+    }
+    return;
+  }
+
+  // ============================================================ 小工具
+
+  function h(tag, attrs) {
+    var n = document.createElement(tag);
+    if (attrs) for (var k in attrs) {
+      var v = attrs[k];
+      if (v == null || v === false) continue;
+      if (k === 'class') n.className = v;
+      else if (k === 'text') n.textContent = v;
+      else if (k.slice(0, 2) === 'on') n.addEventListener(k.slice(2), v);
+      else if (k === 'value') n.value = v;
+      else if (k === 'checked' || k === 'disabled' || k === 'selected') n[k] = !!v;
+      else n.setAttribute(k, v);
+    }
+    for (var i = 2; i < arguments.length; i++) append(n, arguments[i]);
+    return n;
+  }
+  function append(n, c) {
+    if (c == null || c === false) return;
+    if (Array.isArray(c)) { c.forEach(function (x) { append(n, x); }); return; }
+    n.appendChild(c.nodeType ? c : document.createTextNode(String(c)));
+  }
+  function clone(v) { return v === undefined ? undefined : JSON.parse(JSON.stringify(v)); }
+  function pretty(v) { return v === undefined ? '' : JSON.stringify(v, null, 2); }
+  function isObj(v) { return v && typeof v === 'object' && !Array.isArray(v); }
+  function isNum(v) { return typeof v === 'number' && isFinite(v); }
+  function isInt(v) { return Number.isInteger(v); }
+  function toast(msg) {
+    var t = document.getElementById('toast');
+    t.textContent = msg; t.className = 'toast on';
+    clearTimeout(t._t); t._t = setTimeout(function () { t.className = 'toast'; }, 2200);
+  }
+  function dirty() {
+    S.dirty = true;
+    document.getElementById('btnSave').classList.add('primary');
+    document.getElementById('path').textContent = (S.dir ? S.dir + '/' : '') + S.name + ' *';
+  }
+
+  // ============================================================ 数据字典（直接取游戏的，不另写一份）
+
+  var TRIP_KEYS = (CM.CFG.trips && CM.CFG.trips.keys) || ['hw', 'sc', 'sh', 'md', 'lz', 'hb'];
+  var FAC_TYPES = Object.keys(CM.Fac.TYPES);
+  var TASK_TYPES = Object.keys(CM.Tasks.TYPES);
+  var LM_STYLES = Object.keys(CM.LANDMARK_STYLES || {});
+  var REGIONS = Object.keys(CM.REGION_STYLE).concat(['虚构']);
+  var CFG_KEYS = CM.MAP_CFG_KEYS;
+
+  function taskTypeMeta(t) { return CM.Tasks.TYPES[t] || null; }
+  function facTypeMeta(t) { return CM.Fac.TYPES[t] || null; }
+
+  // ============================================================ 预检（纯函数，可在 Node 中测试）
+
+  function validate(src) {
+    var out = [];
+    function err(sec, msg) { out.push({ level: 'error', section: sec, msg: msg }); }
+    function warn(sec, msg) { out.push({ level: 'warn', section: sec, msg: msg }); }
+    if (!isObj(src) || !isObj(src.meta)) { err('meta', '文件结构不对：缺少 meta'); return out; }
+
+    var m = src.meta, d = src.data || {}, cfg = src.cfg || {};
+    var W = cfg.W !== undefined ? cfg.W : CM.CFG.W;
+    var H = cfg.H !== undefined ? cfg.H : CM.CFG.H;
+    var inB = function (x, y, tol) { return isNum(x) && isNum(y) && x >= -tol && y >= -tol && x <= W + tol && y <= H + tol; };
+
+    // --- 概览
+    ['id', 'name', 'title', 'sub', 'desc', 'region', 'tagline', 'intro', 'kind', 'scenario', 'mapVersion', 'difficulty', 'tags', 'modes', 'facts', 'features', 'highlights', 'cam'].forEach(function (k) {
+      if (m[k] === undefined || m[k] === null || m[k] === '') err('meta', '缺少字段 ' + k);
+    });
+    if (m.kind && ['real', 'fictional'].indexOf(m.kind) < 0) err('meta', 'kind 必须是 real / fictional');
+    if (m.difficulty !== undefined && (!isInt(m.difficulty) || m.difficulty < 1 || m.difficulty > 4)) err('meta', 'difficulty 必须是 1–4');
+    if (m.mapVersion !== undefined && (!isInt(m.mapVersion) || m.mapVersion < 1)) err('meta', 'mapVersion 必须是正整数');
+    if (m.region && REGIONS.indexOf(m.region) < 0) warn('meta', '地区「' + m.region + '」不在 REGION_STYLE 中，建筑与车型会回退为内地风格');
+    if (m.modes && (!Array.isArray(m.modes) || m.modes.some(function (x) { return ['challenge', 'free'].indexOf(x) < 0; }))) err('meta', 'modes 只能是 challenge / free');
+    if (m.cam && !inB(m.cam.cx, m.cam.cy, 0)) warn('meta', '默认镜头 (cx, cy) 在地图范围外：' + m.cam.cx + ',' + m.cam.cy);
+    if (m.geo === 'inline') warn('meta', 'geo 为 inline：几何由代码生成，不能用 map-source 重建');
+
+    // --- 配置
+    Object.keys(cfg).forEach(function (k) { if (CFG_KEYS.indexOf(k) < 0) err('cfg', 'cfg.' + k + ' 不是随地图切换的配置键'); });
+    if (!isInt(W) || W <= 0 || W % CM.CFG.ZONE) err('cfg', 'W 必须是正数且能被 ' + CM.CFG.ZONE + ' 整除，当前 ' + W);
+    if (!isInt(H) || H <= 0 || H % CM.CFG.ZONE) err('cfg', 'H 必须是正数且能被 ' + CM.CFG.ZONE + ' 整除，当前 ' + H);
+    var ST = cfg.START || CM.CFG.START;
+    if (!isInt(ST.y) || ST.y < 1800 || ST.y > 2200) err('cfg', 'START.y 不合理：' + ST.y);
+    if (!isInt(ST.m) || ST.m < 1 || ST.m > 12) err('cfg', 'START.m 必须是 1–12');
+    if (!isInt(ST.d) || ST.d < 1 || ST.d > CM.U.daysInMonth(ST.y, ST.m)) err('cfg', 'START.d 超出当月天数');
+    var fr = cfg.fareRange || CM.CFG.fareRange, fd = cfg.fareDefault || CM.CFG.fareDefault;
+    if (fd && isNum(fd.flat) && fr && isNum(fr.min) && isNum(fr.max) && (fd.flat < fr.min || fd.flat > fr.max)) err('cfg', '默认票价 ' + fd.flat + ' 不在范围 ' + fr.min + '–' + fr.max);
+    var pc = (cfg.growth || CM.CFG.growth).popCurve || [];
+    for (var i = 1; i < pc.length; i++) {
+      if (!isNum(pc[i][1]) || pc[i][1] <= 0) err('cfg', 'popCurve 第 ' + i + ' 个人口值无效');
+      if (pc[i][0] <= pc[i - 1][0]) err('cfg', 'popCurve 年份必须递增（第 ' + i + ' 点）');
+    }
+
+    // --- 区域
+    var regs = d.regions || [];
+    if (!regs.length) err('regions', 'regions 不能为空');
+    var plans = d.plans || {};
+    if (!plans.res) err('regions', 'data.plans 缺少 res（未声明 plan 的区域会用它）');
+    Object.keys(plans).forEach(function (k) {
+      var t = Object.keys(plans[k]).reduce(function (a, x) { return a + plans[k][x]; }, 0);
+      if (Math.abs(t - 1) > 0.02) warn('regions', 'plans.' + k + ' 各类占比合计 ' + t.toFixed(3) + '，应为 1');
+    });
+    var rid = {};
+    regs.forEach(function (r, i) {
+      if (!r.id) { err('regions', 'regions[' + i + '] 缺少 id'); return; }
+      if (rid[r.id]) err('regions', '区域 id 重复：' + r.id);
+      rid[r.id] = 1;
+      if (r.open !== null && r.open !== undefined && !isNum(r.open)) err('regions', '区域 ' + r.id + ' 的 open 必须是年份或 null');
+      if (r.plan && !plans[r.plan]) err('regions', '区域 ' + r.id + ' 引用不存在的用地配方 ' + r.plan);
+    });
+
+    // --- 职住中心
+    (d.centers || []).forEach(function (c, i) {
+      if (!inB(c.x, c.y, CM.CFG.ZONE * 4)) err('centers', 'centers[' + i + '] 坐标越界：' + c.x + ',' + c.y);
+      if (c.pop != null && (!isNum(c.pop) || c.pop < 0)) err('centers', 'centers[' + i + '] 的 pop 必须是非负数');
+      if (c.jobs != null && (!isNum(c.jobs) || c.jobs < 0)) err('centers', 'centers[' + i + '] 的 jobs 必须是非负数');
+    });
+
+    // --- 地标
+    var lms = d.landmarks || [], lid = {};
+    lms.forEach(function (l, i) {
+      if (!l.id) { err('landmarks', 'landmarks[' + i + '] 缺少 id'); return; }
+      if (lid[l.id]) err('landmarks', '地标 id 重复：' + l.id);
+      lid[l.id] = 1;
+      if (!inB(l.x, l.y, 4)) err('landmarks', '地标 ' + l.id + ' 坐标越界：' + l.x + ',' + l.y);
+      if (!isNum(l.year)) err('landmarks', '地标 ' + l.id + ' 缺少落成年份 year');
+      if (l.style) {
+        var st = CM.LANDMARK_STYLES[l.style];
+        if (!st) err('landmarks', '地标 ' + l.id + ' 的造型 ' + l.style + ' 未登记（可选：' + LM_STYLES.join('/') + '）');
+        else if (l.kind && st.kinds && st.kinds.indexOf(l.kind) < 0) err('landmarks', '地标 ' + l.id + ' 的造型 ' + l.style + ' 只适用于 ' + st.kinds.join('/'));
+      }
+    });
+
+    // --- 设施
+    var fid = {};
+    (d.facilities || []).forEach(function (f, i) {
+      var tag = f.id || ('#' + i);
+      if (f.id && fid[f.id]) err('facilities', '设施 id 重复：' + f.id);
+      if (f.id) fid[f.id] = 1;
+      if (!FAC_TYPES.length || FAC_TYPES.indexOf(f.t) < 0) { err('facilities', '设施 ' + tag + ' 的类型 ' + f.t + ' 不存在（可选：' + FAC_TYPES.join('/') + '）'); return; }
+      if (!f.n) err('facilities', '设施 ' + tag + ' 缺少名称 n');
+      if (f.lm && f.at) err('facilities', '设施 ' + tag + ' 同时声明了 lm 与 at');
+      if (f.lm) { if (!lid[f.lm]) err('facilities', '设施 ' + tag + ' 引用了不存在的地标 ' + f.lm); }
+      else if (f.at) { if (!Array.isArray(f.at) || !inB(f.at[0], f.at[1], 1)) err('facilities', '设施 ' + tag + ' 坐标越界：' + (f.at || []).join(',')); }
+      else err('facilities', '设施 ' + tag + ' 既没有 lm 也没有 at');
+      if (f.p) Object.keys(f.p).forEach(function (k) { if (TRIP_KEYS.indexOf(k) < 0) err('facilities', '设施 ' + tag + ' 的出行目的 ' + k + ' 不存在'); });
+      if (f.pax != null) curve(f.pax, '设施 ' + tag + ' 的 pax', 'facilities', err);
+    });
+
+    // --- 任务
+    var tid = {};
+    (d.histTasks || []).forEach(function (t, i) {
+      var tag = t.id || ('#' + i);
+      if (t.id && tid[t.id]) err('tasks', '任务 id 重复：' + t.id);
+      if (t.id) tid[t.id] = 1;
+      if (!t.title) err('tasks', '任务 ' + tag + ' 缺少 title');
+      if (!Array.isArray(t.appear) || !Array.isArray(t.deadline)) { err('tasks', '任务 ' + tag + ' 需要 appear / deadline 的 [年, 月]'); return; }
+      if (t.deadline[0] * 12 + t.deadline[1] <= t.appear[0] * 12 + t.appear[1]) err('tasks', '任务 ' + tag + ' 的截止不晚于出现时间');
+      if (!isNum(t.reward) || t.reward < 0) err('tasks', '任务 ' + tag + ' 的 reward 必须是非负数');
+      var H2 = taskTypeMeta(t.type);
+      if (!H2) err('tasks', '任务 ' + tag + ' 的类型 ' + t.type + ' 未登记（可选：' + TASK_TYPES.join('/') + '）');
+      else (H2.params || []).forEach(function (pr) {
+        if (!pr[2] && t[pr[0]] === undefined) err('tasks', '任务 ' + tag + '（' + H2.name + '）缺少参数 ' + pr[0] + '：' + pr[1]);
+      });
+      (t.anchors || []).forEach(function (a, k) {
+        if (!inB(a.x, a.y, 6)) err('tasks', '任务 ' + tag + ' 的锚点 ' + (a.name || k) + ' 坐标越界');
+        if (!isNum(a.r) || a.r <= 0) err('tasks', '任务 ' + tag + ' 的锚点 ' + (a.name || k) + ' 半径必须大于 0');
+      });
+    });
+
+    // --- 事件
+    var lastYm = -Infinity;
+    (d.events || []).forEach(function (e, i) {
+      if (!isNum(e.y)) { err('events', 'events[' + i + '] 缺少年份'); return; }
+      if (e.m != null && (!isInt(e.m) || e.m < 1 || e.m > 12)) err('events', 'events[' + i + '] 月份无效');
+      var ym = e.y * 12 + ((e.m || 1) - 1);
+      if (ym < lastYm) warn('events', 'events 未按时间升序（第 ' + i + ' 条）');
+      lastYm = ym;
+    });
+
+    return out;
+
+    function curve(v, label, sec, e) {
+      if (isNum(v)) { if (v < 0) e(sec, label + ' 不能为负'); return; }
+      if (!Array.isArray(v) || !v.length) { e(sec, label + ' 必须是数字或 [年份, 值] 曲线'); return; }
+      var last = -Infinity;
+      v.forEach(function (p, i) {
+        if (!Array.isArray(p) || p.length !== 2 || !isNum(p[0]) || !isNum(p[1])) { e(sec, label + ' 第 ' + i + ' 点必须是 [年份, 值]'); return; }
+        if (p[0] <= last) e(sec, label + ' 的年份必须递增（第 ' + i + ' 点）');
+        last = p[0];
+        if (p[1] < 0) e(sec, label + ' 第 ' + i + ' 点为负数');
+      });
+    }
+  }
+
+  // ============================================================ 表单构件
+
+  function fieldRow(def, obj, path) {
+    var wrap = h('div', { class: 'f' + (def.wide ? ' wide' : '') });
+    wrap.appendChild(h('label', { text: def.label + (def.hint ? '' : '') }));
+    var input;
+    var set = function (v) { obj[def.k] = v; dirty(); precheck(); };
+
+    if (def.kind === 'select') {
+      input = h('select');
+      (def.options || []).forEach(function (o) {
+        var val = Array.isArray(o) ? o[0] : o;
+        var lab = Array.isArray(o) ? o[1] : o;
+        input.appendChild(h('option', { value: val, selected: obj[def.k] === val }, lab));
+      });
+      if (def.allowEmpty) input.insertBefore(h('option', { value: '' }, '（空）'), input.firstChild);
+      input.onchange = function () { set(def.num ? Number(input.value) : input.value); };
+      if (obj[def.k] === undefined && def.allowEmpty) input.value = '';
+    } else if (def.kind === 'multi') {
+      input = h('div', { style: 'display:flex;gap:12px;flex-wrap:wrap;padding-top:4px' });
+      (def.options || []).forEach(function (o) {
+        var cur = Array.isArray(obj[def.k]) ? obj[def.k].slice() : [];
+        var cb = h('label', { style: 'display:flex;gap:5px;align-items:center;font-size:12.5px;color:var(--tx2)' },
+          h('input', { type: 'checkbox', checked: cur.indexOf(o) >= 0, onchange: function () {
+            var a = Array.isArray(obj[def.k]) ? obj[def.k].slice() : [];
+            var i = a.indexOf(o); if (cb.checked && i < 0) a.push(o); else if (!cb.checked && i >= 0) a.splice(i, 1);
+            set(a);
+          } }), o);
+        input.appendChild(cb);
+      });
+    } else if (def.kind === 'bool') {
+      input = h('label', { style: 'display:flex;gap:6px;align-items:center;padding-top:5px;font-size:12.5px;color:var(--tx2)' },
+        h('input', { type: 'checkbox', checked: !!obj[def.k], onchange: function () { set(input.querySelector('input').checked); } }), def.hint || '');
+      input = h('div', null, input);
+    } else if (def.kind === 'json') {
+      input = h('textarea', { rows: def.rows || 4, spellcheck: 'false' });
+      input.value = pretty(obj[def.k]);
+      input.oninput = function () {
+        try { var v = JSON.parse(input.value || 'null'); obj[def.k] = v; input.classList.remove('bad'); dirty(); precheck(); }
+        catch (e) { input.classList.add('bad'); }
+      };
+    } else if (def.kind === 'int' || def.kind === 'num') {
+      input = h('input', { type: 'number', step: def.kind === 'int' ? '1' : 'any' });
+      input.value = obj[def.k] == null ? '' : obj[def.k];
+      input.oninput = function () {
+        var v = input.value === '' ? undefined : Number(input.value);
+        if (v !== undefined && isNaN(v)) return;
+        set(v);
+      };
+    } else if (def.kind === 'textarea') {
+      input = h('textarea', { rows: def.rows || 4 });
+      input.value = obj[def.k] == null ? '' : obj[def.k];
+      input.oninput = function () { set(input.value); };
+    } else {
+      input = h('input', { type: 'text' });
+      input.value = obj[def.k] == null ? '' : obj[def.k];
+      input.oninput = function () { set(input.value); };
+    }
+    wrap.appendChild(input);
+    if (def.hint) wrap.appendChild(h('div', { class: 'hint', text: def.hint }));
+    return wrap;
+  }
+
+  function formCard(obj, fields, title, note) {
+    var card = h('div', { class: 'card' });
+    if (title) card.appendChild(h('div', { style: 'font-weight:600;margin-bottom:10px' }, title));
+    var g = h('div', { class: 'grid' });
+    fields.forEach(function (f) { g.appendChild(fieldRow(f, obj)); });
+    card.appendChild(g);
+    if (note) card.appendChild(h('div', { class: 'note', text: note }));
+    return card;
+  }
+
+  // 数组表格：cols = [{k,label,kind,options,w}]
+  function table(arr, cols, onAdd, onDel) {
+    var box = h('div');
+    var bar = h('div', { class: 'bar' }, h('span', { class: 'count', text: arr.length + ' 项' }), h('button', { class: 'btn-s', onclick: function () { onAdd(); render(); } }, '+ 添加'));
+    box.appendChild(bar);
+    if (!arr.length) { box.appendChild(h('div', { class: 'empty', text: '（暂无）' })); return box; }
+    var wrap = h('div', { class: 'tbl-wrap' });
+    var t = h('table');
+    var thead = h('thead'), tr = h('tr');
+    tr.appendChild(h('th', { text: '#' }));
+    cols.forEach(function (c) { tr.appendChild(h('th', { text: c.label })); });
+    tr.appendChild(h('th', { text: '' }));
+    thead.appendChild(tr); t.appendChild(thead);
+    var tb = h('tbody');
+    arr.forEach(function (row, idx) {
+      var r = h('tr');
+      r.appendChild(h('td', { class: 'idx', text: idx + 1 }));
+      cols.forEach(function (c) {
+        var td = h('td');
+        td.appendChild(cell(c, row));
+        r.appendChild(td);
+      });
+      r.appendChild(h('td', null, h('button', { class: 'del', title: '删除', onclick: function () { onDel(idx); render(); } }, '×')));
+      tb.appendChild(r);
+    });
+    t.appendChild(tb); wrap.appendChild(t); box.appendChild(wrap);
+    return box;
+  }
+
+  function cell(c, row) {
+    var set = function (v) { if (v === undefined) delete row[c.k]; else row[c.k] = v; dirty(); precheck(); };
+    if (c.kind === 'json' || c.kind === 'jsonRow') {
+      var ta = h('textarea', { rows: 1, spellcheck: 'false', style: 'min-width:160px' });
+      ta.value = pretty(row[c.k]);
+      ta.oninput = function () {
+        try { var v = JSON.parse(ta.value || 'null'); if (v === null) delete row[c.k]; else row[c.k] = v; ta.classList.remove('bad'); dirty(); precheck(); }
+        catch (e) { ta.classList.add('bad'); }
+      };
+      return ta;
+    }
+    if (c.kind === 'select') {
+      var sel = h('select');
+      sel.appendChild(h('option', { value: '' }, '—'));
+      (c.options || []).forEach(function (o) { var v = Array.isArray(o) ? o[0] : o, l = Array.isArray(o) ? o[1] : o; sel.appendChild(h('option', { value: v, selected: row[c.k] === v }, l)); });
+      sel.value = row[c.k] == null ? '' : row[c.k];
+      sel.onchange = function () { set(sel.value === '' ? undefined : sel.value); };
+      return sel;
+    }
+    if (c.kind === 'num' || c.kind === 'int') {
+      var inp = h('input', { type: 'number', step: c.kind === 'int' ? '1' : 'any', style: 'min-width:66px' });
+      inp.value = row[c.k] == null ? '' : row[c.k];
+      inp.oninput = function () { set(inp.value === '' ? undefined : Number(inp.value)); };
+      return inp;
+    }
+    var tx = h('input', { type: 'text', style: c.w ? ('min-width:' + c.w + 'px') : '' });
+    tx.value = row[c.k] == null ? '' : row[c.k];
+    tx.oninput = function () { set(tx.value === '' ? undefined : tx.value); };
+    return tx;
+  }
+
+  // ============================================================ 地图画布
+
+  var MAP = {
+    geoId: null, base: null, baseScale: 10, cv: null,
+    cam: { x: 0, y: 0, z: 8 },
+    sel: null, tool: null, drag: null, down: null,
+    layers: { centers: true, landmarks: true, facilities: true, anchors: true }
+  };
+
+  function mapW() { return (S.src && S.src.cfg && S.src.cfg.W) || CM.CFG.W; }
+  function mapH() { return (S.src && S.src.cfg && S.src.cfg.H) || CM.CFG.H; }
+  function r2(v) { return Math.round(v * 100) / 100; }
+
+  function loadGeoScript(id) {
+    return new Promise(function (res, rej) {
+      if (!id || id === 'inline') return res(null);
+      if (CM.GEOS && CM.GEOS[id]) return res(CM.GEOS[id]);
+      var sc = document.createElement('script');
+      sc.src = '../js/geo_' + id + '.js';
+      sc.onload = function () { res((CM.GEOS || {})[id] || null); };
+      sc.onerror = function () { rej(new Error('geo_' + id + '.js 加载失败')); };
+      document.head.appendChild(sc);
+    });
+  }
+
+  // 多边形：所有环一起 evenodd 填充（与地图缩略图一致）
+  function fillPolys(c, rows, col) {
+    if (!rows || !rows.length) return;
+    var dec = CM.Geo.dec;
+    c.fillStyle = col; c.beginPath();
+    rows.forEach(function (row) {
+      for (var k = 1; k < row.length; k++) {
+        if (typeof row[k] !== 'string') continue;
+        var p = dec(row[k], 1);
+        c.moveTo(p[0], p[1]);
+        for (var q = 2; q < p.length; q += 2) c.lineTo(p[q], p[q + 1]);
+        c.closePath();
+      }
+    });
+    c.fill('evenodd');
+  }
+
+  // 底图一次性烘焙到离屏画布（固定像素/格），之后缩放只是 drawImage
+  function buildBase(G) {
+    if (!G || !CM.Geo || !CM.Geo.dec) return null;
+    var W = mapW(), H = mapH(), k = MAP.baseScale;
+    var cv = document.createElement('canvas');
+    cv.width = Math.round(W * k); cv.height = Math.round(H * k);
+    var c = cv.getContext && cv.getContext('2d');
+    if (!c) return null;
+    var dec = CM.Geo.dec;
+    c.fillStyle = '#0a121a'; c.fillRect(0, 0, cv.width, cv.height);
+    c.setTransform(k, 0, 0, k, 0, 0);
+    c.lineCap = 'round'; c.lineJoin = 'round';
+    fillPolys(c, G.woods, '#0f2019');
+    fillPolys(c, G.reserves, '#122a20');
+    fillPolys(c, G.parks, '#14271d');
+    fillPolys(c, (G.water || []).filter(function (r) { return typeof r[1] !== 'number'; }), '#123048');
+    c.strokeStyle = '#123048';
+    (G.water || []).forEach(function (r) {
+      if (typeof r[1] !== 'number' || typeof r[2] !== 'string') return;
+      var p = dec(r[2]);
+      c.lineWidth = Math.max(r[1], 0.2);
+      c.beginPath(); c.moveTo(p[0], p[1]);
+      for (var q = 2; q < p.length; q += 2) c.lineTo(p[q], p[q + 1]);
+      c.stroke();
+    });
+    var RC = { 1: ['#1c2733', 0.55], 2: ['#243140', 0.95], 3: ['#2e3f52', 1.7], 4: ['#4b4130', 2.5] };
+    [1, 2, 3, 4].forEach(function (cls) {
+      c.strokeStyle = RC[cls][0]; c.lineWidth = RC[cls][1];
+      c.beginPath();
+      (G.roads || []).forEach(function (r) {
+        if (r[1] !== cls || typeof r[3] !== 'string') return;
+        var p = dec(r[3]);
+        c.moveTo(p[0], p[1]);
+        for (var q = 2; q < p.length; q += 2) c.lineTo(p[q], p[q + 1]);
+      });
+      c.stroke();
+    });
+    c.strokeStyle = '#3b4756'; c.lineWidth = 0.45; c.beginPath();
+    (G.rail || []).forEach(function (r) {
+      if (r[1] & 2 || typeof r[2] !== 'string') return;
+      var p = dec(r[2]);
+      c.moveTo(p[0], p[1]);
+      for (var q = 2; q < p.length; q += 2) c.lineTo(p[q], p[q + 1]);
+    });
+    c.stroke();
+    c.strokeStyle = '#223040'; c.lineWidth = 0.35; c.strokeRect(0, 0, W, H);
+    return cv;
+  }
+
+  function lmPos(id) {
+    var list = (S.src.data.landmarks || []);
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return [list[i].x, list[i].y];
+    return null;
+  }
+
+  function markers() {
+    var d = S.src.data, out = [];
+    (d.centers || []).forEach(function (c, i) { out.push({ kind: 'centers', idx: i, x: c.x, y: c.y, label: '中心 ' + (i + 1), color: '#f0b54a' }); });
+    (d.landmarks || []).forEach(function (l, i) { out.push({ kind: 'landmarks', idx: i, x: l.x, y: l.y, label: l.name || l.id || ('地标 ' + (i + 1)), color: '#a78bfa' }); });
+    (d.facilities || []).forEach(function (f, i) {
+      var pos = f.lm ? lmPos(f.lm) : (f.at && f.at.length === 2 ? f.at : null);
+      if (!pos) return;
+      out.push({ kind: 'facilities', idx: i, x: pos[0], y: pos[1], label: f.n || f.id || ('设施 ' + (i + 1)), color: '#2bd4a8', derived: !!f.lm });
+    });
+    (d.histTasks || []).forEach(function (t, ti) {
+      (t.anchors || []).forEach(function (a, ai) { out.push({ kind: 'anchors', taskIdx: ti, idx: ai, x: a.x, y: a.y, label: a.name || ('锚点 ' + (ai + 1)), color: '#e5645c' }); });
+    });
+    return out.filter(function (m) { return MAP.layers[m.kind]; });
+  }
+
+  function itemOf(sel) {
+    var d = S.src.data;
+    if (!sel) return null;
+    if (sel.kind === 'anchors') { var t = (d.histTasks || [])[sel.taskIdx]; return t && (t.anchors || [])[sel.idx]; }
+    return (d[sel.kind] || [])[sel.idx];
+  }
+
+  function w2s(x, y) {
+    var cv = MAP.cv, cw = cv ? cv.clientWidth : 0, ch = cv ? cv.clientHeight : 0;
+    return [(x - MAP.cam.x) * MAP.cam.z + cw / 2, (y - MAP.cam.y) * MAP.cam.z + ch / 2];
+  }
+  function s2w(px, py) {
+    var cv = MAP.cv, cw = cv ? cv.clientWidth : 0, ch = cv ? cv.clientHeight : 0;
+    return [MAP.cam.x + (px - cw / 2) / MAP.cam.z, MAP.cam.y + (py - ch / 2) / MAP.cam.z];
+  }
+
+  function draw() {
+    var cv = MAP.cv; if (!cv) return;
+    var c = cv.getContext && cv.getContext('2d'); if (!c) return;
+    var dpr = window.devicePixelRatio || 1, cw = cv.clientWidth, ch = cv.clientHeight;
+    if (!cw || !ch) return;
+    if (cv.width !== Math.round(cw * dpr) || cv.height !== Math.round(ch * dpr)) { cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr); }
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.fillStyle = '#080f16'; c.fillRect(0, 0, cw, ch);
+    if (MAP.base) {
+      var sx = (0 - MAP.cam.x) * MAP.cam.z + cw / 2, sy = (0 - MAP.cam.y) * MAP.cam.z + ch / 2;
+      c.imageSmoothingEnabled = MAP.cam.z < MAP.baseScale;
+      c.drawImage(MAP.base, sx, sy, mapW() * MAP.cam.z, mapH() * MAP.cam.z);
+    }
+    markers().forEach(function (m) {
+      var p = w2s(m.x, m.y);
+      if (p[0] < -30 || p[1] < -30 || p[0] > cw + 30 || p[1] > ch + 30) return;
+      var on = MAP.sel && MAP.sel.kind === m.kind && MAP.sel.idx === m.idx && MAP.sel.taskIdx === m.taskIdx;
+      c.globalAlpha = m.derived ? 0.55 : 0.95;
+      c.beginPath(); c.arc(p[0], p[1], on ? 6.5 : 4, 0, Math.PI * 2);
+      c.fillStyle = m.color; c.fill();
+      c.globalAlpha = 1;
+      if (on) { c.strokeStyle = '#fff'; c.lineWidth = 1.6; c.stroke(); }
+      if (MAP.cam.z >= 9 || on) {
+        c.font = '11px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace';
+        c.fillStyle = 'rgba(228,235,242,0.85)';
+        c.fillText(m.label, p[0] + 8, p[1] + 3.5);
+      }
+    });
+  }
+
+  function pick(px, py) {
+    var best = null, bd = 13;
+    markers().forEach(function (m) {
+      var p = w2s(m.x, m.y), d = Math.hypot(p[0] - px, p[1] - py);
+      if (d < bd) { bd = d; best = m; }
+    });
+    return best;
+  }
+
+  function clampCam() {
+    MAP.cam.z = Math.max(3, Math.min(40, MAP.cam.z));
+    MAP.cam.x = Math.max(-8, Math.min(mapW() + 8, MAP.cam.x));
+    MAP.cam.y = Math.max(-8, Math.min(mapH() + 8, MAP.cam.y));
+  }
+
+  function fitMap() {
+    var cv = MAP.cv; if (!cv) return;
+    var cw = cv.clientWidth || 800, ch = cv.clientHeight || 500;
+    MAP.cam.z = Math.max(3, Math.min(28, Math.min(cw / mapW(), ch / mapH()) * 0.95));
+    MAP.cam.x = mapW() / 2; MAP.cam.y = mapH() / 2;
+  }
+
+  function moveSelected(x, y) {
+    var item = itemOf(MAP.sel); if (!item) return;
+    if (MAP.sel.kind === 'facilities') {
+      if (item.lm) return;   // 由地标定位，不能单独拖动
+      item.at = [r2(x), r2(y)];
+    } else { item.x = r2(x); item.y = r2(y); }
+    S.dirty = true;
+  }
+
+  function placeAt(kind, w) {
+    var d = S.src.data, x = r2(w[0]), y = r2(w[1]);
+    var y0 = (S.src.cfg && S.src.cfg.START ? S.src.cfg.START.y : CM.CFG.START.y);
+    if (kind === 'landmarks') {
+      d.landmarks = d.landmarks || [];
+      d.landmarks.push({ id: 'lm' + (d.landmarks.length + 1), name: '新地标', kind: 'box', x: x, y: y, year: y0, w: 60, d: 60, h: 40 });
+      MAP.sel = { kind: 'landmarks', idx: d.landmarks.length - 1 };
+    } else if (kind === 'facilities') {
+      d.facilities = d.facilities || [];
+      d.facilities.push({ id: 'f' + (d.facilities.length + 1), n: '新设施', t: 'shop', at: [x, y] });
+      MAP.sel = { kind: 'facilities', idx: d.facilities.length - 1 };
+    } else if (kind === 'centers') {
+      d.centers = d.centers || [];
+      d.centers.push({ x: x, y: y, pop: 10000, jobs: 5000, r: 2 });
+      MAP.sel = { kind: 'centers', idx: d.centers.length - 1 };
+    }
+    MAP.tool = null;
+    dirty(); precheck(); refreshMapChrome(); render();
+  }
+
+  function clickCanvas(px, py) {
+    var m = pick(px, py);
+    if (m) { MAP.sel = { kind: m.kind, idx: m.idx, taskIdx: m.taskIdx }; draw(); refreshMapChrome(); return; }
+    if (MAP.tool) { placeAt(MAP.tool, s2w(px, py)); return; }
+    MAP.sel = null; draw(); refreshMapChrome();
+  }
+
+  // 只绑定一次全局监听（画布元素每次渲染都会重建）
+  function bindWindowOnce() {
+    if (MAP._bound) return;
+    MAP._bound = true;
+    window.addEventListener('mousemove', function (e) {
+      var cv = MAP.cv;
+      if (!cv || S.section !== 'map' || !S.src) return;
+      var r = cv.getBoundingClientRect();
+      if (MAP.drag) {
+        var w = s2w(e.clientX - r.left, e.clientY - r.top);
+        moveSelected(w[0], w[1]); draw(); updateReadout();
+        return;
+      }
+      if (!MAP.down) return;
+      var dx = e.clientX - MAP.down.x, dy = e.clientY - MAP.down.y;
+      if (!MAP.down.moved && Math.abs(dx) + Math.abs(dy) > 3) MAP.down.moved = true;
+      if (MAP.down.moved) {
+        MAP.cam.x = MAP.down.cam[0] - dx / MAP.cam.z;
+        MAP.cam.y = MAP.down.cam[1] - dy / MAP.cam.z;
+        clampCam(); draw();
+      }
+    });
+    window.addEventListener('mouseup', function (e) {
+      var cv = MAP.cv;
+      if (!cv || S.section !== 'map' || !S.src) return;
+      var r = cv.getBoundingClientRect();
+      var px = e.clientX - r.left, py = e.clientY - r.top, inside = px >= 0 && py >= 0 && px <= cv.clientWidth && py <= cv.clientHeight;
+      if (MAP.drag) { MAP.drag = null; precheck(); updateReadout(); return; }
+      if (inside && MAP.down && !MAP.down.moved) clickCanvas(px, py);
+      MAP.down = null;
+    });
+    window.addEventListener('resize', function () { if (S.section === 'map') { draw(); } });
+  }
+
+  function bindCanvas() {
+    var cv = MAP.cv; if (!cv) return;
+    cv.addEventListener('mousedown', function (e) {
+      var r = cv.getBoundingClientRect();
+      var px = e.clientX - r.left, py = e.clientY - r.top, m = pick(px, py);
+      MAP.down = { x: e.clientX, y: e.clientY, cam: [MAP.cam.x, MAP.cam.y], moved: false };
+      if (m && !m.derived) MAP.drag = m;
+    });
+    cv.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      var r = cv.getBoundingClientRect();
+      var before = s2w(e.clientX - r.left, e.clientY - r.top);
+      MAP.cam.z *= (e.deltaY < 0 ? 1.15 : 1 / 1.15);
+      clampCam();
+      var after = s2w(e.clientX - r.left, e.clientY - r.top);
+      MAP.cam.x += before[0] - after[0]; MAP.cam.y += before[1] - after[1];
+      clampCam(); draw();
+    }, { passive: false });
+    cv.addEventListener('mousemove', function (e) {
+      var r = cv.getBoundingClientRect();
+      var w = s2w(e.clientX - r.left, e.clientY - r.top);
+      var box = document.getElementById('mapcoord');
+      if (box) box.textContent = 'x ' + w[0].toFixed(1) + ' · y ' + w[1].toFixed(1) + ' 格';
+    });
+  }
+
+  function updateReadout() {
+    var box = document.getElementById('mapcoord');
+    if (!box) return;
+    var it = itemOf(MAP.sel);
+    if (!it) { box.textContent = '未选中'; return; }
+    var x = it.at ? it.at[0] : it.x, y = it.at ? it.at[1] : it.y;
+    box.textContent = '选中：x ' + Number(x).toFixed(2) + ' · y ' + Number(y).toFixed(2) + ' 格';
+  }
+
+  function refreshMapChrome() {
+    var bar = document.getElementById('maptools');
+    if (bar) {
+      bar.innerHTML = '';
+      [['landmarks', '放置地标'], ['facilities', '放置设施'], ['centers', '放置中心']].forEach(function (t) {
+        bar.appendChild(h('button', { class: 'mtool btn-s' + (MAP.tool === t[0] ? ' on' : ''), onclick: function () { MAP.tool = MAP.tool === t[0] ? null : t[0]; refreshMapChrome(); } }, t[1]));
+      });
+      bar.appendChild(h('button', { class: 'btn-s', onclick: function () { fitMap(); draw(); } }, '适配窗口'));
+      bar.appendChild(h('span', { class: 'count', id: 'mapcoord', text: '—' }));
+    }
+    var leg = document.getElementById('maplegend');
+    if (leg) {
+      leg.innerHTML = '';
+      [['centers', '职住中心', '#f0b54a'], ['landmarks', '地标', '#a78bfa'], ['facilities', '设施', '#2bd4a8'], ['anchors', '任务锚点', '#e5645c']].forEach(function (l) {
+        leg.appendChild(h('label', { style: 'cursor:pointer' }, h('input', { type: 'checkbox', checked: MAP.layers[l[0]] , style: 'width:auto;margin-right:4px', onchange: function (e) { MAP.layers[l[0]] = e.target.checked; draw(); } }),
+          h('i', { style: 'background:' + l[2] }), l[1]));
+      });
+    }
+    updateReadout();
+    updateInspector();
+  }
+
+  function updateInspector() {
+    var box = document.getElementById('inspector');
+    if (!box) return;
+    box.innerHTML = '';
+    var it = itemOf(MAP.sel);
+    if (!it) { box.appendChild(h('div', { class: 'empty', text: '点标记或用左侧工具在图上放置；选中后可在这里改数值，或直接拖动标记。' })); return; }
+    var kind = MAP.sel.kind;
+    var defs;
+    if (kind === 'landmarks') defs = [
+      { k: 'id', label: 'id', kind: 'text' }, { k: 'name', label: '名称', kind: 'text' },
+      { k: 'kind', label: '形体 kind', kind: 'text' }, { k: 'style', label: '造型', kind: 'select', allowEmpty: true, options: LM_STYLES.map(function (x) { return [x, x + ' · ' + CM.LANDMARK_STYLES[x].name]; }) },
+      { k: 'x', label: 'x（格）', kind: 'num' }, { k: 'y', label: 'y（格）', kind: 'num' },
+      { k: 'year', label: '落成年', kind: 'int' }, { k: 'w', label: '宽(m)', kind: 'num' }, { k: 'd', label: '深(m)', kind: 'num' },
+      { k: 'h', label: '高(m)', kind: 'num' }, { k: 'rot', label: '旋转°', kind: 'num' }
+    ];
+    else if (kind === 'facilities') defs = [
+      { k: 'id', label: 'id', kind: 'text' }, { k: 'n', label: '名称', kind: 'text' },
+      { k: 't', label: '类型', kind: 'select', options: FAC_TYPES.map(function (x) { return [x, x + ' · ' + CM.Fac.TYPES[x].name]; }) },
+      { k: 'lm', label: '地标 id（有则跟随地标）', kind: 'text' }, { k: 'at', label: '坐标 [x, y]', kind: 'json', rows: 2 },
+      { k: 'pax', label: '接驳量曲线', kind: 'json', rows: 2 }, { k: 'r', label: '半径（格）', kind: 'num' }
+    ];
+    else if (kind === 'centers') defs = [
+      { k: 'x', label: 'x（格）', kind: 'num' }, { k: 'y', label: 'y（格）', kind: 'num' },
+      { k: 'pop', label: '人口密度', kind: 'num' }, { k: 'jobs', label: '岗位密度', kind: 'num' }, { k: 'r', label: '半径(km)', kind: 'num' }
+    ];
+    else defs = [
+      { k: 'name', label: '锚点名称', kind: 'text' }, { k: 'x', label: 'x（格）', kind: 'num' },
+      { k: 'y', label: 'y（格）', kind: 'num' }, { k: 'r', label: '半径（格）', kind: 'num' }
+    ];
+
+    var card = h('div', { class: 'card' });
+    var head = h('div', { style: 'display:flex;align-items:center;gap:10px;margin-bottom:10px' },
+      h('b', { text: ({ landmarks: '地标', facilities: '设施', centers: '职住中心', anchors: '任务锚点' })[kind] }),
+      h('span', { class: 'count', text: kind === 'anchors' ? ('任务 ' + ((S.src.data.histTasks[MAP.sel.taskIdx] || {}).title || '') ) : ('#' + (MAP.sel.idx + 1)) }));
+    if (kind === 'facilities' && it.lm) head.appendChild(h('span', { style: 'font-size:12px;color:var(--warn)', text: '由地标 ' + it.lm + ' 定位，拖动无效' }));
+    var del = h('button', { class: 'btn-s', style: 'margin-left:auto;color:#e5645c', onclick: function () {
+      var d = S.src.data, sel = MAP.sel;
+      if (sel.kind === 'anchors') { var t = (d.histTasks || [])[sel.taskIdx]; t.anchors.splice(sel.idx, 1); }
+      else (d[sel.kind] || []).splice(sel.idx, 1);
+      MAP.sel = null; dirty(); precheck(); refreshMapChrome(); render();
+    } }, '删除');
+    head.appendChild(del);
+    card.appendChild(head);
+    var g = h('div', { class: 'insp' });
+    defs.forEach(function (def) {
+      var row = fieldRow(def, it);
+      // 改完坐标要重画
+      var inp = row.querySelector('input,select,textarea');
+      if (inp && (def.k === 'x' || def.k === 'y' || def.k === 'at' || def.k === 'style' || def.k === 'kind')) {
+        inp.addEventListener('input', function () { draw(); });
+        inp.addEventListener('change', function () { draw(); });
+      }
+      g.appendChild(row);
+    });
+    card.appendChild(g);
+    box.appendChild(card);
+  }
+
+  function setupMap() {
+    bindWindowOnce();
+    var id = S.src.meta.geo;
+    MAP.cv = document.getElementById('mapcv');
+    if (!MAP.cv) return;
+    bindCanvas();
+    requestAnimationFrame(function () {
+      fitMap(); draw();
+      if (MAP.geoId !== id || (!MAP.base && id !== 'inline')) {
+        MAP.geoId = id;
+        loadGeoScript(id).then(function (G) {
+          MAP.base = G ? buildBase(G) : null;
+          if (!G) {
+            var wrap = document.querySelector('.mapwrap');
+            if (wrap && !document.getElementById('mapempty')) wrap.appendChild(h('div', { class: 'mapempty', id: 'mapempty', text: '这张图没有独立地理文件（geo: inline），画布只显示坐标网格' }));
+          }
+          fitMap(); draw();
+        }).catch(function (e) { toast(e.message); });
+      }
+      refreshMapChrome();
+    });
+  }
+
+  // ============================================================ 分区
+
+  var META_FIELDS = [
+    { k: 'id', label: 'id', kind: 'text', hint: '与 maps/<id>/ 目录名、manifest 中的 id 一致' },
+    { k: 'name', label: '城市名', kind: 'text' },
+    { k: 'title', label: '标题', kind: 'text', hint: '如「广州 · 1990」' },
+    { k: 'sub', label: '副标题', kind: 'text' },
+    { k: 'region', label: '地区', kind: 'select', options: REGIONS, hint: '决定建筑配色与车型构成' },
+    { k: 'difficulty', label: '难度', kind: 'select', num: true, options: [[1, '1 · 教程'], [2, '2 · 普通'], [3, '3 · 较难'], [4, '4 · 最难']] },
+    { k: 'kind', label: '真实 / 虚构', kind: 'select', options: ['real', 'fictional'] },
+    { k: 'scenario', label: '场景 id', kind: 'text', hint: '如 gz-1990' },
+    { k: 'mapVersion', label: '地图版本', kind: 'int', hint: '内容修订须递增' },
+    { k: 'geo', label: '地理资源', kind: 'text', hint: 'CM.GEOS 的键；inline 表示由数据文件生成几何' },
+    { k: 'tagline', label: '一句话特色', kind: 'text' },
+    { k: 'modes', label: '可选模式', kind: 'multi', options: ['challenge', 'free'] },
+    { k: 'tags', label: '标签', kind: 'json', rows: 3 },
+    { k: 'cam', label: '默认镜头', kind: 'json', rows: 4 },
+    { k: 'desc', label: '介绍（列表页）', kind: 'textarea', wide: true, rows: 3 },
+    { k: 'intro', label: '开局介绍', kind: 'textarea', wide: true, rows: 4 },
+    { k: 'facts', label: '基本信息卡', kind: 'json', wide: true, rows: 6, hint: '[[标签, 值], …]' },
+    { k: 'features', label: '特色卡', kind: 'json', wide: true, rows: 6, hint: '[[图标, 标题, 说明], …]，图标须存在于 icons.js' },
+    { k: 'highlights', label: '大事年表', kind: 'json', wide: true, rows: 6, hint: '[[年份, 文字], …]，按年份升序' }
+  ];
+
+  var REGION_COLS = [
+    { k: 'id', label: 'id', kind: 'text', w: 90 },
+    { k: 'name', label: '名称', kind: 'text', w: 150 },
+    { k: 'open', label: '开放年', kind: 'num', w: 70 },
+    { k: 'plan', label: '用地配方', kind: 'text', w: 80 },
+    { k: 'pop', label: '人口密度', kind: 'num' },
+    { k: 'streets', label: '街道（json）', kind: 'json', w: 180 },
+    { k: 'geo', label: '地理选择（json）', kind: 'json', w: 150 },
+    { k: 'note', label: '备注', kind: 'text', w: 200 }
+  ];
+  var CENTER_COLS = [
+    { k: 'x', label: 'x', kind: 'num' }, { k: 'y', label: 'y', kind: 'num' },
+    { k: 'pop', label: '人口密度', kind: 'num' }, { k: 'jobs', label: '岗位密度', kind: 'num' },
+    { k: 'r', label: '半径(km)', kind: 'num' }
+  ];
+  var LM_COLS = [
+    { k: 'id', label: 'id', kind: 'text', w: 90 }, { k: 'name', label: '名称', kind: 'text', w: 130 },
+    { k: 'kind', label: 'kind', kind: 'text', w: 80 }, { k: 'x', label: 'x', kind: 'num' }, { k: 'y', label: 'y', kind: 'num' },
+    { k: 'year', label: '落成年', kind: 'int' }, { k: 'w', label: '宽(m)', kind: 'num' }, { k: 'd', label: '深(m)', kind: 'num' },
+    { k: 'h', label: '高(m)', kind: 'num' }, { k: 'rot', label: '旋转°', kind: 'num' },
+    { k: 'style', label: '造型', kind: 'select', options: [['', '（默认）']].concat(LM_STYLES.map(function (s) { return [s, s + ' · ' + CM.LANDMARK_STYLES[s].name]; })) }
+  ];
+  var FAC_COLS = [
+    { k: 'id', label: 'id', kind: 'text', w: 90 }, { k: 'n', label: '名称', kind: 'text', w: 130 },
+    { k: 't', label: '类型', kind: 'select', options: FAC_TYPES.map(function (t) { return [t, t + ' · ' + CM.Fac.TYPES[t].name]; }) },
+    { k: 'lm', label: '地标 id', kind: 'text', w: 90 }, { k: 'at', label: '坐标 [x,y]', kind: 'json', w: 90 },
+    { k: 'pax', label: '接驳量曲线', kind: 'json', w: 150 }, { k: 'y0', label: '启用', kind: 'json', w: 70 },
+    { k: 'y1', label: '停用', kind: 'json', w: 70 }, { k: 'r', label: '半径', kind: 'num' },
+    { k: 'p', label: '目的占比', kind: 'json', w: 130 }
+  ];
+  var TASK_COLS = [
+    { k: 'id', label: 'id', kind: 'text', w: 70 }, { k: 'title', label: '标题', kind: 'text', w: 180 },
+    { k: 'type', label: '类型', kind: 'select', options: TASK_TYPES.map(function (t) { return [t, t + ' · ' + CM.Tasks.TYPES[t].name]; }) },
+    { k: 'appear', label: '出现 [y,m]', kind: 'json', w: 90 }, { k: 'deadline', label: '截止 [y,m]', kind: 'json', w: 90 },
+    { k: 'reward', label: '奖励', kind: 'num', w: 80 }, { k: 'target', label: 'target', kind: 'num', w: 70 },
+    { k: 'zone', label: 'zone', kind: 'num', w: 60 }, { k: 'fac', label: 'fac', kind: 'text', w: 80 },
+    { k: 'station', label: 'station', kind: 'text', w: 80 }, { k: 'basis', label: '口径', kind: 'text', w: 60 },
+    { k: 'sustain', label: '连续月', kind: 'num', w: 60 },
+    { k: 'anchors', label: '锚点（json）', kind: 'json', w: 200 }
+  ];
+  var EVENT_COLS = [
+    { k: 'y', label: '年', kind: 'int', w: 60 }, { k: 'm', label: '月', kind: 'int', w: 50 },
+    { k: 'title', label: '标题', kind: 'text', w: 160 }, { k: 'desc', label: '说明', kind: 'text', w: 260 },
+    { k: 'tag', label: '标签', kind: 'text', w: 70 }
+  ];
+
+  var NAV = [
+    { grp: '概览' },
+    { id: 'meta', label: '元数据与文案' },
+    { id: 'cfg', label: '配置' },
+    { grp: '空间' },
+    { id: 'map', label: '地图画布' },
+    { id: 'regions', label: '区域', count: function (d) { return (d.regions || []).length; } },
+    { id: 'centers', label: '职住中心', count: function (d) { return (d.centers || []).length; } },
+    { id: 'landmarks', label: '地标', count: function (d) { return (d.landmarks || []).length; } },
+    { id: 'facilities', label: '重要设施', count: function (d) { return (d.facilities || []).length; } },
+    { grp: '剧情' },
+    { id: 'tasks', label: '历史任务', count: function (d) { return (d.histTasks || []).length; } },
+    { id: 'events', label: '历史事件', count: function (d) { return (d.events || []).length; } },
+    { id: 'macro', label: '宏观经济' },
+    { grp: '其他' },
+    { id: 'plans', label: '用地配方' },
+    { id: 'rest', label: '其余数据' },
+    { id: 'raw', label: '整份 JSON' }
+  ];
+
+  // ============================================================ 渲染
+
+  function renderNav() {
+    var nav = document.getElementById('nav');
+    nav.innerHTML = '';
+    var d = (S.src && S.src.data) || {};
+    NAV.forEach(function (n) {
+      if (n.grp) { nav.appendChild(h('div', { class: 'grp', text: n.grp })); return; }
+      var cnt = n.count ? n.count(d) : null;
+      var bad = S.issues.some(function (i) { return i.section === n.id && i.level === 'error'; });
+      var a = h('a', { class: S.section === n.id ? 'on' : '', onclick: function () { S.section = n.id; render(); } },
+        h('span', { text: n.label }),
+        h('span', { style: 'display:flex;gap:6px;align-items:center' }, cnt == null ? null : h('span', { class: 'n', text: cnt }), h('span', { class: 'dot' })));
+      if (bad) a.classList.add('bad');
+      nav.appendChild(a);
+    });
+  }
+
+  function render() {
+    renderNav();
+    var main = document.getElementById('main');
+    main.innerHTML = '';
+    if (!S.src) return;
+    var d = S.src.data || {};
+    var m = S.src.meta || {};
+
+    if (S.section === 'map') {
+      main.appendChild(h('h2', { text: '地图画布' }));
+      main.appendChild(h('p', { class: 'sub', text: '拖动平移、滚轮缩放。点标记选中，按住拖动改坐标；选一个「放置」工具后点空白处新建。' }));
+      main.appendChild(h('div', { class: 'bar', id: 'maptools' }));
+      main.appendChild(h('div', { class: 'legend', id: 'maplegend' }));
+      main.appendChild(h('div', { class: 'mapwrap' }, h('canvas', { id: 'mapcv', class: 'mapcv' })));
+      main.appendChild(h('div', { id: 'inspector' }));
+      setupMap();
+      return;
+    }
+
+    if (S.section === 'meta') {
+      main.appendChild(h('h2', { text: '元数据与文案' }));
+      main.appendChild(h('p', { class: 'sub', text: '列表页、开局简报与地图卡片读到的字段。改动后记得同步 README / 地图清单。' }));
+      main.appendChild(formCard(m, META_FIELDS));
+      return;
+    }
+
+    if (S.section === 'cfg') {
+      main.appendChild(h('h2', { text: '配置' }));
+      main.appendChild(h('p', { class: 'sub', text: '只保存与基线（config.js 默认值）不同的键。取消勾选即恢复继承。值按 JSON 填写；对象要写完整对象，因为运行时是浅合并。' }));
+      var card = h('div', { class: 'card' });
+      CFG_KEYS.forEach(function (k) {
+        var own = S.src.cfg && Object.prototype.hasOwnProperty.call(S.src.cfg, k);
+        var row = h('div', { class: 'kv' });
+        row.appendChild(h('div', { class: 'k', text: k }));
+        row.appendChild(h('div', { class: 'base' + (own ? '' : ' on'), title: pretty(CM.CFG[k]), text: short(CM.CFG[k]) }));
+        var valBox = h('div', { class: 'val' });
+        if (own) {
+          var ta = h('textarea', { rows: 2, spellcheck: 'false' });
+          ta.value = pretty(S.src.cfg[k]);
+          ta.oninput = function () {
+            try { var v = JSON.parse(ta.value || 'null'); S.src.cfg[k] = v; ta.classList.remove('bad'); dirty(); precheck(); }
+            catch (e) { ta.classList.add('bad'); }
+          };
+          valBox.appendChild(ta);
+        } else valBox.appendChild(h('div', { class: 'base on', text: '继承基线' }));
+        row.appendChild(valBox);
+        row.appendChild(h('label', { class: 'tog' }, h('input', { type: 'checkbox', checked: own, onchange: function (e) {
+          S.src.cfg = S.src.cfg || {};
+          if (e.target.checked) S.src.cfg[k] = clone(CM.CFG[k]);
+          else delete S.src.cfg[k];
+          if (!Object.keys(S.src.cfg).length) delete S.src.cfg;
+          dirty(); render();
+        } }), '覆盖'));
+        card.appendChild(row);
+      });
+      main.appendChild(card);
+      main.appendChild(h('div', { class: 'note' }, '提示：W / H 会改变格网与交通小区数量，改动后所有坐标都要重新核对；START 决定开局年月。'));
+      return;
+    }
+
+    if (S.section === 'regions') {
+      main.appendChild(h('h2', { text: '区域' }));
+      main.appendChild(h('p', { class: 'sub', text: '区域用街道名或行政区在底图上选地，决定开放年份、用地配方与人口。open 为 null 表示永久保护（不可建设）。' }));
+      main.appendChild(table(d.regions || (d.regions = []), REGION_COLS,
+        function () { d.regions.push({ id: 'new' + (d.regions.length + 1), name: '新区域', open: (S.src.cfg && S.src.cfg.START ? S.src.cfg.START.y : CM.CFG.START.y) }); },
+        function (i) { d.regions.splice(i, 1); }));
+      return;
+    }
+
+    if (S.section === 'centers') {
+      main.appendChild(h('h2', { text: '职住中心' }));
+      main.appendChild(h('p', { class: 'sub', text: '人口与岗位的密度中心（人/km²）。生成后按全图总量归一化，所以这里写相对值即可。' }));
+      main.appendChild(table(d.centers || (d.centers = []), CENTER_COLS,
+        function () { d.centers.push({ x: 0, y: 0, pop: 10000, jobs: 5000, r: 2 }); },
+        function (i) { d.centers.splice(i, 1); }));
+      return;
+    }
+
+    if (S.section === 'landmarks') {
+      main.appendChild(h('h2', { text: '地标' }));
+      main.appendChild(h('p', { class: 'sub', text: '按落成年份出现的单体建筑。造型只能取已登记的值，写错会回退成普通楼宇。' }));
+      var hint = h('div', { class: 'note' });
+      hint.innerHTML = '可用造型：' + LM_STYLES.map(function (s) { return '<code>' + s + '</code> ' + CM.LANDMARK_STYLES[s].name + '（' + CM.LANDMARK_STYLES[s].kinds.join('/') + '）'; }).join('；');
+      main.appendChild(hint);
+      main.appendChild(table(d.landmarks || (d.landmarks = []), LM_COLS,
+        function () { d.landmarks.push({ id: 'lm' + (d.landmarks.length + 1), name: '新地标', kind: 'box', x: 0, y: 0, year: 2000, w: 60, d: 60, h: 40 }); },
+        function (i) { d.landmarks.splice(i, 1); }));
+      return;
+    }
+
+    if (S.section === 'facilities') {
+      main.appendChild(h('h2', { text: '重要设施' }));
+      main.appendChild(h('p', { class: 'sub', text: '火车站、机场、大学、医院、商圈等独立参与出行需求的设施。lm 或 at 二选一；枢纽（rail / air）用 pax 给接驳量。' }));
+      var hint2 = h('div', { class: 'note' });
+      hint2.innerHTML = '设施类型：' + FAC_TYPES.map(function (t) { return '<code>' + t + '</code> ' + CM.Fac.TYPES[t].name; }).join('；');
+      main.appendChild(hint2);
+      main.appendChild(table(d.facilities || (d.facilities = []), FAC_COLS,
+        function () { d.facilities.push({ id: 'f' + (d.facilities.length + 1), n: '新设施', t: 'shop', at: [0, 0] }); },
+        function (i) { d.facilities.splice(i, 1); }));
+      return;
+    }
+
+    if (S.section === 'tasks') {
+      main.appendChild(h('h2', { text: '历史任务' }));
+      main.appendChild(h('p', { class: 'sub', text: '按类型填参数。类型决定了需要哪些字段（见下方说明）；connect 用 anchors，coverage 用 target。' }));
+      var hint3 = h('div', { class: 'card' });
+      hint3.appendChild(h('div', { style: 'font-weight:600;margin-bottom:6px' }, '任务类型与必填参数'));
+      CM.Tasks.typeList().forEach(function (t) {
+        hint3.appendChild(h('div', { style: 'font-size:12.5px;margin:4px 0' },
+          h('code', { text: t.type }), ' ' + t.name + '（' + (t.basis ? '口径 ' + t.basis : '口径随任务') + '）：',
+          t.params.map(function (p) { return p[0] + (p[2] ? '?' : '') + ' — ' + p[1]; }).join('；')));
+      });
+      main.appendChild(hint3);
+      main.appendChild(table(d.histTasks || (d.histTasks = []), TASK_COLS,
+        function () { d.histTasks.push({ id: 't' + (d.histTasks.length + 1), title: '新任务', type: 'connect', appear: [(S.src.cfg && S.src.cfg.START ? S.src.cfg.START.y : CM.CFG.START.y), 1], deadline: [(S.src.cfg && S.src.cfg.START ? S.src.cfg.START.y : CM.CFG.START.y) + 8, 12], reward: 100000 }); },
+        function (i) { d.histTasks.splice(i, 1); }));
+      return;
+    }
+
+    if (S.section === 'events') {
+      main.appendChild(h('h2', { text: '历史事件' }));
+      main.appendChild(h('p', { class: 'sub', text: '写入城市纪事。按年代顺序排列，会上浮为提示。' }));
+      main.appendChild(table(d.events || (d.events = []), EVENT_COLS,
+        function () { d.events.push({ y: (S.src.cfg && S.src.cfg.START ? S.src.cfg.START.y : CM.CFG.START.y), m: 1, title: '新事件', desc: '' }); },
+        function (i) { d.events.splice(i, 1); }));
+      return;
+    }
+
+    if (S.section === 'macro') {
+      main.appendChild(h('h2', { text: '宏观经济' }));
+      main.appendChild(h('p', { class: 'sub', text: '仅真实城市启用；虚构地图对应 fake（不启用）。' }));
+      if (!S.src.cfg || !S.src.cfg.macro) {
+        main.appendChild(h('div', { class: 'card' }, h('div', { text: '当前没有 macro 配置。' }),
+          h('div', { class: 'note', text: '真实城市必须在 cfg 里覆盖 macro（GDP、生产率、财政、产业结构、事件）。到「配置」页勾选 macro 并填入对象。' })));
+        return;
+      }
+      var mac = S.src.cfg.macro;
+      var fields = [
+        { k: 'area', label: '统计范围', kind: 'text', wide: true },
+        { k: 'region', label: '地区', kind: 'text' },
+        { k: 'gdp0', label: '开局 GDP（万）', kind: 'num' },
+        { k: 'histEnd', label: '历史截止年', kind: 'int' },
+        { k: 'ref', label: '参考序列', kind: 'text' },
+        { k: 'infl', label: '价格序列', kind: 'text' },
+        { k: 'revElastic', label: '财政弹性', kind: 'num' },
+        { k: 'revRatio', label: '财政占 GDP', kind: 'json' },
+        { k: 'prod', label: '生产率趋势', kind: 'json' },
+        { k: 'longRun', label: '远期', kind: 'json' },
+        { k: 'struct', label: '产业结构暴露度', kind: 'json' },
+        { k: 'events', label: '经济事件', kind: 'json', wide: true, rows: 8 }
+      ];
+      main.appendChild(formCard(mac, fields));
+      return;
+    }
+
+    if (S.section === 'plans') {
+      main.appendChild(h('h2', { text: '用地配方' }));
+      main.appendChild(h('p', { class: 'sub', text: '每份配方是各类用地在同一街区内的占比，合计应为 1。区域通过 plan 字段引用。' }));
+      main.appendChild(formCard(d.plans || (d.plans = {}), Object.keys(d.plans).map(function (k) {
+        return { k: k, label: k, kind: 'json', rows: 3 };
+      })));
+      return;
+    }
+
+    if (S.section === 'rest') {
+      main.appendChild(h('h2', { text: '其余数据' }));
+      main.appendChild(h('p', { class: 'sub', text: '上面没有表单的字段（briefing、dataNote、initialNetwork、roadYears 等）。直接编辑 JSON。' }));
+      var known = { regions: 1, centers: 1, landmarks: 1, facilities: 1, histTasks: 1, events: 1, plans: 1 };
+      Object.keys(d).forEach(function (k) {
+        if (known[k]) return;
+        var card = h('div', { class: 'card' });
+        card.appendChild(h('div', { style: 'font-weight:600;margin-bottom:6px' }, k));
+        var ta = h('textarea', { rows: 6, spellcheck: 'false' });
+        ta.value = pretty(d[k]);
+        ta.oninput = function () {
+          try { var v = JSON.parse(ta.value || 'null'); if (v === null) delete d[k]; else d[k] = v; ta.classList.remove('bad'); dirty(); }
+          catch (e) { ta.classList.add('bad'); }
+        };
+        card.appendChild(ta);
+        main.appendChild(card);
+      });
+      return;
+    }
+
+    if (S.section === 'raw') {
+      main.appendChild(h('h2', { text: '整份 JSON' }));
+      main.appendChild(h('p', { class: 'sub', text: '直接编辑整个 source.json。改完点「应用」。' }));
+      var ta2 = h('textarea', { rows: 30, spellcheck: 'false', style: 'width:100%;font-size:12px' });
+      ta2.value = pretty(S.src);
+      var bar2 = h('div', { class: 'bar' }, h('button', { class: 'btn-s primary', onclick: function () {
+        try {
+          var v = JSON.parse(ta2.value);
+          S.src = v; ta2.classList.remove('bad'); dirty(); precheck(); render(); toast('已应用');
+        } catch (e) { ta2.classList.add('bad'); toast('JSON 解析失败：' + e.message); }
+      } }, '应用'), h('span', { class: 'count', text: '修改后需要重新应用才会生效' }));
+      main.appendChild(bar2);
+      main.appendChild(ta2);
+      return;
+    }
+  }
+
+  function short(v) {
+    if (v === undefined) return '—';
+    var s = JSON.stringify(v);
+    if (!s) s = String(v);
+    return s.length > 40 ? s.slice(0, 38) + '…' : s;
+  }
+
+  // ============================================================ 预检输出
+
+  function precheck() {
+    if (!S.src) return;
+    S.issues = validate(S.src);
+    var box = document.getElementById('issues');
+    box.innerHTML = '';
+    var errs = S.issues.filter(function (i) { return i.level === 'error'; }).length;
+    var warns = S.issues.length - errs;
+    document.getElementById('issCount').textContent = S.issues.length ? (errs + ' 错误 · ' + warns + ' 警告') : '无问题';
+    if (!S.issues.length) { box.appendChild(h('div', { class: 'empty', text: '✓ 结构预检通过' })); renderNav(); return; }
+    S.issues.forEach(function (i) {
+      box.appendChild(h('div', { class: 'iss ' + i.level, onclick: function () { S.section = i.section; render(); } },
+        h('span', { class: 'lv', text: i.level === 'error' ? 'ERR' : 'WARN' }),
+        h('span', { class: 'txt', text: i.msg })));
+    });
+    renderNav();
+  }
+
+  // ============================================================ 文件
+
+  function setSource(text, name, dir, handle) {
+    try {
+      var src = JSON.parse(text);
+      if (!isObj(src) || !isObj(src.meta)) throw new Error('缺少 meta');
+      S.src = src; S.name = name || 'source.json'; S.dir = dir || ''; S.handle = handle || null;
+      S.dirty = false;
+      document.getElementById('path').textContent = (S.dir ? S.dir + '/' : '') + S.name;
+      ['btnSave', 'btnSaveAs', 'btnCheck'].forEach(function (id) { document.getElementById(id).disabled = false; });
+      document.getElementById('btnSave').classList.remove('primary');
+      S.section = 'meta';
+      render(); precheck();
+      toast('已打开 ' + S.name);
+    } catch (e) {
+      toast('打开失败：' + e.message);
+    }
+  }
+
+  async function openFile() {
+    if (window.showOpenFilePicker) {
+      try {
+        var picked = await window.showOpenFilePicker({ types: [{ description: 'source.json', accept: { 'application/json': ['.json'] } }] });
+        var fh = picked[0], f = await fh.getFile(), text = await f.text();
+        setSource(text, f.name, (fh.name || '').slice(0, -f.name.length - 1), fh);
+        return;
+      } catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    document.getElementById('pick').click();
+  }
+
+  async function saveFile(asNew) {
+    var text = JSON.stringify(S.src, null, 2) + '\n';
+    if (!asNew && S.handle) {
+      try {
+        var w = await S.handle.createWritable();
+        await w.write(text); await w.close();
+        S.dirty = false;
+        document.getElementById('btnSave').classList.remove('primary');
+        document.getElementById('path').textContent = (S.dir ? S.dir + '/' : '') + S.name;
+        toast('已写回 ' + S.name);
+        return;
+      } catch (e) { toast('写回失败，改为下载：' + e.message); }
+    }
+    var blob = new Blob([text], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (S.src.meta && S.src.meta.id ? S.src.meta.id : 'source') + '.json';
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+    toast('已下载 ' + a.download);
+  }
+
+  // ============================================================ 启动
+
+  document.getElementById('btnOpen').onclick = openFile;
+  document.getElementById('btnSave').onclick = function () { saveFile(false); };
+  document.getElementById('btnSaveAs').onclick = function () { saveFile(true); };
+  document.getElementById('btnCheck').onclick = function () { precheck(); toast('已重新预检'); };
+  document.getElementById('pick').onchange = async function (e) {
+    var f = e.target.files && e.target.files[0]; if (!f) return;
+    setSource(await f.text(), f.name, '');
+    e.target.value = '';
+  };
+  window.addEventListener('dragover', function (e) { e.preventDefault(); document.getElementById('drop').classList.add('on'); });
+  window.addEventListener('dragleave', function (e) { if (e.relatedTarget === null) document.getElementById('drop').classList.remove('on'); });
+  window.addEventListener('drop', async function (e) {
+    e.preventDefault(); document.getElementById('drop').classList.remove('on');
+    var f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) setSource(await f.text(), f.name, '');
+  });
+  window.addEventListener('beforeunload', function (e) { if (S.dirty) { e.preventDefault(); e.returnValue = ''; } });
+  renderNav();
+
+  // 供 Node 测试调用
+  window.ED = {
+    validate: validate, state: S, setSource: setSource,
+    schema: { META_FIELDS: META_FIELDS, CFG_KEYS: CFG_KEYS, TASK_TYPES: TASK_TYPES, FAC_TYPES: FAC_TYPES, LM_STYLES: LM_STYLES },
+    // 画布相关（供测试与调试）：世界↔屏幕、标记集合、放置
+    map: MAP, w2s: w2s, s2w: s2w, markers: markers, placeAt: placeAt, draw: draw, buildBase: buildBase, loadGeo: loadGeoScript
+  };
+})();
+</script>
+</body>
+</html>

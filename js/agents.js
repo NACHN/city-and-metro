@@ -22,7 +22,6 @@
     tw: [[1980, [0.28, 0.10, 0.06, 0.12, 0.04, 0.40]], [2000, [0.36, 0.10, 0.05, 0.10, 0.02, 0.37]], [2020, [0.44, 0.08, 0.05, 0.09, 0.03, 0.31]]],
     jp: [[1950, [0.10, 0.18, 0.16, 0.38, 0.12, 0.06]], [1965, [0.34, 0.18, 0.10, 0.30, 0.05, 0.03]], [1990, [0.62, 0.12, 0.06, 0.18, 0.01, 0.01]], [2020, [0.70, 0.10, 0.05, 0.14, 0.01, 0]]],
   };
-  const REGION_KEY = { '中国内地': 'cn', '中国香港': 'hk', '中国台湾': 'tw', '日本': 'jp' };
   const VCOL = {
     taxi: { cn: ['#c8372d', '#e8b62c', '#2f7fd0'], hk: ['#d0312d', '#d0312d', '#3a9a4a'], tw: ['#f1c232'], jp: ['#2f7a4f', '#f0c419', '#1f2a44', '#e8e8e8'] },
     bus: { cn: ['#2e7bd1', '#3a9a5a', '#e0b13a'], hk: ['#c8102e', '#e8d9a8', '#f3c300'], tw: ['#2f6fb6', '#e04a3a'], jp: ['#3a8f4e', '#e8e0c8', '#2e6eb5'] },
@@ -32,7 +31,7 @@
   };
   // 车型尺寸（世界单位长度、宽度倍数）与限速（km/h）
   const VDIM = { car: [0.085, 1, 999], taxi: [0.085, 1, 999], bus: [0.15, 1.3, 60], truck: [0.12, 1.15, 70], bike: [0.03, 0.45, 16], moto: [0.04, 0.55, 45] };
-  function regionKey() { const m = CM.curMap ? CM.curMap() : null; return (m && REGION_KEY[m.region]) || 'cn'; }
+  function regionKey() { return CM.Regions.current(); }
   function interpMix(tbl, y) {
     if (y <= tbl[0][0]) return tbl[0][1];
     for (let i = 1; i < tbl.length; i++) if (y < tbl[i][0]) { const a = tbl[i - 1], b = tbl[i], f = (y - a[0]) / (b[0] - a[0]); return a[1].map(function (v, k) { return v + (b[1][k] - v) * f; }); }
@@ -609,10 +608,10 @@
       budget--; total++;
     }
   };
-  // 衣着配色：夏季明亮、冬季（东京、杭州）深色；1970 年代以前的内地与 1960 年代以前的东京以蓝灰绿为主
+  // 衣着配色：夏季明亮、冬季（气候为 cold 的地图：东京、杭州）深色；1970 年代以前的内地与 1960 年代以前的东京以蓝灰绿为主
   Agents.prototype.palette = function (clock) {
     if (!clock) return PED_COLORS;
-    const rk = regionKey(), m = clock.m, cold = CM.mapId === 'tk' || CM.mapId === 'hz';
+    const rk = regionKey(), m = clock.m, cold = CM.Regions.cold();
     if ((rk === 'cn' && clock.y < 1978) || (rk === 'jp' && clock.y < 1962)) return PED_PAL.old;
     if (m >= 6 && m <= 8) return PED_PAL.summer;
     if (cold && (m === 12 || m <= 2)) return PED_PAL.winter;
