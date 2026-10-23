@@ -1,8 +1,13 @@
 {
   "$schema": "https://unpkg.com/wrangler/config-schema.json",
-  // 必须与新 Pages 项目名一致。*.pages.dev 全局唯一，不能沿用上游的 city-and-metro；
-  // 改名后同步 部署说明.md §2 与 §9.2。
+  // Cloudflare Workers 静态资源模式：构建产物 dist 直接作为 assets 发布。
+  // 不要写 pages_build_output_dir —— 那是 Pages 的字段，wrangler deploy 会报「缺少入口或 assets 目录」。
+  // 项目名只需在本账号内唯一（workers.dev 子域按账号划分，不像 pages.dev 那样全局唯一）。
   "name": "metrogame",
-  "pages_build_output_dir": "./dist",
-  "compatibility_date": "2026-10-17"
+  "compatibility_date": "2026-10-17",
+  "assets": {
+    "directory": "./dist",
+    // dist/404.html 由 scripts/build.mjs 生成；未知路径返回它，而不是 Cloudflare 默认页
+    "not_found_handling": "404-page"
+  }
 }
