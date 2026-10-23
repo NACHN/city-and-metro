@@ -895,6 +895,61 @@
     return out.length >= 2 ? out : null;
   };
 
+  // ---------------- 地价（经营模式派生量） ----------------
+  // P = P0 · 物价指数 · (1 + poiGain·POI) · (1 + accessGain·可达性) · (1 + jobGain·岗位密度)
+  // POI 来自 facility.js 的设施表：按组权重、场地半径做窗口累加（不遍历全图，按设施外扩 2.5R）。
+  // 可达性用站点步行距离（acc.cellWalk，米）。只在经营模式调用；不存档，也不参与既有模式的任何计算。
+  City.prototype.buildLandPrice = function (year, acc) {
+    const L = CFG.land, N = this.N, W = this.W, H = this.H;
+    if (!L) return null;
+    const poi = new Float32Array(N);
+    const fac = (CM.Fac && CM.Fac.list) ? CM.Fac.list() : [];
+    const gw = L.poiGroup || {};
+    for (const f of fac) {
+      if (!CM.Fac.active(f, year, this)) continue;
+      const w = gw[f.T.group] != null ? gw[f.T.group] : 0.4;
+      if (!(w > 0)) continue;
+      const S = Math.max(1.2, (f.r || 0.8) * L.poiRadius);
+      const R = S * 2.5, r2 = R * R;
+      const i0 = Math.max(0, Math.floor(f.x - R)), i1 = Math.min(W - 1, Math.ceil(f.x + R));
+      const j0 = Math.max(0, Math.floor(f.y - R)), j1 = Math.min(H - 1, Math.ceil(f.y + R));
+      for (let j = j0; j <= j1; j++) {
+        for (let i = i0; i <= i1; i++) {
+          const dx = i + 0.5 - f.x, dy = j + 0.5 - f.y, d2 = dx * dx + dy * dy;
+          if (d2 > r2) continue;
+          poi[j * W + i] += w * Math.exp(-d2 / (S * S));
+        }
+      }
+    }
+    const ind = U.priceIndex(year, CFG.cost.inflation, CFG.econBase || 1990);
+    const walk = acc && acc.cellWalk ? acc.cellWalk : null;
+    const P = new Float32Array(N);
+    let sum = 0, n = 0, mx = 0;
+    const vals = [];
+    for (let c = 0; c < N; c++) {
+      if (this.landFrac[c] < 0.5 || this.lu[c] === LU.WATER) continue;
+      let mul = 1 + L.poiGain * poi[c];
+      if (walk) { const wm = Math.min(walk[c] || 0, 4000); mul *= 1 + L.accessGain * Math.exp(-wm / L.accessScale); }
+      const dens = Math.min(L.densCap, (this.pop[c] + 1.5 * this.jobs[c]) / L.densRef);
+      mul *= 1 + L.densGain * Math.pow(dens, L.densPow);
+      mul *= 1 + L.jobGain * Math.min(3, this.jobs[c] / L.jobRef);
+      if (mul > L.maxMul) mul = L.maxMul;
+      const v = L.base * ind * mul;
+      P[c] = v; sum += v; n++; if (v > mx) mx = v;
+      vals.push(v);
+    }
+    vals.sort(function (a, b) { return a - b; });
+    this.landPrice = P;
+    this.landStat = {
+      year: year, cells: n, mean: n ? sum / n : 0, max: mx,
+      p10: n ? vals[Math.floor(n * 0.1)] : 0,
+      p50: n ? vals[Math.floor(n * 0.5)] : 0,
+      p90: n ? vals[Math.floor(n * 0.9)] : 0,
+      gradient: n ? vals[Math.floor(n * 0.9)] / Math.max(1, vals[Math.floor(n * 0.1)]) : 0,
+    };
+    return this.landStat;
+  };
+
   // ---------------- 建筑高度 ----------------
   City.prototype.heightFor = function (c, year) {
     const L = this.lu[c];

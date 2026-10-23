@@ -34,6 +34,8 @@ const arg = (k, d) => {
 const months = Math.max(0, Number(arg('months', '2')) | 0);
 const jsonOnly = argv.includes('--json');
 const mapArg = arg('maps', 'gz,tutorial,hz,hk,tk,tp');
+// 强制模式（逗号分隔），用于测试地图尚未放行的模式，例如 --modes=tycoon
+const modeArg = arg('modes', null);
 
 globalThis.window = globalThis;
 globalThis.self = globalThis;
@@ -68,7 +70,7 @@ function runMap(mapId, mode) {
   const d = g.model.daily || {};
   const t = g.city.totals();
   const body = normalize(g.serialize());
-  return {
+  const row = {
     map: mapId,
     mode: mode,
     pop: Math.round(t.pop),
@@ -84,20 +86,32 @@ function runMap(mapId, mode) {
     bytes: body.length,
     hash: crypto.createHash('sha256').update(body).digest('hex').slice(0, 16),
   };
+  // 经营模式才有地价：给出分位数与核心/外围梯度，便于检查标定是否落在 4–6 倍
+  if (g.city.landStat) {
+    const s = g.city.landStat;
+    row.land = {
+      mean: Math.round(s.mean), p10: Math.round(s.p10), p50: Math.round(s.p50), p90: Math.round(s.p90),
+      gradient: Number(s.gradient.toFixed(2)), max: Math.round(s.max),
+    };
+  }
+  return row;
 }
 
 const rows = [];
 for (const mapId of mapArg.split(',').map((s) => s.trim()).filter(Boolean)) {
   const mp = CM.MAPS[mapId];
   if (!mp) { log('跳过未知地图：' + mapId); continue; }
-  for (const mode of mp.modes || ['challenge']) {
+  const modes = modeArg ? modeArg.split(',').map((s) => s.trim()).filter(Boolean) : (mp.modes || ['challenge']);
+  for (const mode of modes) {
     const t0 = Date.now();
     try {
       const r = runMap(mapId, mode);
       r.ms = Date.now() - t0;
       rows.push(r);
       log([r.map.padEnd(9), r.mode.padEnd(10), String(r.pop).padStart(9), String(r.metro).padStart(8),
-        String(r.share).padStart(8), String(r.funds).padStart(9), String(r.sat).padStart(7), r.hash].join('  '));
+        String(r.share).padStart(8), String(r.funds).padStart(9), String(r.sat).padStart(7),
+        (r.land ? ('地价 ' + r.land.mean + ' 中位 ' + r.land.p50 + ' 梯度 ' + r.land.gradient.toFixed(2) + '×').padEnd(34) : ''.padEnd(34)),
+        r.hash].join('  '));
     } catch (e) {
       rows.push({ map: mapId, mode: mode, error: e.message });
       log([mapId.padEnd(9), mode.padEnd(10), 'ERROR ' + e.message].join('  '));

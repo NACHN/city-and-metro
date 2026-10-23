@@ -43,6 +43,8 @@
     g.model.fare = g.econ.fare;
     g.tasks = new CM.Tasks();
     g.model.solveNow(2);
+    // 地价是经营模式的派生量：开局先算一次，之后每月随城市与线网更新（见 monthGen）
+    if (g.econ.caps.land) g.city.buildLandPrice(g.clock.y, g.model.net ? g.model.net.acc : null);
     g.econ.startMonth(g.clock.y, g.clock.m);
     const e0 = D.events && D.events[0];
     if (e0) g.logEvent({ tag: e0.tag || '史实', title: e0.title, desc: e0.desc });
@@ -223,6 +225,8 @@
     yield;
     yield* model.refreshCityGen(C);
     this.compiled = C;
+    // 地价（经营模式）：线网与城市都更新完之后重算，供拆迁计价与物业收入使用
+    if (this.econ.caps.land) city.buildLandPrice(yr, model.net ? model.net.acc : null);
     if (this.macro && CM.Macro) CM.Macro.sample(this);   // 本月的岗位与交通效率（年度 GDP 取全年平均）
     yield;
     // 经营与任务：上月已封账，先开新月账本，任务奖励记入新月，最后按本月任务结果发放拨款
