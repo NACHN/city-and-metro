@@ -86,7 +86,7 @@
 | [部署说明](./部署说明.md) | Cloudflare 原生 GitHub 部署、发布记录与实际验证范围 |
 | [js/news.js](./js/news.js) | 游戏内面向玩家的更新公告 |
 | [js/maps.js](./js/maps.js) / [js/config.js](./js/config.js) | 地图登记与共用参数 |
-| [tools/editor.html](./tools/editor.html) | 地图编辑器（开发内部用，不随站点发布） |
+| [tools/editor.html](./tools/editor.html) | 地图编辑器（地图优先画布 + 数据抽屉，开发内部用，不随站点发布） |
 
 运行资源位于 `index.html`、`css/`、`js/`、`img/`；各城场景使用 `data_*.js`，地理使用 `geo_*.js`，可编辑的地图源在 `maps/<id>/source.json`。执行 `node scripts/build.mjs` 生成发布目录 `dist/`（含地图数据校验），不需要依赖安装。
 

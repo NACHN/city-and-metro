@@ -1,138 +1,591 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>地图编辑器 · 城市与地铁</title>
+<script>
+  // 首帧应用主题，避免闪烁（与游戏本体一致）
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('cm1.editor.theme'); } catch (e) {}
+    if (t !== 'light' && t !== 'dark') t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
 <style>
-  :root{
-    --bg:#0e1319; --panel:#141c25; --panel2:#19232e; --line:#233040; --line2:#2e4054;
-    --tx:#e4ebf2; --tx2:#b3c0cd; --mut:#7d8b9a; --ac:#4aa8ff; --ac2:#2bd4a8;
-    --warn:#f0b54a; --err:#e5645c; --ok:#38c172;
-    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
-  }
-  *{box-sizing:border-box}
-  html,body{height:100%;margin:0}
-  body{background:var(--bg);color:var(--tx);font:13.5px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column}
-  header{flex:0 0 auto;display:flex;align-items:center;gap:16px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
-  .brand{font-weight:600;letter-spacing:.02em;white-space:nowrap}
-  .brand span{font-weight:400;color:var(--mut);margin-left:8px;font-size:12px}
-  .filebar{display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap}
-  .path{font-family:var(--mono);font-size:12px;color:var(--mut);max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  button{background:var(--panel2);color:var(--tx2);border:1px solid var(--line2);border-radius:7px;padding:6px 11px;font:inherit;font-size:12.5px;cursor:pointer}
-  button:hover:not(:disabled){border-color:#3d5a75;color:var(--tx)}
-  button:disabled{opacity:.45;cursor:default}
-  button.primary{background:#123a5c;border-color:#2b5f8a;color:#bcdcff}
-  button.primary:hover:not(:disabled){background:#164a73}
-  .layout{flex:1 1 auto;display:grid;grid-template-columns:190px minmax(0,1fr) 320px;min-height:0}
-  nav{border-right:1px solid var(--line);background:var(--panel);padding:10px 8px;overflow:auto}
-  nav .grp{font-size:11px;letter-spacing:.08em;color:var(--mut);text-transform:uppercase;margin:14px 8px 6px}
-  nav a{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 9px;border-radius:7px;color:var(--tx2);text-decoration:none;cursor:pointer;font-size:13px}
-  nav a:hover{background:var(--panel2)}
-  nav a.on{background:#12314a;color:#cfe6ff}
-  nav a .n{font-family:var(--mono);font-size:11px;color:var(--mut)}
-  nav a.on .n{color:#8ec6f5}
-  nav a .dot{width:6px;height:6px;border-radius:99px;background:var(--err);display:none}
-  nav a.bad .dot{display:block}
-  main{overflow:auto;padding:18px 22px 60px;min-width:0}
-  aside{border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:12px 12px 40px}
-  h2{font-size:17px;font-weight:600;margin:0 0 4px}
-  .sub{color:var(--mut);font-size:12.5px;margin:0 0 16px}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:14px 16px;margin-bottom:14px}
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px 16px}
-  .f{display:flex;flex-direction:column;gap:4px;min-width:0}
-  .f.wide{grid-column:1/-1}
-  .f label{font-size:12px;color:var(--tx2)}
-  .f .hint{font-size:11.5px;color:var(--mut);line-height:1.45}
-  input,select,textarea{background:#0d1620;border:1px solid var(--line2);border-radius:6px;color:var(--tx);font:inherit;font-size:13px;padding:5px 8px;width:100%;min-width:0}
-  input:focus,select:focus,textarea:focus{outline:none;border-color:#3a6f9e;box-shadow:0 0 0 2px #12314a}
-  textarea{font-family:var(--mono);font-size:12px;line-height:1.5;resize:vertical}
-  input.bad,textarea.bad{border-color:var(--err);box-shadow:0 0 0 2px #3a1d1b}
-  .tbl-wrap{overflow:auto;border:1px solid var(--line);border-radius:9px}
-  table{border-collapse:collapse;width:100%;font-size:12.5px}
-  th{background:#101a24;color:var(--mut);font-weight:500;text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0;z-index:1}
-  td{padding:3px 4px;border-bottom:1px solid #1a2532;vertical-align:top}
-  tr:last-child td{border-bottom:none}
-  td input,td select,td textarea{padding:3px 6px;font-size:12.5px;background:#0b141d}
-  td .del{color:#a4564f;background:none;border:none;padding:2px 5px;font-size:12px}
-  td .del:hover{color:var(--err)}
-  td.idx{font-family:var(--mono);color:#4d5b6a;text-align:right;padding-right:6px;width:1%}
-  .add{margin-top:8px}
-  .bar{display:flex;align-items:center;gap:8px;margin:0 0 10px;flex-wrap:wrap}
-  .bar .count{font-family:var(--mono);font-size:12px;color:var(--mut)}
-  .btn-s{font-size:12px;padding:4px 9px}
-  .kv{display:grid;grid-template-columns:150px minmax(0,1fr) minmax(0,1.4fr) 62px;gap:8px;align-items:start;padding:7px 0;border-bottom:1px solid #1a2532}
-  .kv:last-child{border-bottom:none}
-  .kv .k{font-family:var(--mono);font-size:12.5px;color:#a9c4dc;padding-top:5px}
-  .kv .base{font-family:var(--mono);font-size:11.5px;color:#5f7183;padding-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .kv .base.on{color:#7f94a6}
-  .kv .val{min-width:0}
-  .kv .tog{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--mut);padding-top:6px;cursor:pointer}
-  .iss{display:flex;gap:8px;padding:7px 8px;border-radius:7px;font-size:12.5px;margin-bottom:6px;cursor:pointer;border:1px solid transparent}
-  .iss:hover{background:var(--panel2)}
-  .iss .lv{flex:0 0 auto;font-size:10.5px;font-family:var(--mono);padding:2px 5px;border-radius:4px;height:18px;line-height:14px}
-  .iss.error{border-color:#3a1d1b}
-  .iss.error .lv{background:#3a1d1b;color:#f3a8a2}
-  .iss.warn{border-color:#3a2f16}
-  .iss.warn .lv{background:#3a2f16;color:#e6c073}
-  .iss .txt{min-width:0;word-break:break-word;color:var(--tx2)}
-  .side-h{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--mut);margin:2px 0 10px}
-  .empty{color:var(--mut);font-size:12.5px;padding:8px 2px}
-  .summary{font-size:12.5px;color:var(--tx2);line-height:1.8}
-  .summary b{color:var(--tx);font-weight:600}
-  .summary code{font-family:var(--mono);font-size:11.5px;background:#0d1620;border:1px solid var(--line);border-radius:4px;padding:1px 5px}
-  .drop{position:fixed;inset:0;background:#0b1420ee;display:none;align-items:center;justify-content:center;font-size:18px;color:var(--ac);z-index:50;border:2px dashed #2b5f8a}
-  .drop.on{display:flex}
-  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#16324a;border:1px solid #2b5f8a;color:#cfe6ff;padding:9px 16px;border-radius:9px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:60}
-  .toast.on{opacity:1}
-  .note{font-size:12px;color:var(--mut);line-height:1.6;margin-top:10px}
-  .note b{color:var(--warn);font-weight:500}
-  .mapwrap{position:relative;background:#080f16;border:1px solid var(--line);border-radius:11px;overflow:hidden;margin-bottom:12px}
-  .mapcv{display:block;width:100%;height:min(62vh,600px);cursor:crosshair;touch-action:none}
-  .mtool.on{background:#12314a;border-color:#2b5f8a;color:#cfe6ff}
-  .mapempty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--mut);pointer-events:none}
-  .insp{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 14px}
-  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin:-2px 0 10px}
-  .legend i{display:inline-block;width:8px;height:8px;border-radius:99px;margin-right:5px;vertical-align:1px}
+/* ============================================================ 主题 */
+:root{
+  --bg:#eaf1f7; --surface:rgba(255,255,255,.92); --surface-solid:#fff; --surface-2:#f4f7fb; --surface-3:#e8eef5;
+  --text:#17263d; --muted:#5d6c82; --faint:#98a6b8; --line:rgba(27,54,92,.09); --line-strong:rgba(27,54,92,.17);
+  --hover:rgba(47,111,168,.07); --accent:#2f6fa8; --accent-soft:rgba(47,111,168,.11); --accent-ink:#245b8c;
+  --good:#1f9254; --good-soft:rgba(31,146,84,.1); --bad:#d83a3a; --bad-soft:rgba(216,58,58,.1);
+  --warn:#c98200; --warn-soft:rgba(214,140,0,.12); --gold:#b8860b;
+  --glass-edge:rgba(255,255,255,.75); --shadow:0 10px 30px rgba(36,66,104,.13),0 1px 3px rgba(36,66,104,.07);
+  --shadow-sm:0 4px 14px rgba(36,66,104,.12); --ring:0 0 0 3px rgba(47,111,168,.22);
+  --input-bg:#fbfdff; --input-line:#d6e0ea; --scroll:rgba(27,54,92,.18);
+  --c-regions:#2a9d8f; --c-centers:#b06f00; --c-landmarks:#6b3fc4; --c-facilities:#0a7d63; --c-anchors:#c3352d;
+  --radius:14px; --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+:root[data-theme=dark]{
+  --bg:#0f1724; --surface:rgba(21,30,45,.92); --surface-solid:#172131; --surface-2:#1b2637; --surface-3:#243247;
+  --text:#e5ecf6; --muted:#9aa9be; --faint:#66768e; --line:rgba(255,255,255,.08); --line-strong:rgba(255,255,255,.15);
+  --hover:rgba(120,170,230,.1); --accent:#6aa6e6; --accent-soft:rgba(106,166,230,.15); --accent-ink:#cfe4ff;
+  --good:#3cc77e; --good-soft:rgba(60,199,126,.14); --bad:#ff7070; --bad-soft:rgba(255,112,112,.14);
+  --warn:#f0b33c; --warn-soft:rgba(240,179,60,.14); --gold:#f0bd4a;
+  --glass-edge:rgba(255,255,255,.07); --shadow:0 12px 36px rgba(0,0,0,.45),0 1px 4px rgba(0,0,0,.3);
+  --shadow-sm:0 4px 14px rgba(0,0,0,.34); --ring:0 0 0 3px rgba(106,166,230,.32);
+  --input-bg:#111b2a; --input-line:#2c3c52; --scroll:rgba(255,255,255,.18);
+  --c-regions:#55cdbd; --c-centers:#f0b54a; --c-landmarks:#a78bfa; --c-facilities:#2bd4a8; --c-anchors:#ff8a8a;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--text);font:13px/1.5 var(--font);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none}
+a{color:var(--accent);text-decoration:none}
+::selection{background:var(--accent-soft)}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:var(--scroll);border-radius:5px;border:2px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-track{background:transparent}
+[hidden]{display:none!important}
+
+#mapcv{position:fixed;inset:0;display:block;width:100%;height:100%;touch-action:none;cursor:grab;background:var(--bg)}
+.hud{position:fixed;z-index:10}
+.glass{background:var(--surface);border:1px solid var(--glass-edge);border-radius:var(--radius);box-shadow:var(--shadow);backdrop-filter:blur(16px) saturate(1.15);-webkit-backdrop-filter:blur(16px) saturate(1.15)}
+.ico{display:inline-flex;width:18px;height:18px;flex:none}
+.ico svg{width:100%;height:100%}
+.mut{color:var(--muted)} .faint{color:var(--faint)} .mono{font-family:var(--mono)}
+.bad{color:var(--bad)} .warn{color:var(--warn)} .good{color:var(--good)}
+.sep{height:1px;background:var(--line);margin:6px 0;flex:none}
+.row{display:flex;align-items:center;gap:8px;min-width:0}
+.row.between{justify-content:space-between}
+.grow{flex:1 1 auto;min-width:0}
+.tiny{font-size:11px}
+.small{font-size:12px}
+.nowrap{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ============================================================ 通用控件 */
+.iconbtn{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;color:var(--muted);transition:background .15s,color .15s,transform .15s;flex:none}
+.iconbtn .ico{width:19px;height:19px}
+.iconbtn:hover{background:var(--hover);color:var(--text)}
+.iconbtn:active{transform:scale(.92)}
+.iconbtn[disabled]{opacity:.35;cursor:default;background:none;color:var(--muted)}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-strong);background:var(--surface-solid);border-radius:10px;padding:7px 13px;font-weight:600;font-size:12.5px;white-space:nowrap;transition:background .15s,border-color .15s,transform .12s,box-shadow .2s}
+.btn .ico{width:16px;height:16px}
+.btn:hover{background:var(--surface-2)}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:linear-gradient(180deg,#4a8cc6,#2b649c);border-color:transparent;color:#fff;box-shadow:0 4px 14px rgba(43,100,156,.3)}
+.btn.primary:hover{filter:brightness(1.06);background:linear-gradient(180deg,#4a8cc6,#2b649c)}
+.btn[disabled]{opacity:.42;cursor:not-allowed;box-shadow:none;filter:grayscale(.35)}
+.btn.danger{color:var(--bad)}
+.btn.sm{padding:4px 9px;font-size:11.5px;border-radius:8px;gap:4px}
+.btn.sm .ico{width:14px;height:14px}
+.btn.block{width:100%;justify-content:center}
+.chip{display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 11px;border-radius:11px;background:var(--surface-solid);border:1px solid var(--line);color:var(--text);font-size:12.5px;font-weight:600;white-space:nowrap;transition:background .15s,border-color .15s,box-shadow .2s;position:relative}
+.chip .ico{width:17px;height:17px;color:var(--muted)}
+.chip:hover{background:var(--surface-2);border-color:var(--line-strong)}
+.chip.on{background:var(--accent-soft);border-color:transparent;color:var(--accent-ink)}
+.chip .n{font-family:var(--mono);font-size:10.5px;font-weight:700;padding:1px 5px;border-radius:20px;background:var(--surface-3);color:var(--muted);min-width:17px;text-align:center}
+.chip.err .n{background:var(--bad-soft);color:var(--bad)}
+.chip.warn .n{background:var(--warn-soft);color:var(--warn)}
+.chip.good .n{background:var(--good-soft);color:var(--good)}
+kbd{font:600 10px/1.4 var(--mono);padding:1px 5px;border-radius:5px;background:var(--surface-3);border:1px solid var(--line);color:var(--muted)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--bad);display:inline-block}
+
+/* ============================================================ 顶栏 */
+#topbar{top:12px;left:12px;right:12px;display:flex;align-items:flex-start;gap:10px;pointer-events:none;z-index:34}
+#topbar>.cluster{pointer-events:auto}
+.cluster{display:flex;align-items:center;gap:3px;padding:5px;flex:none;min-height:54px}
+.spacer{flex:1 1 auto;pointer-events:none}
+#brandBadge{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;flex:none;color:#fff;background:linear-gradient(145deg,#3f8cc9,#235a8e);box-shadow:0 4px 12px rgba(35,90,142,.32),inset 0 1px 0 rgba(255,255,255,.25)}
+#brandBadge .ico{width:24px;height:24px}
+.brand-txt{display:flex;flex-direction:column;min-width:0;padding:0 8px 0 6px}
+.brand-txt b{font-size:14px;letter-spacing:.01em;display:flex;align-items:center;gap:7px;line-height:1.25}
+.brand-txt .path{font:11px/1.3 var(--mono);color:var(--muted);max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand-txt .path .star{color:var(--warn);font-weight:700}
+#dirtyDot{width:6px;height:6px;border-radius:50%;background:var(--warn);box-shadow:0 0 0 3px var(--warn-soft);display:none}
+body.dirty #dirtyDot{display:inline-block}
+#mapInfo{flex-direction:column;align-items:flex-start;gap:1px;padding:8px 14px;min-width:0;max-width:340px}
+#mapInfo b{font-size:13.5px;line-height:1.3;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#mapInfo span{font-size:11.5px;color:var(--muted);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.actions{gap:2px;padding:5px 6px}
+.actions .gap{width:5px;flex:none}
+#btnSave{min-width:74px;justify-content:center}
+body.dirty #btnSave{border-color:transparent;background:linear-gradient(180deg,#4a8cc6,#2b649c);color:#fff;box-shadow:0 4px 14px rgba(43,100,156,.3)}
+body:not(.has-map) #mapInfo,body:not(.has-map) #btnYear,body:not(.has-map) #btnIssues,body:not(.has-map) #btnData,
+body:not(.has-map) #btnUndo,body:not(.has-map) #btnRedo,body:not(.has-map) #btnSave,body:not(.has-map) #btnMenu{display:none}
+body:not(.has-map) #dock,body:not(.has-map) #toolbar,body:not(.has-map) #inspector,
+body:not(.has-map) #statusbar,body:not(.has-map) #scalebar,body:not(.has-map) #browser,
+body:not(.has-map) #topbar{display:none}
+
+/* ============================================================ 左侧坞 */
+#dock{top:76px;left:12px;width:56px;padding:7px;display:flex;flex-direction:column;gap:3px;align-items:center;max-height:calc(100vh - 100px);overflow-y:auto;scrollbar-width:none;z-index:20}
+#dock::-webkit-scrollbar{display:none}
+.dockbtn{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;color:var(--muted);position:relative;transition:background .16s,color .16s,transform .18s,box-shadow .18s;flex:none}
+.dockbtn .ico{width:21px;height:21px}
+.dockbtn:hover{background:var(--hover);color:var(--text);transform:scale(1.05)}
+.dockbtn:active{transform:scale(.93)}
+.dockbtn.on{color:#fff;background:var(--accent);box-shadow:0 4px 12px rgba(47,111,168,.28)}
+.dockbtn.layer{margin-bottom:1px}
+.dockbtn.layer .bar{position:absolute;left:7px;right:7px;bottom:4px;height:3px;border-radius:2px;background:var(--kc);opacity:.9}
+.dockbtn.layer.off .bar{opacity:.22}
+.dockbtn.layer.off .ico{opacity:.4}
+.dockbtn .n{position:absolute;top:2px;right:2px;min-width:16px;height:15px;padding:0 3px;border-radius:8px;background:var(--surface-solid);border:1px solid var(--line);color:var(--muted);font:700 9.5px/13px var(--mono);text-align:center}
+.dockbtn.on .n{background:rgba(255,255,255,.18);border-color:transparent;color:#fff}
+.dockbtn .eye{position:absolute;left:2px;bottom:2px;width:13px;height:13px;opacity:.5}
+.dockbtn .eye .ico{width:13px;height:13px}
+.dock-sep{width:30px;height:1px;background:var(--line-strong);margin:5px 0;flex:none}
+.dock-title{font:700 9px/1.2 var(--font);letter-spacing:.12em;color:var(--faint);margin:5px 0 2px}
+
+/* ============================================================ 对象浏览器 */
+#browser{top:76px;left:78px;bottom:76px;width:304px;display:flex;flex-direction:column;z-index:22;overflow:hidden;transform-origin:left top;transition:opacity .18s,transform .22s}
+#browser.closed{opacity:0;transform:translateX(-10px) scale(.98);pointer-events:none}
+.b-head{display:flex;align-items:center;gap:8px;padding:11px 10px 8px 13px;flex:none}
+.b-head b{font-size:14px;flex:1}
+.b-search{padding:0 11px 9px;flex:none}
+.b-search .wrap{position:relative}
+.b-search .ico{position:absolute;left:8px;top:7px;width:15px;height:15px;color:var(--faint)}
+.b-search input{width:100%;height:31px;padding:0 9px 0 28px;border-radius:8px;border:1px solid var(--input-line);background:var(--input-bg);outline:none;font-size:12px}
+.b-search input:focus{border-color:var(--accent);box-shadow:var(--ring)}
+.b-tabs{display:flex;gap:3px;padding:0 10px 8px;flex:none;overflow-x:auto;white-space:nowrap;scrollbar-width:none}
+.b-tabs::-webkit-scrollbar{display:none}
+.b-tabs button{flex:none;padding:3px 8px;border-radius:7px;font-size:11px;color:var(--muted);border:1px solid transparent}
+.b-tabs button:hover{background:var(--hover)}
+.b-tabs button.on{background:var(--accent-soft);color:var(--accent-ink);font-weight:700}
+.b-list{flex:1;overflow-y:auto;padding:0 7px 8px;min-height:0}
+.b-group{margin-bottom:3px}
+.b-group-h{display:flex;align-items:center;gap:6px;padding:6px 5px 4px;position:sticky;top:0;background:var(--surface);z-index:1}
+.b-group-h .sw{width:7px;height:7px;border-radius:50%;background:var(--kc);flex:none}
+.b-group-h b{font-size:10.5px;letter-spacing:.06em;color:var(--faint);font-weight:700;flex:1;text-transform:uppercase}
+.b-group-h .cnt{font:10px var(--mono);color:var(--faint)}
+.b-group-h button{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:var(--faint)}
+.b-group-h button:hover{background:var(--hover);color:var(--text)}
+.b-group-h button .ico{width:14px;height:14px}
+.b-item{display:flex;align-items:center;gap:7px;width:100%;text-align:left;padding:5px 7px;border-radius:7px;color:var(--text);border:1px solid transparent;min-height:30px}
+.b-item:hover{background:var(--hover)}
+.b-item.on{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 28%,transparent)}
+.b-item .bd{width:7px;height:7px;border-radius:2px;background:var(--kc);flex:none;transform:rotate(45deg)}
+.b-item .tx{flex:1;min-width:0}
+.b-item .tx b{display:block;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35}
+.b-item .tx span{display:block;font-size:10.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
+.b-item .go{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:var(--faint);opacity:0;flex:none}
+.b-item:hover .go,.b-item.on .go{opacity:1}
+.b-item .go:hover{background:var(--surface-3);color:var(--text)}
+.b-item .go .ico{width:14px;height:14px}
+.b-empty{padding:22px 12px;text-align:center;color:var(--faint);font-size:12px;line-height:1.7}
+.b-foot{flex:none;padding:7px 12px;border-top:1px solid var(--line);font-size:10.5px;color:var(--faint);display:flex;justify-content:space-between;gap:8px}
+
+/* ============================================================ 右侧检查器 */
+#inspector{top:76px;right:12px;bottom:14px;width:372px;display:flex;flex-direction:column;overflow:hidden;z-index:18;transition:opacity .18s,transform .22s}
+#inspector.hidden{opacity:0;transform:translateX(12px);pointer-events:none}
+.i-head{display:flex;align-items:center;gap:10px;padding:12px 12px 10px 14px;flex:none;border-bottom:1px solid var(--line);min-height:58px}
+.i-badge{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;background:var(--kc,var(--accent-soft));color:#fff;flex:none;box-shadow:0 3px 10px rgba(0,0,0,.14)}
+.i-badge .ico{width:20px;height:20px}
+.i-title{flex:1;min-width:0}
+.i-title b{display:block;font-size:14.5px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.i-title span{display:block;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.i-body{flex:1;overflow-y:auto;padding:12px 14px 18px;min-height:0;overscroll-behavior:contain}
+.i-foot{flex:none;padding:9px 12px;border-top:1px solid var(--line);display:flex;gap:6px;align-items:center}
+.i-foot .grow{flex:1}
+.i-sec{margin-bottom:15px}
+.i-sec>h4{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:0 0 7px;font-weight:700;display:flex;align-items:center;gap:6px}
+.i-sec>h4 .line{flex:1;height:1px;background:var(--line)}
+.kv2{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px}
+.kv2 .f.wide{grid-column:1/-1}
+.f{display:flex;flex-direction:column;gap:3px;min-width:0}
+.f label{font-size:11px;color:var(--muted);display:flex;justify-content:space-between;gap:6px;align-items:baseline}
+.f label .u{font-weight:400;color:var(--faint);font-size:10px}
+.f input,.f select,.f textarea{width:100%;height:30px;padding:0 8px;background:var(--input-bg);border:1px solid var(--input-line);border-radius:7px;outline:none;font-size:12.5px;min-width:0;transition:border-color .13s,box-shadow .13s}
+.f textarea{height:auto;padding:6px 8px;resize:vertical;line-height:1.5;font-family:var(--mono);font-size:11.5px}
+.f input:focus,.f select:focus,.f textarea:focus{border-color:var(--accent);box-shadow:var(--ring)}
+.f input.bad,.f textarea.bad{border-color:var(--bad);box-shadow:0 0 0 2px var(--bad-soft)}
+.f .hint{font-size:10.5px;color:var(--faint);line-height:1.45}
+.f .chk{display:flex;align-items:center;gap:6px;height:30px;font-size:12px;color:var(--muted);white-space:nowrap}
+.f .chk input{width:auto;height:auto;accent-color:var(--accent)}
+.seg{display:flex;background:var(--surface-3);border-radius:8px;padding:2px;gap:2px}
+.seg button{flex:1;padding:4px 7px;border-radius:6px;font-size:11.5px;color:var(--muted);font-weight:600;white-space:nowrap}
+.seg button.on{background:var(--surface-solid);color:var(--text);box-shadow:var(--shadow-sm)}
+.chips{display:flex;flex-wrap:wrap;gap:1px 2px}
+.chip-link{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:6px;background:var(--surface-3);color:var(--text);font-size:11px;border:1px solid transparent}
+.chip-link:hover{border-color:var(--line-strong)}
+.chip-link .ico{width:12px;height:12px;color:var(--muted)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.stat{border:1px solid var(--line);border-radius:10px;padding:7px 8px;background:var(--surface-2);text-align:left;min-width:0}
+.stat:hover{border-color:var(--line-strong);background:var(--surface-3)}
+.stat b{display:block;font-size:16px;line-height:1.15;font-variant-numeric:tabular-nums}
+.stat span{display:block;font-size:10px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.facts{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:11.5px}
+.facts dt{color:var(--faint)}
+.facts dd{margin:0;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.issue-mini{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;background:var(--warn-soft);color:var(--warn);font-size:11.5px;border:1px solid transparent;width:100%;text-align:left}
+.issue-mini.bad{background:var(--bad-soft);color:var(--bad)}
+.issue-mini.good{background:var(--good-soft);color:var(--good)}
+.issue-mini .ico{width:15px;height:15px}
+.empty-note{color:var(--faint);font-size:11.5px;line-height:1.7;padding:3px 0}
+
+/* ============================================================ 底部工具栏 */
+#toolbar{bottom:16px;left:50%;transform:translateX(-50%);display:flex;align-items:flex-end;gap:2px;padding:6px;z-index:21}
+.tbtn{width:64px;height:54px;border-radius:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--muted);transition:background .15s,color .15s,transform .16s}
+.tbtn .ico{width:21px;height:21px}
+.tbtn .lb{font-size:10.5px;font-weight:600;white-space:nowrap}
+.tbtn:hover{background:var(--hover);color:var(--text)}
+.tbtn:active{transform:scale(.95)}
+.tbtn.on{background:var(--accent);color:#fff;box-shadow:0 4px 12px rgba(47,111,168,.3)}
+.tbtn.danger.on{background:var(--bad)}
+.tbtn .key{position:absolute;opacity:0}
+.tool-sep{width:1px;align-self:stretch;background:var(--line);margin:8px 2px}
+.tool-hint{font-size:10.5px;color:var(--faint);padding:0 8px 0 4px;max-width:150px;line-height:1.35;align-self:center}
+
+/* ============================================================ 状态与比例尺 */
+#statusbar{left:78px;right:auto;bottom:13px;display:flex;align-items:center;gap:9px;font:10.5px var(--mono);color:var(--muted);z-index:19;pointer-events:none;text-shadow:0 1px 0 var(--surface-solid)}
+#statusbar .s{opacity:.8}
+#statusbar .sep2{width:1px;height:10px;background:var(--line-strong);opacity:.7}
+#scalebar{left:78px;right:auto;bottom:34px;width:150px;text-align:left;font:10px var(--mono);color:var(--muted);z-index:19;pointer-events:none}
+#scalebar i{display:block;height:5px;border:1px solid currentColor;border-top:0;margin-bottom:2px;opacity:.7}
+#mapTip{position:fixed;z-index:60;pointer-events:none;background:var(--surface-solid);border:1px solid var(--line);box-shadow:var(--shadow-sm);border-radius:8px;padding:5px 8px;font-size:11px;line-height:1.45;max-width:240px;opacity:0;transform:translateY(4px);transition:opacity .12s,transform .12s}
+#mapTip.on{opacity:1;transform:none}
+#mapTip b{display:block;font-size:11.5px}
+#mapTip span{color:var(--muted);display:block;font-size:10.5px}
+
+/* ============================================================ 浮层 */
+.pop{position:fixed;z-index:45;background:var(--surface);border:1px solid var(--glass-edge);border-radius:13px;box-shadow:var(--shadow);backdrop-filter:blur(16px);overflow:hidden;transition:opacity .15s,transform .18s;transform-origin:top right}
+.pop.closed{opacity:0;transform:translateY(-5px) scale(.98);pointer-events:none}
+.pop-h{display:flex;align-items:center;gap:8px;padding:11px 12px 8px;font-size:12px;font-weight:700}
+.pop-h .grow{font-weight:600}
+.pop-b{padding:0 12px 12px;max-height:min(62vh,560px);overflow-y:auto}
+#yearPop{width:330px}
+.year-big{display:flex;align-items:baseline;gap:8px;margin:2px 0 8px}
+.year-big b{font-size:26px;font-variant-numeric:tabular-nums;line-height:1}
+.year-big span{font-size:11px;color:var(--muted)}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:24px;background:transparent;accent-color:var(--accent)}
+input[type=range]::-webkit-slider-runnable-track{height:5px;border-radius:3px;background:linear-gradient(90deg,var(--accent) var(--p,0%),var(--surface-3) var(--p,0%))}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:17px;height:17px;border-radius:50%;background:var(--surface-solid);border:2px solid var(--accent);box-shadow:var(--shadow-sm);margin-top:-6px}
+.year-row{display:flex;gap:6px;margin-top:8px}
+.year-row .btn{flex:1;justify-content:center}
+.year-stats{font-size:11px;color:var(--muted);line-height:1.6;margin-top:10px;padding-top:9px;border-top:1px solid var(--line)}
+#issuePop{width:430px}
+#issuePop .pop-b{padding-top:2px}
+.iss{display:flex;gap:8px;padding:7px 7px;border-radius:8px;font-size:11.5px;cursor:pointer;border:1px solid transparent;text-align:left;width:100%}
+.iss:hover{background:var(--hover)}
+.iss .lv{flex:none;font:700 9px/18px var(--mono);height:18px;padding:0 5px;border-radius:4px}
+.iss.error .lv{background:var(--bad-soft);color:var(--bad)}
+.iss.warn .lv{background:var(--warn-soft);color:var(--warn)}
+.iss .tx{min-width:0;line-height:1.5;color:var(--text);word-break:break-word}
+.iss .sec{display:block;font-size:10px;color:var(--faint);margin-top:1px}
+#filePop{width:230px}
+.menu-item{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:7px 9px;border-radius:8px;font-size:12px}
+.menu-item:hover{background:var(--hover)}
+.menu-item .ico{width:16px;height:16px;color:var(--muted)}
+.menu-item .k{margin-left:auto;font:10px var(--mono);color:var(--faint)}
+.menu-item.danger{color:var(--bad)}
+.menu-item.danger .ico{color:var(--bad)}
+#helpOverlay{position:fixed;inset:0;z-index:50;background:rgba(10,18,30,.42);display:grid;place-items:center;padding:24px}
+#helpCard{width:min(620px,96vw);max-height:86vh;overflow:auto;padding:20px 22px}
+#helpCard h2{margin:0 0 4px;font-size:18px}
+#helpCard h3{font-size:12px;margin:18px 0 7px;color:var(--faint);letter-spacing:.06em;text-transform:uppercase}
+#helpCard p{margin:0 0 8px;color:var(--muted);font-size:12px;line-height:1.7}
+.help-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px;font-size:12px}
+.help-grid div{display:flex;align-items:center;justify-content:flex-start;gap:6px;padding:3px 0;border-bottom:1px solid var(--line)}
+.help-grid div:first-child{grid-column:1/-1}
+.help-grid div span{color:var(--muted);margin-right:6px}
+.help-grid kbd{flex:none}
+.help-steps{counter-reset:s;display:flex;flex-direction:column;gap:7px;font-size:12px}
+.help-steps div{counter-increment:s;position:relative;padding-left:28px;line-height:1.6}
+.help-steps div:before{content:counter(s);position:absolute;left:0;top:2px;width:19px;height:19px;border-radius:50%;background:var(--accent-soft);color:var(--accent-ink);font:700 10px/19px var(--mono);text-align:center}
+.help-steps code{font-family:var(--mono);font-size:11px;background:var(--surface-2);padding:1px 4px;border-radius:4px;display:inline-block;max-width:100%;white-space:nowrap;overflow-x:auto;vertical-align:middle}
+
+/* ============================================================ 数据抽屉 */
+#sheet{top:76px;right:12px;bottom:14px;width:min(860px,calc(100vw - 152px));display:flex;flex-direction:column;z-index:26;overflow:hidden;transition:opacity .18s,transform .24s cubic-bezier(.2,.8,.2,1)}
+#sheet.closed{opacity:0;transform:translateX(18px);pointer-events:none}
+.s-head{display:flex;align-items:center;gap:9px;padding:10px 12px 9px 15px;border-bottom:1px solid var(--line);flex:none;min-height:56px}
+.s-head .i-badge{width:34px;height:34px;border-radius:10px;background:linear-gradient(145deg,#3f8cc9,#235a8e)}
+.s-head .tt{flex:1;min-width:0}
+.s-head .tt b{display:block;font-size:14px;line-height:1.3}
+.s-head .tt span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.s-cols{flex:1;display:grid;grid-template-columns:150px minmax(0,1fr);min-height:0}
+.s-tabs{border-right:1px solid var(--line);padding:8px 7px;overflow-y:auto;background:color-mix(in srgb,var(--surface-2) 55%,transparent)}
+.s-tab{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:7px 9px;border-radius:8px;color:var(--muted);font-size:12px;margin-bottom:1px}
+.s-tab .ico{width:16px;height:16px;flex:none}
+.s-tab .n{margin-left:auto;font:10px var(--mono);color:var(--faint)}
+.s-tab:hover{background:var(--hover);color:var(--text)}
+.s-tab.on{background:var(--accent-soft);color:var(--accent-ink);font-weight:700}
+.s-tab.on .ico{color:var(--accent)}
+.s-main{overflow-y:auto;padding:16px 20px 28px;min-width:0}
+.s-main h2{font-size:16px;margin:0 0 3px}
+.s-main .sub{font-size:11.5px;color:var(--muted);margin:0 0 14px;line-height:1.65}
+.card{background:color-mix(in srgb,var(--surface-2) 70%,transparent);border:1px solid var(--line);border-radius:12px;padding:12px 13px;margin-bottom:12px}
+.card>h3{font-size:12px;margin:0 0 10px;color:var(--text);display:flex;align-items:center;gap:7px}
+.card>h3 .ico{width:15px;height:15px;color:var(--muted)}
+.card>.hint,.note{font-size:10.5px;color:var(--faint);line-height:1.6;margin-top:9px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 13px}
+.grid2 .f.wide{grid-column:1/-1}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px 11px}
+.grid3 .f.wide{grid-column:1/-1}
+.sheet-bar{display:flex;align-items:center;gap:7px;margin:0 0 11px;flex-wrap:wrap}
+.sheet-bar .grow{flex:1}
+.sheet-bar .count{font:10.5px var(--mono);color:var(--faint)}
+.tbl-wrap{border:1px solid var(--line);border-radius:10px;overflow:auto;background:var(--surface-2)}
+table{border-collapse:collapse;width:100%;font-size:11.5px}
+th{position:sticky;top:0;z-index:1;background:color-mix(in srgb,var(--surface-3) 75%,transparent);color:var(--muted);font-weight:600;text-align:left;padding:6px 7px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:2px 3px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td input,td select,td textarea{height:27px;padding:0 6px;font-size:11.5px;background:var(--input-bg);border:1px solid var(--input-line);border-radius:5px;width:100%}
+td textarea{height:auto;padding:4px 6px;font-family:var(--mono);font-size:10.5px}
+td .del{width:24px;height:24px;border-radius:5px;color:var(--faint);display:grid;place-items:center;margin:1px auto}
+td .del:hover{background:var(--bad-soft);color:var(--bad)}
+td .del .ico{width:14px;height:14px}
+td.idx{font:10px var(--mono);color:var(--faint);text-align:right;padding:7px 4px 0 0;width:1%}
+.kv{display:grid;grid-template-columns:150px minmax(0,1.05fr) minmax(0,1.35fr) 62px;gap:8px;align-items:start;padding:6px 0;border-bottom:1px solid var(--line)}
+.kv:last-child{border-bottom:0}
+.kv .k{font:11.5px var(--mono);color:var(--accent-ink);padding-top:5px}
+.kv .base{font:10.5px var(--mono);color:var(--faint);padding-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kv .tog{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--muted);padding-top:6px;cursor:pointer}
+.kv .tog input{accent-color:var(--accent);width:auto}
+.kv textarea{width:100%;min-height:44px;background:var(--input-bg);border:1px solid var(--input-line);border-radius:6px;padding:5px 7px;font:10.5px/1.5 var(--mono);resize:vertical}
+.master{display:grid;grid-template-columns:224px minmax(0,1fr);gap:14px;align-items:start}
+.master .m-list{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface-2);max-height:calc(100vh - 250px);overflow-y:auto}
+.m-list-h{display:flex;align-items:center;gap:6px;padding:7px 8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface-2);z-index:1}
+.m-list-h b{font-size:10.5px;letter-spacing:.06em;color:var(--faint);flex:1;text-transform:uppercase}
+.m-row{display:flex;gap:7px;align-items:flex-start;width:100%;text-align:left;padding:7px 8px;border-bottom:1px solid var(--line)}
+.m-row:last-child{border-bottom:0}
+.m-row:hover{background:var(--hover)}
+.m-row.on{background:var(--accent-soft)}
+.m-row .tx{flex:1;min-width:0}
+.m-row .tx b{display:block;font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4}
+.m-row .tx span{display:block;font-size:10px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4}
+.m-row .cnt{font:10px var(--mono);color:var(--faint);padding-top:2px}
+.m-empty{padding:18px 10px;text-align:center;color:var(--faint);font-size:11px}
+.anchor-row{display:grid;grid-template-columns:minmax(0,1fr) 52px 52px 54px auto;gap:5px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line)}
+.anchor-row:last-child{border-bottom:0}
+.anchor-row input{height:27px;padding:0 5px;font-size:11px;border:1px solid var(--input-line);background:var(--input-bg);border-radius:5px;width:100%}
+.anchor-row .iconbtn{width:24px;height:24px;border-radius:5px}
+.anchor-row .iconbtn .ico{width:14px;height:14px}
+.anchor-head{display:grid;grid-template-columns:minmax(0,1fr) 52px 52px 54px auto;gap:5px;font-size:10px;color:var(--faint);padding:0 0 4px;border-bottom:1px solid var(--line)}
+.sheet-empty{padding:36px 10px;text-align:center;color:var(--faint);font-size:12px;line-height:1.8}
+.rawbox{width:100%;min-height:56vh;background:var(--input-bg);border:1px solid var(--input-line);border-radius:9px;padding:10px;font:11px/1.55 var(--mono);resize:vertical;outline:none}
+.rawbox:focus{border-color:var(--accent);box-shadow:var(--ring)}
+.tab-count{margin-left:auto;font:10px var(--mono);color:var(--faint)}
+body.sheet-open #inspector{opacity:0;pointer-events:none}
+
+/* ============================================================ 启动页 */
+#landing{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:24px;background:linear-gradient(180deg,color-mix(in srgb,var(--bg) 82%,transparent),color-mix(in srgb,var(--bg) 94%,transparent))}
+body.has-map #landing{display:none}
+.landing-card{width:min(900px,96vw);max-height:calc(100vh - 48px);overflow:auto;background:var(--surface);border:1px solid var(--glass-edge);border-radius:20px;box-shadow:var(--shadow);backdrop-filter:blur(20px);padding:28px 30px 24px}
+.landing-head{display:flex;align-items:center;gap:14px;margin-bottom:6px}
+.landing-head .lg{width:52px;height:52px;border-radius:15px;display:grid;place-items:center;color:#fff;background:linear-gradient(145deg,#3f8cc9,#235a8e);box-shadow:0 6px 16px rgba(35,90,142,.3)}
+.landing-head .lg .ico{width:28px;height:28px}
+.landing-head h1{font-size:23px;margin:0;letter-spacing:.01em;line-height:1.2}
+.landing-head p{margin:2px 0 0;color:var(--muted);font-size:12px}
+.landing-intro{color:var(--muted);font-size:12.5px;line-height:1.8;margin:12px 0 18px;max-width:700px}
+.maps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:16px}
+.map-card{display:flex;flex-direction:column;gap:3px;text-align:left;padding:12px 13px;border-radius:12px;border:1px solid var(--line);background:var(--surface-2);transition:border-color .15s,background .15s,transform .16s;position:relative;min-height:86px}
+.map-card:hover{border-color:color-mix(in srgb,var(--accent) 38%,var(--line));background:var(--surface-solid);transform:translateY(-1px)}
+.map-card b{font-size:13.5px;display:flex;align-items:center;gap:6px}
+.map-card b .tag{font:9.5px var(--mono);padding:1px 5px;border-radius:5px;background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
+.map-card span{font-size:11px;color:var(--muted);line-height:1.5}
+.map-card .go{position:absolute;right:10px;bottom:9px;font-size:10.5px;color:var(--faint);display:flex;align-items:center;gap:3px}
+.map-card .go .ico{width:13px;height:13px}
+.map-card[disabled]{opacity:.5;pointer-events:none}
+.landing-foot{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding-top:14px;border-top:1px solid var(--line)}
+.landing-foot .grow{flex:1}
+.landing-err{margin:0 0 12px;padding:8px 10px;border-radius:8px;background:var(--bad-soft);color:var(--bad);font-size:11.5px;line-height:1.6;display:none}
+.landing-err.on{display:block}
+.landing-note{font-size:10.5px;color:var(--faint);line-height:1.7;margin-top:12px}
+
+/* ============================================================ 其他 */
+#toast{position:fixed;left:50%;bottom:92px;transform:translate(-50%,10px);z-index:70;background:var(--surface-solid);border:1px solid var(--line);box-shadow:var(--shadow);border-radius:10px;padding:9px 14px;font-size:12px;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;max-width:min(560px,90vw);text-align:center}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+#drop{position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;background:color-mix(in srgb,var(--bg) 70%,transparent);border:2px dashed var(--accent);font-size:18px;color:var(--accent);backdrop-filter:blur(4px)}
+#drop.on{display:flex}
+#bootErr{position:fixed;inset:0;z-index:100;display:none;align-items:center;justify-content:center;background:var(--bg);padding:24px}
+#bootErr.on{display:flex}
+#bootErr .box{max-width:620px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:24px 26px;box-shadow:var(--shadow);line-height:1.8;font-size:13px}
+#bootErr h2{margin:0 0 6px;font-size:18px}
+#bootErr code{font-family:var(--mono);font-size:12px;background:var(--surface-2);padding:1px 5px;border-radius:4px}
+#bootErr ol{padding-left:20px;margin:8px 0}
+
+@media (max-width:1260px){
+  #mapInfo{display:none}
+  .brand-txt .path{max-width:190px}
+  #inspector{width:340px}
+}
+@media (max-width:1020px){
+  #dock{display:none}
+  #browser{left:12px}
+  #inspector{width:310px}
+  #sheet{width:calc(100vw - 24px);left:12px;right:12px}
+  .maps{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #btnOpen .lb,#btnData .lb,#btnYear .lb{display:none}
+}
+@media (max-width:760px){
+  #topbar{left:8px;right:8px;top:8px;gap:6px}
+  .cluster{min-height:46px;padding:4px}
+  #brandBadge{width:36px;height:36px;border-radius:10px}
+  #brandBadge .ico{width:20px;height:20px}
+  .brand-txt b{font-size:12.5px}
+  .brand-txt .path{max-width:130px;font-size:9.5px}
+  #inspector{top:auto;left:8px;right:8px;bottom:8px;width:auto;height:min(46vh,430px);border-radius:14px}
+  #browser{top:64px;bottom:8px;width:min(320px,calc(100vw - 24px))}
+  #toolbar{bottom:8px;max-width:calc(100vw - 16px);overflow-x:auto}
+  .tbtn{width:54px;height:48px}
+  .tbtn .lb{font-size:10px}
+  #statusbar,#scalebar{display:none}
+  #landing{padding:8px}
+  .landing-card{padding:20px 18px}
+  .maps{grid-template-columns:1fr}
+  .landing-head h1{font-size:19px}
+  .help-grid{grid-template-columns:1fr}
+  .master{grid-template-columns:1fr}
+  .s-cols{grid-template-columns:1fr}
+  .s-tabs{display:flex;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line);padding:5px}
+  .s-tab{width:auto;white-space:nowrap;margin-bottom:0}
+  .s-tab .n{display:none}
+  .grid3{grid-template-columns:1fr 1fr}
+}
 </style>
 </head>
 <body>
-<header>
-  <div class="brand">地图编辑器<span>城市与地铁 · 开发内部用</span></div>
-  <div class="filebar">
-    <span class="path" id="path">未打开 source.json</span>
-    <button id="btnOpen">打开</button>
-    <button id="btnSave" disabled>保存</button>
-    <button id="btnSaveAs" disabled>另存</button>
-    <button id="btnCheck" disabled>重新校验</button>
+<canvas id="mapcv" aria-label="地图编辑画布"></canvas>
+
+<header id="topbar" aria-label="工具栏">
+  <div class="cluster glass">
+    <div id="brandBadge"></div>
+    <div class="brand-txt">
+      <b>地图编辑器 <span id="dirtyDot" title="有未保存的改动"></span></b>
+      <span class="path" id="filePath">未打开 source.json</span>
+    </div>
+  </div>
+
+  <div id="mapInfo" class="cluster glass">
+    <b id="mapTitle">选择一张地图</b>
+    <span id="mapSub">示例地图或打开本地 source.json</span>
+  </div>
+
+  <div class="spacer"></div>
+
+  <div class="cluster glass actions">
+    <button class="iconbtn" id="btnUndo" title="撤销 · Ctrl+Z" disabled></button>
+    <button class="iconbtn" id="btnRedo" title="重做 · Ctrl+Y" disabled></button>
+    <div class="gap"></div>
+    <button class="chip" id="btnYear" title="年代预览 · Y"><span class="lb">全部年代</span></button>
+    <button class="chip" id="btnIssues" title="结构预检"><span class="lb">预检</span><span class="n" id="issCount">—</span></button>
+    <button class="chip" id="btnData" title="数据与设定 · D">数据</button>
+    <div class="gap"></div>
+    <button class="iconbtn" id="btnTheme" title="切换深色 / 浅色 · T"></button>
+    <button class="iconbtn" id="btnHelp" title="快捷键与工作流 · ?"></button>
+    <button class="iconbtn" id="btnMenu" title="文件"></button>
+    <button class="btn" id="btnOpen"></button>
+    <button class="btn" id="btnSave">保存</button>
   </div>
 </header>
 
-<div class="layout">
-  <nav id="nav"></nav>
-  <main id="main">
-    <h2>还没有打开地图</h2>
-    <p class="sub">打开 <code>maps/&lt;id&gt;/source.json</code>，或把文件拖进窗口。</p>
-    <div class="card summary">
-      编辑流程：<br>
-      1. 打开 <code>maps/gz/source.json</code><br>
-      2. 改完点「保存」（支持就地写回时直接覆盖原文件）<br>
-      3. 在仓库根目录运行 <code>node scripts/map-source.mjs build gz --in-place</code> 生成 <code>js/data_gz.js</code><br>
-      4. 运行 <code>node scripts/validate-map.mjs</code> 做权威校验（本页只是预检）<br>
-      <br>
-      <b>注意</b>：生成会覆盖 <code>js/data_gz.js</code>，手写注释会丢失。
+<aside id="dock" class="hud glass" aria-label="图层与视图"></aside>
+
+<aside id="browser" class="hud glass closed" aria-label="对象列表">
+  <div class="b-head"><b>对象</b><span class="tiny faint" id="browserCount"></span><button class="iconbtn" id="browserClose" title="关闭"></button></div>
+  <div class="b-search"><div class="wrap"><span id="browserSearchIco"></span><input id="browserSearch" type="search" placeholder="搜索名称 / id…" autocomplete="off"></div></div>
+  <div class="b-tabs" id="browserTabs"></div>
+  <div class="b-list" id="browserList"></div>
+  <div class="b-foot"><span>单击选中 · 双击定位</span><span id="browserFoot"></span></div>
+</aside>
+
+<aside id="inspector" class="hud glass" aria-label="属性"></aside>
+
+<nav id="toolbar" class="hud glass" aria-label="编辑工具"></nav>
+
+<div id="scalebar" class="hud"><i></i><span>—</span></div>
+<div id="statusbar" class="hud"><span class="s" id="stPos">—</span><span class="sep2"></span><span class="s" id="stZoom">—</span><span class="sep2"></span><span class="s" id="stSel">—</span></div>
+
+<div id="yearPop" class="hud pop closed">
+  <div class="pop-h"><span id="yearPopIco"></span><span class="grow">年代预览</span><button class="iconbtn" data-close="yearPop" title="关闭"></button></div>
+  <div class="pop-b">
+    <div class="year-big"><b id="yearBig">全部</b><span id="yearBigSub">显示所有已配置内容</span></div>
+    <input type="range" id="yearSlider" min="1900" max="2025" step="1" value="2025">
+    <div class="year-row">
+      <button class="btn sm" id="yearStart">开局年</button>
+      <button class="btn sm" id="yearAll">全部</button>
+      <button class="btn sm" id="yearPlay">播放</button>
     </div>
-  </main>
-  <aside>
-    <div class="side-h"><span>问题</span><span id="issCount">—</span></div>
-    <div id="issues"><div class="empty">打开文件后自动预检</div></div>
-    <div class="note">本页只做结构预检；几何边界、地图指纹、与产品的字段级一致性由 <code>node scripts/validate-map.mjs</code> 检查。</div>
-  </aside>
+    <div class="year-stats" id="yearStats">—</div>
+  </div>
 </div>
 
+<div id="issuePop" class="hud pop closed">
+  <div class="pop-h"><span id="issuePopIco"></span><span class="grow">结构预检</span><button class="btn sm" id="issueRecheck">重新校验</button><button class="iconbtn" data-close="issuePop" title="关闭"></button></div>
+  <div class="pop-b" id="issueList"></div>
+</div>
+
+<div id="filePop" class="hud pop closed">
+  <div class="pop-h"><span class="grow">文件</span><button class="iconbtn" data-close="filePop" title="关闭"></button></div>
+  <div class="pop-b" id="fileMenu"></div>
+</div>
+
+<aside id="sheet" class="hud glass closed" aria-label="数据与设定">
+  <div class="s-head">
+    <div class="i-badge" id="sheetBadge"></div>
+    <div class="tt"><b id="sheetTitle">数据与设定</b><span id="sheetSub">—</span></div>
+    <button class="iconbtn" id="sheetClose" title="关闭 · Esc"></button>
+  </div>
+  <div class="s-cols">
+    <nav class="s-tabs" id="sheetTabs"></nav>
+    <main class="s-main" id="sheetMain"></main>
+  </div>
+</aside>
+
+<div id="landing">
+  <div class="landing-card">
+    <div class="landing-head">
+      <div class="lg" id="landingLogo"></div>
+      <div><h1>地图编辑器</h1><p>城市与地铁 · 开发内部工具 · 地图是主界面，表单在抽屉里</p></div>
+    </div>
+    <p class="landing-intro">在真实城市底图上直接放置、拖动地标与设施，编辑人口中心、剧情锚点和区域；元数据、配置、任务和经济等设定收进右侧「数据」抽屉。所有改动写回 <code>maps/&lt;id&gt;/source.json</code>，运行时仍读取脚本生成的 <code>data_&lt;id&gt;.js</code>。</p>
+    <div class="landing-err" id="landingErr"></div>
+    <div class="maps" id="mapCards"></div>
+    <div class="landing-foot">
+      <button class="btn primary" id="landingOpen"></button>
+      <button class="btn" id="landingHelp">工作流与快捷键</button>
+      <span class="grow"></span>
+      <span class="tiny faint">也可以把 source.json 拖进窗口</span>
+    </div>
+    <div class="landing-note">示例地图通过 <code>fetch</code> 读取，需要在仓库根目录启动一个静态服务器（如 <code>python -m http.server 8000</code>），再访问 <code>http://localhost:8000/tools/editor.html</code>；直接双击 <code>tools/editor.html</code> 时请用「打开本地文件」。写回磁盘使用 File System Access API，不支持时会下载 JSON。</div>
+  </div>
+</div>
+
+<div id="helpOverlay" hidden>
+  <div id="helpCard" class="glass">
+    <div class="row between"><h2>地图编辑器</h2><button class="iconbtn" id="helpClose" title="关闭"></button></div>
+    <p>以地图为中心：点选地图上的对象，在右栏改数值；非空间设定在右侧「数据」抽屉。</p>
+    <h3>工作流</h3>
+    <div class="help-steps">
+      <div>打开一张示例地图，或打开 <code>maps/&lt;id&gt;/source.json</code>。地图与 <code>geo_&lt;id&gt;.js</code> 按需载入。</div>
+      <div>用底部工具放置地标 / 设施 / 职住中心；任务锚点需先在「数据 → 任务」里选中一个任务。</div>
+      <div>点选对象后拖动改坐标，或在右栏输入精确数值；<kbd>↑↓←→</kbd> 微调选中对象。</div>
+      <div>在「数据」里改元数据、配置、区域、剧情、经济与用地配方；预检会实时列出结构问题。</div>
+      <div>保存 source.json，然后在仓库根目录运行 <code>node scripts/map-source.mjs build &lt;id&gt; --in-place</code>。</div>
+      <div>运行 <code>node scripts/validate-map.mjs --map &lt;id&gt;</code> 做权威校验，必要时调整 <code>mapVersion</code>。</div>
+    </div>
+    <h3>快捷键</h3>
+    <div class="help-grid">
+      <div><span>选择 / 地标 / 设施 / 中心 / 锚点</span><kbd>V</kbd><kbd>B</kbd><kbd>P</kbd><kbd>C</kbd><kbd>A</kbd></div>
+      <div><span>对象列表 / 数据抽屉</span><kbd>L</kbd><kbd>D</kbd></div>
+      <div><span>年代预览 / 主题</span><kbd>Y</kbd><kbd>T</kbd></div>
+      <div><span>适配全图 / 缩放</span><kbd>F</kbd><kbd>+</kbd><kbd>−</kbd></div>
+      <div><span>撤销 / 重做 / 保存</span><kbd>Ctrl+Z</kbd><kbd>Ctrl+Y</kbd><kbd>Ctrl+S</kbd></div>
+      <div><span>删除选中 / 取消</span><kbd>Del</kbd><kbd>Esc</kbd></div>
+      <div><span>图层 / 年代 / 帮助</span><kbd>1–5</kbd><kbd>[</kbd><kbd>]</kbd><kbd>?</kbd></div>
+    </div>
+    <h3>说明</h3>
+    <p class="small mut">预检只做结构检查（类型、引用、坐标、配置、任务参数）。几何边界、地图指纹、字段级往返一致性仍由 <code>node scripts/validate-map.mjs</code> 与 <code>node scripts/map-source.mjs check</code> 负责。编辑器不参与构建，也不随站点发布。</p>
+  </div>
+</div>
+
+<div id="toast" role="status"></div>
+<div id="mapTip"></div>
+<div id="drop">松开以打开 source.json</div>
 <input type="file" id="pick" accept=".json,application/json" hidden>
-<div class="drop" id="drop">松开以打开 source.json</div>
-<div class="toast" id="toast"></div>
 
 <script src="../js/util.js"></script>
 <script src="../js/config.js"></script>
@@ -140,1162 +593,7 @@
 <script src="../js/facility.js"></script>
 <script src="../js/economy.js"></script>
 <script src="../js/geo.js"></script>
-<script>
-(function () {
-  'use strict';
-  var CM = window.CM;
-
-  // ============================================================ 状态
-
-  var S = { src: null, name: '', dir: '', dirty: false, section: 'meta', issues: [], handle: null };
-
-  // 依赖同仓库的 js/ 模块（数据字典唯一来源）。若这些脚本没能加载（例如被单独拷到别处打开），
-  // 给出明确提示而不是白屏。
-  if (!CM || !CM.Tasks || !CM.Fac || !CM.LANDMARK_STYLES || !CM.MAP_CFG_KEYS) {
-    var main0 = document.getElementById('main');
-    if (main0) {
-      main0.innerHTML = '<h2>无法加载游戏模块</h2>' +
-        '<p class="sub">本页依赖同仓库的 <code>../js/util.js</code>、<code>config.js</code>、<code>manifest.js</code>、' +
-        '<code>facility.js</code>、<code>economy.js</code>。</p>' +
-        '<div class="card summary">请把 <code>tools/editor.html</code> 放在仓库里打开：<br>' +
-        '① 直接双击（<code>file://</code>）；<br>② 或在仓库根目录运行 <code>python -m http.server 8000</code>，' +
-        '再访问 <code>http://localhost:8000/tools/editor.html</code>。<br><br>' +
-        '如果是用内置预览面板打开，面板只提供单个 HTML 文件，读不到旁边的 <code>js/</code> 目录。</div>';
-    }
-    return;
-  }
-
-  // ============================================================ 小工具
-
-  function h(tag, attrs) {
-    var n = document.createElement(tag);
-    if (attrs) for (var k in attrs) {
-      var v = attrs[k];
-      if (v == null || v === false) continue;
-      if (k === 'class') n.className = v;
-      else if (k === 'text') n.textContent = v;
-      else if (k.slice(0, 2) === 'on') n.addEventListener(k.slice(2), v);
-      else if (k === 'value') n.value = v;
-      else if (k === 'checked' || k === 'disabled' || k === 'selected') n[k] = !!v;
-      else n.setAttribute(k, v);
-    }
-    for (var i = 2; i < arguments.length; i++) append(n, arguments[i]);
-    return n;
-  }
-  function append(n, c) {
-    if (c == null || c === false) return;
-    if (Array.isArray(c)) { c.forEach(function (x) { append(n, x); }); return; }
-    n.appendChild(c.nodeType ? c : document.createTextNode(String(c)));
-  }
-  function clone(v) { return v === undefined ? undefined : JSON.parse(JSON.stringify(v)); }
-  function pretty(v) { return v === undefined ? '' : JSON.stringify(v, null, 2); }
-  function isObj(v) { return v && typeof v === 'object' && !Array.isArray(v); }
-  function isNum(v) { return typeof v === 'number' && isFinite(v); }
-  function isInt(v) { return Number.isInteger(v); }
-  function toast(msg) {
-    var t = document.getElementById('toast');
-    t.textContent = msg; t.className = 'toast on';
-    clearTimeout(t._t); t._t = setTimeout(function () { t.className = 'toast'; }, 2200);
-  }
-  function dirty() {
-    S.dirty = true;
-    document.getElementById('btnSave').classList.add('primary');
-    document.getElementById('path').textContent = (S.dir ? S.dir + '/' : '') + S.name + ' *';
-  }
-
-  // ============================================================ 数据字典（直接取游戏的，不另写一份）
-
-  var TRIP_KEYS = (CM.CFG.trips && CM.CFG.trips.keys) || ['hw', 'sc', 'sh', 'md', 'lz', 'hb'];
-  var FAC_TYPES = Object.keys(CM.Fac.TYPES);
-  var TASK_TYPES = Object.keys(CM.Tasks.TYPES);
-  var LM_STYLES = Object.keys(CM.LANDMARK_STYLES || {});
-  var REGIONS = Object.keys(CM.REGION_STYLE).concat(['虚构']);
-  var CFG_KEYS = CM.MAP_CFG_KEYS;
-
-  function taskTypeMeta(t) { return CM.Tasks.TYPES[t] || null; }
-  function facTypeMeta(t) { return CM.Fac.TYPES[t] || null; }
-
-  // ============================================================ 预检（纯函数，可在 Node 中测试）
-
-  function validate(src) {
-    var out = [];
-    function err(sec, msg) { out.push({ level: 'error', section: sec, msg: msg }); }
-    function warn(sec, msg) { out.push({ level: 'warn', section: sec, msg: msg }); }
-    if (!isObj(src) || !isObj(src.meta)) { err('meta', '文件结构不对：缺少 meta'); return out; }
-
-    var m = src.meta, d = src.data || {}, cfg = src.cfg || {};
-    var W = cfg.W !== undefined ? cfg.W : CM.CFG.W;
-    var H = cfg.H !== undefined ? cfg.H : CM.CFG.H;
-    var inB = function (x, y, tol) { return isNum(x) && isNum(y) && x >= -tol && y >= -tol && x <= W + tol && y <= H + tol; };
-
-    // --- 概览
-    ['id', 'name', 'title', 'sub', 'desc', 'region', 'tagline', 'intro', 'kind', 'scenario', 'mapVersion', 'difficulty', 'tags', 'modes', 'facts', 'features', 'highlights', 'cam'].forEach(function (k) {
-      if (m[k] === undefined || m[k] === null || m[k] === '') err('meta', '缺少字段 ' + k);
-    });
-    if (m.kind && ['real', 'fictional'].indexOf(m.kind) < 0) err('meta', 'kind 必须是 real / fictional');
-    if (m.difficulty !== undefined && (!isInt(m.difficulty) || m.difficulty < 1 || m.difficulty > 4)) err('meta', 'difficulty 必须是 1–4');
-    if (m.mapVersion !== undefined && (!isInt(m.mapVersion) || m.mapVersion < 1)) err('meta', 'mapVersion 必须是正整数');
-    if (m.region && REGIONS.indexOf(m.region) < 0) warn('meta', '地区「' + m.region + '」不在 REGION_STYLE 中，建筑与车型会回退为内地风格');
-    if (m.modes && (!Array.isArray(m.modes) || m.modes.some(function (x) { return ['challenge', 'free'].indexOf(x) < 0; }))) err('meta', 'modes 只能是 challenge / free');
-    if (m.cam && !inB(m.cam.cx, m.cam.cy, 0)) warn('meta', '默认镜头 (cx, cy) 在地图范围外：' + m.cam.cx + ',' + m.cam.cy);
-    if (m.geo === 'inline') warn('meta', 'geo 为 inline：几何由代码生成，不能用 map-source 重建');
-
-    // --- 配置
-    Object.keys(cfg).forEach(function (k) { if (CFG_KEYS.indexOf(k) < 0) err('cfg', 'cfg.' + k + ' 不是随地图切换的配置键'); });
-    if (!isInt(W) || W <= 0 || W % CM.CFG.ZONE) err('cfg', 'W 必须是正数且能被 ' + CM.CFG.ZONE + ' 整除，当前 ' + W);
-    if (!isInt(H) || H <= 0 || H % CM.CFG.ZONE) err('cfg', 'H 必须是正数且能被 ' + CM.CFG.ZONE + ' 整除，当前 ' + H);
-    var ST = cfg.START || CM.CFG.START;
-    if (!isInt(ST.y) || ST.y < 1800 || ST.y > 2200) err('cfg', 'START.y 不合理：' + ST.y);
-    if (!isInt(ST.m) || ST.m < 1 || ST.m > 12) err('cfg', 'START.m 必须是 1–12');
-    if (!isInt(ST.d) || ST.d < 1 || ST.d > CM.U.daysInMonth(ST.y, ST.m)) err('cfg', 'START.d 超出当月天数');
-    var fr = cfg.fareRange || CM.CFG.fareRange, fd = cfg.fareDefault || CM.CFG.fareDefault;
-    if (fd && isNum(fd.flat) && fr && isNum(fr.min) && isNum(fr.max) && (fd.flat < fr.min || fd.flat > fr.max)) err('cfg', '默认票价 ' + fd.flat + ' 不在范围 ' + fr.min + '–' + fr.max);
-    var pc = (cfg.growth || CM.CFG.growth).popCurve || [];
-    for (var i = 1; i < pc.length; i++) {
-      if (!isNum(pc[i][1]) || pc[i][1] <= 0) err('cfg', 'popCurve 第 ' + i + ' 个人口值无效');
-      if (pc[i][0] <= pc[i - 1][0]) err('cfg', 'popCurve 年份必须递增（第 ' + i + ' 点）');
-    }
-
-    // --- 区域
-    var regs = d.regions || [];
-    if (!regs.length) err('regions', 'regions 不能为空');
-    var plans = d.plans || {};
-    if (!plans.res) err('regions', 'data.plans 缺少 res（未声明 plan 的区域会用它）');
-    Object.keys(plans).forEach(function (k) {
-      var t = Object.keys(plans[k]).reduce(function (a, x) { return a + plans[k][x]; }, 0);
-      if (Math.abs(t - 1) > 0.02) warn('regions', 'plans.' + k + ' 各类占比合计 ' + t.toFixed(3) + '，应为 1');
-    });
-    var rid = {};
-    regs.forEach(function (r, i) {
-      if (!r.id) { err('regions', 'regions[' + i + '] 缺少 id'); return; }
-      if (rid[r.id]) err('regions', '区域 id 重复：' + r.id);
-      rid[r.id] = 1;
-      if (r.open !== null && r.open !== undefined && !isNum(r.open)) err('regions', '区域 ' + r.id + ' 的 open 必须是年份或 null');
-      if (r.plan && !plans[r.plan]) err('regions', '区域 ' + r.id + ' 引用不存在的用地配方 ' + r.plan);
-    });
-
-    // --- 职住中心
-    (d.centers || []).forEach(function (c, i) {
-      if (!inB(c.x, c.y, CM.CFG.ZONE * 4)) err('centers', 'centers[' + i + '] 坐标越界：' + c.x + ',' + c.y);
-      if (c.pop != null && (!isNum(c.pop) || c.pop < 0)) err('centers', 'centers[' + i + '] 的 pop 必须是非负数');
-      if (c.jobs != null && (!isNum(c.jobs) || c.jobs < 0)) err('centers', 'centers[' + i + '] 的 jobs 必须是非负数');
-    });
-
-    // --- 地标
-    var lms = d.landmarks || [], lid = {};
-    lms.forEach(function (l, i) {
-      if (!l.id) { err('landmarks', 'landmarks[' + i + '] 缺少 id'); return; }
-      if (lid[l.id]) err('landmarks', '地标 id 重复：' + l.id);
-      lid[l.id] = 1;
-      if (!inB(l.x, l.y, 4)) err('landmarks', '地标 ' + l.id + ' 坐标越界：' + l.x + ',' + l.y);
-      if (!isNum(l.year)) err('landmarks', '地标 ' + l.id + ' 缺少落成年份 year');
-      if (l.style) {
-        var st = CM.LANDMARK_STYLES[l.style];
-        if (!st) err('landmarks', '地标 ' + l.id + ' 的造型 ' + l.style + ' 未登记（可选：' + LM_STYLES.join('/') + '）');
-        else if (l.kind && st.kinds && st.kinds.indexOf(l.kind) < 0) err('landmarks', '地标 ' + l.id + ' 的造型 ' + l.style + ' 只适用于 ' + st.kinds.join('/'));
-      }
-    });
-
-    // --- 设施
-    var fid = {};
-    (d.facilities || []).forEach(function (f, i) {
-      var tag = f.id || ('#' + i);
-      if (f.id && fid[f.id]) err('facilities', '设施 id 重复：' + f.id);
-      if (f.id) fid[f.id] = 1;
-      if (!FAC_TYPES.length || FAC_TYPES.indexOf(f.t) < 0) { err('facilities', '设施 ' + tag + ' 的类型 ' + f.t + ' 不存在（可选：' + FAC_TYPES.join('/') + '）'); return; }
-      if (!f.n) err('facilities', '设施 ' + tag + ' 缺少名称 n');
-      if (f.lm && f.at) err('facilities', '设施 ' + tag + ' 同时声明了 lm 与 at');
-      if (f.lm) { if (!lid[f.lm]) err('facilities', '设施 ' + tag + ' 引用了不存在的地标 ' + f.lm); }
-      else if (f.at) { if (!Array.isArray(f.at) || !inB(f.at[0], f.at[1], 1)) err('facilities', '设施 ' + tag + ' 坐标越界：' + (f.at || []).join(',')); }
-      else err('facilities', '设施 ' + tag + ' 既没有 lm 也没有 at');
-      if (f.p) Object.keys(f.p).forEach(function (k) { if (TRIP_KEYS.indexOf(k) < 0) err('facilities', '设施 ' + tag + ' 的出行目的 ' + k + ' 不存在'); });
-      if (f.pax != null) curve(f.pax, '设施 ' + tag + ' 的 pax', 'facilities', err);
-    });
-
-    // --- 任务
-    var tid = {};
-    (d.histTasks || []).forEach(function (t, i) {
-      var tag = t.id || ('#' + i);
-      if (t.id && tid[t.id]) err('tasks', '任务 id 重复：' + t.id);
-      if (t.id) tid[t.id] = 1;
-      if (!t.title) err('tasks', '任务 ' + tag + ' 缺少 title');
-      if (!Array.isArray(t.appear) || !Array.isArray(t.deadline)) { err('tasks', '任务 ' + tag + ' 需要 appear / deadline 的 [年, 月]'); return; }
-      if (t.deadline[0] * 12 + t.deadline[1] <= t.appear[0] * 12 + t.appear[1]) err('tasks', '任务 ' + tag + ' 的截止不晚于出现时间');
-      if (!isNum(t.reward) || t.reward < 0) err('tasks', '任务 ' + tag + ' 的 reward 必须是非负数');
-      var H2 = taskTypeMeta(t.type);
-      if (!H2) err('tasks', '任务 ' + tag + ' 的类型 ' + t.type + ' 未登记（可选：' + TASK_TYPES.join('/') + '）');
-      else (H2.params || []).forEach(function (pr) {
-        if (!pr[2] && t[pr[0]] === undefined) err('tasks', '任务 ' + tag + '（' + H2.name + '）缺少参数 ' + pr[0] + '：' + pr[1]);
-      });
-      (t.anchors || []).forEach(function (a, k) {
-        if (!inB(a.x, a.y, 6)) err('tasks', '任务 ' + tag + ' 的锚点 ' + (a.name || k) + ' 坐标越界');
-        if (!isNum(a.r) || a.r <= 0) err('tasks', '任务 ' + tag + ' 的锚点 ' + (a.name || k) + ' 半径必须大于 0');
-      });
-    });
-
-    // --- 事件
-    var lastYm = -Infinity;
-    (d.events || []).forEach(function (e, i) {
-      if (!isNum(e.y)) { err('events', 'events[' + i + '] 缺少年份'); return; }
-      if (e.m != null && (!isInt(e.m) || e.m < 1 || e.m > 12)) err('events', 'events[' + i + '] 月份无效');
-      var ym = e.y * 12 + ((e.m || 1) - 1);
-      if (ym < lastYm) warn('events', 'events 未按时间升序（第 ' + i + ' 条）');
-      lastYm = ym;
-    });
-
-    return out;
-
-    function curve(v, label, sec, e) {
-      if (isNum(v)) { if (v < 0) e(sec, label + ' 不能为负'); return; }
-      if (!Array.isArray(v) || !v.length) { e(sec, label + ' 必须是数字或 [年份, 值] 曲线'); return; }
-      var last = -Infinity;
-      v.forEach(function (p, i) {
-        if (!Array.isArray(p) || p.length !== 2 || !isNum(p[0]) || !isNum(p[1])) { e(sec, label + ' 第 ' + i + ' 点必须是 [年份, 值]'); return; }
-        if (p[0] <= last) e(sec, label + ' 的年份必须递增（第 ' + i + ' 点）');
-        last = p[0];
-        if (p[1] < 0) e(sec, label + ' 第 ' + i + ' 点为负数');
-      });
-    }
-  }
-
-  // ============================================================ 表单构件
-
-  function fieldRow(def, obj, path) {
-    var wrap = h('div', { class: 'f' + (def.wide ? ' wide' : '') });
-    wrap.appendChild(h('label', { text: def.label + (def.hint ? '' : '') }));
-    var input;
-    var set = function (v) { obj[def.k] = v; dirty(); precheck(); };
-
-    if (def.kind === 'select') {
-      input = h('select');
-      (def.options || []).forEach(function (o) {
-        var val = Array.isArray(o) ? o[0] : o;
-        var lab = Array.isArray(o) ? o[1] : o;
-        input.appendChild(h('option', { value: val, selected: obj[def.k] === val }, lab));
-      });
-      if (def.allowEmpty) input.insertBefore(h('option', { value: '' }, '（空）'), input.firstChild);
-      input.onchange = function () { set(def.num ? Number(input.value) : input.value); };
-      if (obj[def.k] === undefined && def.allowEmpty) input.value = '';
-    } else if (def.kind === 'multi') {
-      input = h('div', { style: 'display:flex;gap:12px;flex-wrap:wrap;padding-top:4px' });
-      (def.options || []).forEach(function (o) {
-        var cur = Array.isArray(obj[def.k]) ? obj[def.k].slice() : [];
-        var cb = h('label', { style: 'display:flex;gap:5px;align-items:center;font-size:12.5px;color:var(--tx2)' },
-          h('input', { type: 'checkbox', checked: cur.indexOf(o) >= 0, onchange: function () {
-            var a = Array.isArray(obj[def.k]) ? obj[def.k].slice() : [];
-            var i = a.indexOf(o); if (cb.checked && i < 0) a.push(o); else if (!cb.checked && i >= 0) a.splice(i, 1);
-            set(a);
-          } }), o);
-        input.appendChild(cb);
-      });
-    } else if (def.kind === 'bool') {
-      input = h('label', { style: 'display:flex;gap:6px;align-items:center;padding-top:5px;font-size:12.5px;color:var(--tx2)' },
-        h('input', { type: 'checkbox', checked: !!obj[def.k], onchange: function () { set(input.querySelector('input').checked); } }), def.hint || '');
-      input = h('div', null, input);
-    } else if (def.kind === 'json') {
-      input = h('textarea', { rows: def.rows || 4, spellcheck: 'false' });
-      input.value = pretty(obj[def.k]);
-      input.oninput = function () {
-        try { var v = JSON.parse(input.value || 'null'); obj[def.k] = v; input.classList.remove('bad'); dirty(); precheck(); }
-        catch (e) { input.classList.add('bad'); }
-      };
-    } else if (def.kind === 'int' || def.kind === 'num') {
-      input = h('input', { type: 'number', step: def.kind === 'int' ? '1' : 'any' });
-      input.value = obj[def.k] == null ? '' : obj[def.k];
-      input.oninput = function () {
-        var v = input.value === '' ? undefined : Number(input.value);
-        if (v !== undefined && isNaN(v)) return;
-        set(v);
-      };
-    } else if (def.kind === 'textarea') {
-      input = h('textarea', { rows: def.rows || 4 });
-      input.value = obj[def.k] == null ? '' : obj[def.k];
-      input.oninput = function () { set(input.value); };
-    } else {
-      input = h('input', { type: 'text' });
-      input.value = obj[def.k] == null ? '' : obj[def.k];
-      input.oninput = function () { set(input.value); };
-    }
-    wrap.appendChild(input);
-    if (def.hint) wrap.appendChild(h('div', { class: 'hint', text: def.hint }));
-    return wrap;
-  }
-
-  function formCard(obj, fields, title, note) {
-    var card = h('div', { class: 'card' });
-    if (title) card.appendChild(h('div', { style: 'font-weight:600;margin-bottom:10px' }, title));
-    var g = h('div', { class: 'grid' });
-    fields.forEach(function (f) { g.appendChild(fieldRow(f, obj)); });
-    card.appendChild(g);
-    if (note) card.appendChild(h('div', { class: 'note', text: note }));
-    return card;
-  }
-
-  // 数组表格：cols = [{k,label,kind,options,w}]
-  function table(arr, cols, onAdd, onDel) {
-    var box = h('div');
-    var bar = h('div', { class: 'bar' }, h('span', { class: 'count', text: arr.length + ' 项' }), h('button', { class: 'btn-s', onclick: function () { onAdd(); render(); } }, '+ 添加'));
-    box.appendChild(bar);
-    if (!arr.length) { box.appendChild(h('div', { class: 'empty', text: '（暂无）' })); return box; }
-    var wrap = h('div', { class: 'tbl-wrap' });
-    var t = h('table');
-    var thead = h('thead'), tr = h('tr');
-    tr.appendChild(h('th', { text: '#' }));
-    cols.forEach(function (c) { tr.appendChild(h('th', { text: c.label })); });
-    tr.appendChild(h('th', { text: '' }));
-    thead.appendChild(tr); t.appendChild(thead);
-    var tb = h('tbody');
-    arr.forEach(function (row, idx) {
-      var r = h('tr');
-      r.appendChild(h('td', { class: 'idx', text: idx + 1 }));
-      cols.forEach(function (c) {
-        var td = h('td');
-        td.appendChild(cell(c, row));
-        r.appendChild(td);
-      });
-      r.appendChild(h('td', null, h('button', { class: 'del', title: '删除', onclick: function () { onDel(idx); render(); } }, '×')));
-      tb.appendChild(r);
-    });
-    t.appendChild(tb); wrap.appendChild(t); box.appendChild(wrap);
-    return box;
-  }
-
-  function cell(c, row) {
-    var set = function (v) { if (v === undefined) delete row[c.k]; else row[c.k] = v; dirty(); precheck(); };
-    if (c.kind === 'json' || c.kind === 'jsonRow') {
-      var ta = h('textarea', { rows: 1, spellcheck: 'false', style: 'min-width:160px' });
-      ta.value = pretty(row[c.k]);
-      ta.oninput = function () {
-        try { var v = JSON.parse(ta.value || 'null'); if (v === null) delete row[c.k]; else row[c.k] = v; ta.classList.remove('bad'); dirty(); precheck(); }
-        catch (e) { ta.classList.add('bad'); }
-      };
-      return ta;
-    }
-    if (c.kind === 'select') {
-      var sel = h('select');
-      sel.appendChild(h('option', { value: '' }, '—'));
-      (c.options || []).forEach(function (o) { var v = Array.isArray(o) ? o[0] : o, l = Array.isArray(o) ? o[1] : o; sel.appendChild(h('option', { value: v, selected: row[c.k] === v }, l)); });
-      sel.value = row[c.k] == null ? '' : row[c.k];
-      sel.onchange = function () { set(sel.value === '' ? undefined : sel.value); };
-      return sel;
-    }
-    if (c.kind === 'num' || c.kind === 'int') {
-      var inp = h('input', { type: 'number', step: c.kind === 'int' ? '1' : 'any', style: 'min-width:66px' });
-      inp.value = row[c.k] == null ? '' : row[c.k];
-      inp.oninput = function () { set(inp.value === '' ? undefined : Number(inp.value)); };
-      return inp;
-    }
-    var tx = h('input', { type: 'text', style: c.w ? ('min-width:' + c.w + 'px') : '' });
-    tx.value = row[c.k] == null ? '' : row[c.k];
-    tx.oninput = function () { set(tx.value === '' ? undefined : tx.value); };
-    return tx;
-  }
-
-  // ============================================================ 地图画布
-
-  var MAP = {
-    geoId: null, base: null, baseScale: 10, cv: null,
-    cam: { x: 0, y: 0, z: 8 },
-    sel: null, tool: null, drag: null, down: null,
-    layers: { centers: true, landmarks: true, facilities: true, anchors: true }
-  };
-
-  function mapW() { return (S.src && S.src.cfg && S.src.cfg.W) || CM.CFG.W; }
-  function mapH() { return (S.src && S.src.cfg && S.src.cfg.H) || CM.CFG.H; }
-  function r2(v) { return Math.round(v * 100) / 100; }
-
-  function loadGeoScript(id) {
-    return new Promise(function (res, rej) {
-      if (!id || id === 'inline') return res(null);
-      if (CM.GEOS && CM.GEOS[id]) return res(CM.GEOS[id]);
-      var sc = document.createElement('script');
-      sc.src = '../js/geo_' + id + '.js';
-      sc.onload = function () { res((CM.GEOS || {})[id] || null); };
-      sc.onerror = function () { rej(new Error('geo_' + id + '.js 加载失败')); };
-      document.head.appendChild(sc);
-    });
-  }
-
-  // 多边形：所有环一起 evenodd 填充（与地图缩略图一致）
-  function fillPolys(c, rows, col) {
-    if (!rows || !rows.length) return;
-    var dec = CM.Geo.dec;
-    c.fillStyle = col; c.beginPath();
-    rows.forEach(function (row) {
-      for (var k = 1; k < row.length; k++) {
-        if (typeof row[k] !== 'string') continue;
-        var p = dec(row[k], 1);
-        c.moveTo(p[0], p[1]);
-        for (var q = 2; q < p.length; q += 2) c.lineTo(p[q], p[q + 1]);
-        c.closePath();
-      }
-    });
-    c.fill('evenodd');
-  }
-
-  // 底图一次性烘焙到离屏画布（固定像素/格），之后缩放只是 drawImage
-  function buildBase(G) {
-    if (!G || !CM.Geo || !CM.Geo.dec) return null;
-    var W = mapW(), H = mapH(), k = MAP.baseScale;
-    var cv = document.createElement('canvas');
-    cv.width = Math.round(W * k); cv.height = Math.round(H * k);
-    var c = cv.getContext && cv.getContext('2d');
-    if (!c) return null;
-    var dec = CM.Geo.dec;
-    c.fillStyle = '#0a121a'; c.fillRect(0, 0, cv.width, cv.height);
-    c.setTransform(k, 0, 0, k, 0, 0);
-    c.lineCap = 'round'; c.lineJoin = 'round';
-    fillPolys(c, G.woods, '#0f2019');
-    fillPolys(c, G.reserves, '#122a20');
-    fillPolys(c, G.parks, '#14271d');
-    fillPolys(c, (G.water || []).filter(function (r) { return typeof r[1] !== 'number'; }), '#123048');
-    c.strokeStyle = '#123048';
-    (G.water || []).forEach(function (r) {
-      if (typeof r[1] !== 'number' || typeof r[2] !== 'string') return;
-      var p = dec(r[2]);
-      c.lineWidth = Math.max(r[1], 0.2);
-      c.beginPath(); c.moveTo(p[0], p[1]);
-      for (var q = 2; q < p.length; q += 2) c.lineTo(p[q], p[q + 1]);
-      c.stroke();
-    });
-    var RC = { 1: ['#1c2733', 0.55], 2: ['#243140', 0.95], 3: ['#2e3f52', 1.7], 4: ['#4b4130', 2.5] };
-    [1, 2, 3, 4].forEach(function (cls) {
-      c.strokeStyle = RC[cls][0]; c.lineWidth = RC[cls][1];
-      c.beginPath();
-      (G.roads || []).forEach(function (r) {
-        if (r[1] !== cls || typeof r[3] !== 'string') return;
-        var p = dec(r[3]);
-        c.moveTo(p[0], p[1]);
-        for (var q = 2; q < p.length; q += 2) c.lineTo(p[q], p[q + 1]);
-      });
-      c.stroke();
-    });
-    c.strokeStyle = '#3b4756'; c.lineWidth = 0.45; c.beginPath();
-    (G.rail || []).forEach(function (r) {
-      if (r[1] & 2 || typeof r[2] !== 'string') return;
-      var p = dec(r[2]);
-      c.moveTo(p[0], p[1]);
-      for (var q = 2; q < p.length; q += 2) c.lineTo(p[q], p[q + 1]);
-    });
-    c.stroke();
-    c.strokeStyle = '#223040'; c.lineWidth = 0.35; c.strokeRect(0, 0, W, H);
-    return cv;
-  }
-
-  function lmPos(id) {
-    var list = (S.src.data.landmarks || []);
-    for (var i = 0; i < list.length; i++) if (list[i].id === id) return [list[i].x, list[i].y];
-    return null;
-  }
-
-  function markers() {
-    var d = S.src.data, out = [];
-    (d.centers || []).forEach(function (c, i) { out.push({ kind: 'centers', idx: i, x: c.x, y: c.y, label: '中心 ' + (i + 1), color: '#f0b54a' }); });
-    (d.landmarks || []).forEach(function (l, i) { out.push({ kind: 'landmarks', idx: i, x: l.x, y: l.y, label: l.name || l.id || ('地标 ' + (i + 1)), color: '#a78bfa' }); });
-    (d.facilities || []).forEach(function (f, i) {
-      var pos = f.lm ? lmPos(f.lm) : (f.at && f.at.length === 2 ? f.at : null);
-      if (!pos) return;
-      out.push({ kind: 'facilities', idx: i, x: pos[0], y: pos[1], label: f.n || f.id || ('设施 ' + (i + 1)), color: '#2bd4a8', derived: !!f.lm });
-    });
-    (d.histTasks || []).forEach(function (t, ti) {
-      (t.anchors || []).forEach(function (a, ai) { out.push({ kind: 'anchors', taskIdx: ti, idx: ai, x: a.x, y: a.y, label: a.name || ('锚点 ' + (ai + 1)), color: '#e5645c' }); });
-    });
-    return out.filter(function (m) { return MAP.layers[m.kind]; });
-  }
-
-  function itemOf(sel) {
-    var d = S.src.data;
-    if (!sel) return null;
-    if (sel.kind === 'anchors') { var t = (d.histTasks || [])[sel.taskIdx]; return t && (t.anchors || [])[sel.idx]; }
-    return (d[sel.kind] || [])[sel.idx];
-  }
-
-  function w2s(x, y) {
-    var cv = MAP.cv, cw = cv ? cv.clientWidth : 0, ch = cv ? cv.clientHeight : 0;
-    return [(x - MAP.cam.x) * MAP.cam.z + cw / 2, (y - MAP.cam.y) * MAP.cam.z + ch / 2];
-  }
-  function s2w(px, py) {
-    var cv = MAP.cv, cw = cv ? cv.clientWidth : 0, ch = cv ? cv.clientHeight : 0;
-    return [MAP.cam.x + (px - cw / 2) / MAP.cam.z, MAP.cam.y + (py - ch / 2) / MAP.cam.z];
-  }
-
-  function draw() {
-    var cv = MAP.cv; if (!cv) return;
-    var c = cv.getContext && cv.getContext('2d'); if (!c) return;
-    var dpr = window.devicePixelRatio || 1, cw = cv.clientWidth, ch = cv.clientHeight;
-    if (!cw || !ch) return;
-    if (cv.width !== Math.round(cw * dpr) || cv.height !== Math.round(ch * dpr)) { cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr); }
-    c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    c.fillStyle = '#080f16'; c.fillRect(0, 0, cw, ch);
-    if (MAP.base) {
-      var sx = (0 - MAP.cam.x) * MAP.cam.z + cw / 2, sy = (0 - MAP.cam.y) * MAP.cam.z + ch / 2;
-      c.imageSmoothingEnabled = MAP.cam.z < MAP.baseScale;
-      c.drawImage(MAP.base, sx, sy, mapW() * MAP.cam.z, mapH() * MAP.cam.z);
-    }
-    markers().forEach(function (m) {
-      var p = w2s(m.x, m.y);
-      if (p[0] < -30 || p[1] < -30 || p[0] > cw + 30 || p[1] > ch + 30) return;
-      var on = MAP.sel && MAP.sel.kind === m.kind && MAP.sel.idx === m.idx && MAP.sel.taskIdx === m.taskIdx;
-      c.globalAlpha = m.derived ? 0.55 : 0.95;
-      c.beginPath(); c.arc(p[0], p[1], on ? 6.5 : 4, 0, Math.PI * 2);
-      c.fillStyle = m.color; c.fill();
-      c.globalAlpha = 1;
-      if (on) { c.strokeStyle = '#fff'; c.lineWidth = 1.6; c.stroke(); }
-      if (MAP.cam.z >= 9 || on) {
-        c.font = '11px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace';
-        c.fillStyle = 'rgba(228,235,242,0.85)';
-        c.fillText(m.label, p[0] + 8, p[1] + 3.5);
-      }
-    });
-  }
-
-  function pick(px, py) {
-    var best = null, bd = 13;
-    markers().forEach(function (m) {
-      var p = w2s(m.x, m.y), d = Math.hypot(p[0] - px, p[1] - py);
-      if (d < bd) { bd = d; best = m; }
-    });
-    return best;
-  }
-
-  function clampCam() {
-    MAP.cam.z = Math.max(3, Math.min(40, MAP.cam.z));
-    MAP.cam.x = Math.max(-8, Math.min(mapW() + 8, MAP.cam.x));
-    MAP.cam.y = Math.max(-8, Math.min(mapH() + 8, MAP.cam.y));
-  }
-
-  function fitMap() {
-    var cv = MAP.cv; if (!cv) return;
-    var cw = cv.clientWidth || 800, ch = cv.clientHeight || 500;
-    MAP.cam.z = Math.max(3, Math.min(28, Math.min(cw / mapW(), ch / mapH()) * 0.95));
-    MAP.cam.x = mapW() / 2; MAP.cam.y = mapH() / 2;
-  }
-
-  function moveSelected(x, y) {
-    var item = itemOf(MAP.sel); if (!item) return;
-    if (MAP.sel.kind === 'facilities') {
-      if (item.lm) return;   // 由地标定位，不能单独拖动
-      item.at = [r2(x), r2(y)];
-    } else { item.x = r2(x); item.y = r2(y); }
-    S.dirty = true;
-  }
-
-  function placeAt(kind, w) {
-    var d = S.src.data, x = r2(w[0]), y = r2(w[1]);
-    var y0 = (S.src.cfg && S.src.cfg.START ? S.src.cfg.START.y : CM.CFG.START.y);
-    if (kind === 'landmarks') {
-      d.landmarks = d.landmarks || [];
-      d.landmarks.push({ id: 'lm' + (d.landmarks.length + 1), name: '新地标', kind: 'box', x: x, y: y, year: y0, w: 60, d: 60, h: 40 });
-      MAP.sel = { kind: 'landmarks', idx: d.landmarks.length - 1 };
-    } else if (kind === 'facilities') {
-      d.facilities = d.facilities || [];
-      d.facilities.push({ id: 'f' + (d.facilities.length + 1), n: '新设施', t: 'shop', at: [x, y] });
-      MAP.sel = { kind: 'facilities', idx: d.facilities.length - 1 };
-    } else if (kind === 'centers') {
-      d.centers = d.centers || [];
-      d.centers.push({ x: x, y: y, pop: 10000, jobs: 5000, r: 2 });
-      MAP.sel = { kind: 'centers', idx: d.centers.length - 1 };
-    }
-    MAP.tool = null;
-    dirty(); precheck(); refreshMapChrome(); render();
-  }
-
-  function clickCanvas(px, py) {
-    var m = pick(px, py);
-    if (m) { MAP.sel = { kind: m.kind, idx: m.idx, taskIdx: m.taskIdx }; draw(); refreshMapChrome(); return; }
-    if (MAP.tool) { placeAt(MAP.tool, s2w(px, py)); return; }
-    MAP.sel = null; draw(); refreshMapChrome();
-  }
-
-  // 只绑定一次全局监听（画布元素每次渲染都会重建）
-  function bindWindowOnce() {
-    if (MAP._bound) return;
-    MAP._bound = true;
-    window.addEventListener('mousemove', function (e) {
-      var cv = MAP.cv;
-      if (!cv || S.section !== 'map' || !S.src) return;
-      var r = cv.getBoundingClientRect();
-      if (MAP.drag) {
-        var w = s2w(e.clientX - r.left, e.clientY - r.top);
-        moveSelected(w[0], w[1]); draw(); updateReadout();
-        return;
-      }
-      if (!MAP.down) return;
-      var dx = e.clientX - MAP.down.x, dy = e.clientY - MAP.down.y;
-      if (!MAP.down.moved && Math.abs(dx) + Math.abs(dy) > 3) MAP.down.moved = true;
-      if (MAP.down.moved) {
-        MAP.cam.x = MAP.down.cam[0] - dx / MAP.cam.z;
-        MAP.cam.y = MAP.down.cam[1] - dy / MAP.cam.z;
-        clampCam(); draw();
-      }
-    });
-    window.addEventListener('mouseup', function (e) {
-      var cv = MAP.cv;
-      if (!cv || S.section !== 'map' || !S.src) return;
-      var r = cv.getBoundingClientRect();
-      var px = e.clientX - r.left, py = e.clientY - r.top, inside = px >= 0 && py >= 0 && px <= cv.clientWidth && py <= cv.clientHeight;
-      if (MAP.drag) { MAP.drag = null; precheck(); updateReadout(); return; }
-      if (inside && MAP.down && !MAP.down.moved) clickCanvas(px, py);
-      MAP.down = null;
-    });
-    window.addEventListener('resize', function () { if (S.section === 'map') { draw(); } });
-  }
-
-  function bindCanvas() {
-    var cv = MAP.cv; if (!cv) return;
-    cv.addEventListener('mousedown', function (e) {
-      var r = cv.getBoundingClientRect();
-      var px = e.clientX - r.left, py = e.clientY - r.top, m = pick(px, py);
-      MAP.down = { x: e.clientX, y: e.clientY, cam: [MAP.cam.x, MAP.cam.y], moved: false };
-      if (m && !m.derived) MAP.drag = m;
-    });
-    cv.addEventListener('wheel', function (e) {
-      e.preventDefault();
-      var r = cv.getBoundingClientRect();
-      var before = s2w(e.clientX - r.left, e.clientY - r.top);
-      MAP.cam.z *= (e.deltaY < 0 ? 1.15 : 1 / 1.15);
-      clampCam();
-      var after = s2w(e.clientX - r.left, e.clientY - r.top);
-      MAP.cam.x += before[0] - after[0]; MAP.cam.y += before[1] - after[1];
-      clampCam(); draw();
-    }, { passive: false });
-    cv.addEventListener('mousemove', function (e) {
-      var r = cv.getBoundingClientRect();
-      var w = s2w(e.clientX - r.left, e.clientY - r.top);
-      var box = document.getElementById('mapcoord');
-      if (box) box.textContent = 'x ' + w[0].toFixed(1) + ' · y ' + w[1].toFixed(1) + ' 格';
-    });
-  }
-
-  function updateReadout() {
-    var box = document.getElementById('mapcoord');
-    if (!box) return;
-    var it = itemOf(MAP.sel);
-    if (!it) { box.textContent = '未选中'; return; }
-    var x = it.at ? it.at[0] : it.x, y = it.at ? it.at[1] : it.y;
-    box.textContent = '选中：x ' + Number(x).toFixed(2) + ' · y ' + Number(y).toFixed(2) + ' 格';
-  }
-
-  function refreshMapChrome() {
-    var bar = document.getElementById('maptools');
-    if (bar) {
-      bar.innerHTML = '';
-      [['landmarks', '放置地标'], ['facilities', '放置设施'], ['centers', '放置中心']].forEach(function (t) {
-        bar.appendChild(h('button', { class: 'mtool btn-s' + (MAP.tool === t[0] ? ' on' : ''), onclick: function () { MAP.tool = MAP.tool === t[0] ? null : t[0]; refreshMapChrome(); } }, t[1]));
-      });
-      bar.appendChild(h('button', { class: 'btn-s', onclick: function () { fitMap(); draw(); } }, '适配窗口'));
-      bar.appendChild(h('span', { class: 'count', id: 'mapcoord', text: '—' }));
-    }
-    var leg = document.getElementById('maplegend');
-    if (leg) {
-      leg.innerHTML = '';
-      [['centers', '职住中心', '#f0b54a'], ['landmarks', '地标', '#a78bfa'], ['facilities', '设施', '#2bd4a8'], ['anchors', '任务锚点', '#e5645c']].forEach(function (l) {
-        leg.appendChild(h('label', { style: 'cursor:pointer' }, h('input', { type: 'checkbox', checked: MAP.layers[l[0]] , style: 'width:auto;margin-right:4px', onchange: function (e) { MAP.layers[l[0]] = e.target.checked; draw(); } }),
-          h('i', { style: 'background:' + l[2] }), l[1]));
-      });
-    }
-    updateReadout();
-    updateInspector();
-  }
-
-  function updateInspector() {
-    var box = document.getElementById('inspector');
-    if (!box) return;
-    box.innerHTML = '';
-    var it = itemOf(MAP.sel);
-    if (!it) { box.appendChild(h('div', { class: 'empty', text: '点标记或用左侧工具在图上放置；选中后可在这里改数值，或直接拖动标记。' })); return; }
-    var kind = MAP.sel.kind;
-    var defs;
-    if (kind === 'landmarks') defs = [
-      { k: 'id', label: 'id', kind: 'text' }, { k: 'name', label: '名称', kind: 'text' },
-      { k: 'kind', label: '形体 kind', kind: 'text' }, { k: 'style', label: '造型', kind: 'select', allowEmpty: true, options: LM_STYLES.map(function (x) { return [x, x + ' · ' + CM.LANDMARK_STYLES[x].name]; }) },
-      { k: 'x', label: 'x（格）', kind: 'num' }, { k: 'y', label: 'y（格）', kind: 'num' },
-      { k: 'year', label: '落成年', kind: 'int' }, { k: 'w', label: '宽(m)', kind: 'num' }, { k: 'd', label: '深(m)', kind: 'num' },
-      { k: 'h', label: '高(m)', kind: 'num' }, { k: 'rot', label: '旋转°', kind: 'num' }
-    ];
-    else if (kind === 'facilities') defs = [
-      { k: 'id', label: 'id', kind: 'text' }, { k: 'n', label: '名称', kind: 'text' },
-      { k: 't', label: '类型', kind: 'select', options: FAC_TYPES.map(function (x) { return [x, x + ' · ' + CM.Fac.TYPES[x].name]; }) },
-      { k: 'lm', label: '地标 id（有则跟随地标）', kind: 'text' }, { k: 'at', label: '坐标 [x, y]', kind: 'json', rows: 2 },
-      { k: 'pax', label: '接驳量曲线', kind: 'json', rows: 2 }, { k: 'r', label: '半径（格）', kind: 'num' }
-    ];
-    else if (kind === 'centers') defs = [
-      { k: 'x', label: 'x（格）', kind: 'num' }, { k: 'y', label: 'y（格）', kind: 'num' },
-      { k: 'pop', label: '人口密度', kind: 'num' }, { k: 'jobs', label: '岗位密度', kind: 'num' }, { k: 'r', label: '半径(km)', kind: 'num' }
-    ];
-    else defs = [
-      { k: 'name', label: '锚点名称', kind: 'text' }, { k: 'x', label: 'x（格）', kind: 'num' },
-      { k: 'y', label: 'y（格）', kind: 'num' }, { k: 'r', label: '半径（格）', kind: 'num' }
-    ];
-
-    var card = h('div', { class: 'card' });
-    var head = h('div', { style: 'display:flex;align-items:center;gap:10px;margin-bottom:10px' },
-      h('b', { text: ({ landmarks: '地标', facilities: '设施', centers: '职住中心', anchors: '任务锚点' })[kind] }),
-      h('span', { class: 'count', text: kind === 'anchors' ? ('任务 ' + ((S.src.data.histTasks[MAP.sel.taskIdx] || {}).title || '') ) : ('#' + (MAP.sel.idx + 1)) }));
-    if (kind === 'facilities' && it.lm) head.appendChild(h('span', { style: 'font-size:12px;color:var(--warn)', text: '由地标 ' + it.lm + ' 定位，拖动无效' }));
-    var del = h('button', { class: 'btn-s', style: 'margin-left:auto;color:#e5645c', onclick: function () {
-      var d = S.src.data, sel = MAP.sel;
-      if (sel.kind === 'anchors') { var t = (d.histTasks || [])[sel.taskIdx]; t.anchors.splice(sel.idx, 1); }
-      else (d[sel.kind] || []).splice(sel.idx, 1);
-      MAP.sel = null; dirty(); precheck(); refreshMapChrome(); render();
-    } }, '删除');
-    head.appendChild(del);
-    card.appendChild(head);
-    var g = h('div', { class: 'insp' });
-    defs.forEach(function (def) {
-      var row = fieldRow(def, it);
-      // 改完坐标要重画
-      var inp = row.querySelector('input,select,textarea');
-      if (inp && (def.k === 'x' || def.k === 'y' || def.k === 'at' || def.k === 'style' || def.k === 'kind')) {
-        inp.addEventListener('input', function () { draw(); });
-        inp.addEventListener('change', function () { draw(); });
-      }
-      g.appendChild(row);
-    });
-    card.appendChild(g);
-    box.appendChild(card);
-  }
-
-  function setupMap() {
-    bindWindowOnce();
-    var id = S.src.meta.geo;
-    MAP.cv = document.getElementById('mapcv');
-    if (!MAP.cv) return;
-    bindCanvas();
-    requestAnimationFrame(function () {
-      fitMap(); draw();
-      if (MAP.geoId !== id || (!MAP.base && id !== 'inline')) {
-        MAP.geoId = id;
-        loadGeoScript(id).then(function (G) {
-          MAP.base = G ? buildBase(G) : null;
-          if (!G) {
-            var wrap = document.querySelector('.mapwrap');
-            if (wrap && !document.getElementById('mapempty')) wrap.appendChild(h('div', { class: 'mapempty', id: 'mapempty', text: '这张图没有独立地理文件（geo: inline），画布只显示坐标网格' }));
-          }
-          fitMap(); draw();
-        }).catch(function (e) { toast(e.message); });
-      }
-      refreshMapChrome();
-    });
-  }
-
-  // ============================================================ 分区
-
-  var META_FIELDS = [
-    { k: 'id', label: 'id', kind: 'text', hint: '与 maps/<id>/ 目录名、manifest 中的 id 一致' },
-    { k: 'name', label: '城市名', kind: 'text' },
-    { k: 'title', label: '标题', kind: 'text', hint: '如「广州 · 1990」' },
-    { k: 'sub', label: '副标题', kind: 'text' },
-    { k: 'region', label: '地区', kind: 'select', options: REGIONS, hint: '决定建筑配色与车型构成' },
-    { k: 'difficulty', label: '难度', kind: 'select', num: true, options: [[1, '1 · 教程'], [2, '2 · 普通'], [3, '3 · 较难'], [4, '4 · 最难']] },
-    { k: 'kind', label: '真实 / 虚构', kind: 'select', options: ['real', 'fictional'] },
-    { k: 'scenario', label: '场景 id', kind: 'text', hint: '如 gz-1990' },
-    { k: 'mapVersion', label: '地图版本', kind: 'int', hint: '内容修订须递增' },
-    { k: 'geo', label: '地理资源', kind: 'text', hint: 'CM.GEOS 的键；inline 表示由数据文件生成几何' },
-    { k: 'tagline', label: '一句话特色', kind: 'text' },
-    { k: 'modes', label: '可选模式', kind: 'multi', options: ['challenge', 'free'] },
-    { k: 'tags', label: '标签', kind: 'json', rows: 3 },
-    { k: 'cam', label: '默认镜头', kind: 'json', rows: 4 },
-    { k: 'desc', label: '介绍（列表页）', kind: 'textarea', wide: true, rows: 3 },
-    { k: 'intro', label: '开局介绍', kind: 'textarea', wide: true, rows: 4 },
-    { k: 'facts', label: '基本信息卡', kind: 'json', wide: true, rows: 6, hint: '[[标签, 值], …]' },
-    { k: 'features', label: '特色卡', kind: 'json', wide: true, rows: 6, hint: '[[图标, 标题, 说明], …]，图标须存在于 icons.js' },
-    { k: 'highlights', label: '大事年表', kind: 'json', wide: true, rows: 6, hint: '[[年份, 文字], …]，按年份升序' }
-  ];
-
-  var REGION_COLS = [
-    { k: 'id', label: 'id', kind: 'text', w: 90 },
-    { k: 'name', label: '名称', kind: 'text', w: 150 },
-    { k: 'open', label: '开放年', kind: 'num', w: 70 },
-    { k: 'plan', label: '用地配方', kind: 'text', w: 80 },
-    { k: 'pop', label: '人口密度', kind: 'num' },
-    { k: 'streets', label: '街道（json）', kind: 'json', w: 180 },
-    { k: 'geo', label: '地理选择（json）', kind: 'json', w: 150 },
-    { k: 'note', label: '备注', kind: 'text', w: 200 }
-  ];
-  var CENTER_COLS = [
-    { k: 'x', label: 'x', kind: 'num' }, { k: 'y', label: 'y', kind: 'num' },
-    { k: 'pop', label: '人口密度', kind: 'num' }, { k: 'jobs', label: '岗位密度', kind: 'num' },
-    { k: 'r', label: '半径(km)', kind: 'num' }
-  ];
-  var LM_COLS = [
-    { k: 'id', label: 'id', kind: 'text', w: 90 }, { k: 'name', label: '名称', kind: 'text', w: 130 },
-    { k: 'kind', label: 'kind', kind: 'text', w: 80 }, { k: 'x', label: 'x', kind: 'num' }, { k: 'y', label: 'y', kind: 'num' },
-    { k: 'year', label: '落成年', kind: 'int' }, { k: 'w', label: '宽(m)', kind: 'num' }, { k: 'd', label: '深(m)', kind: 'num' },
-    { k: 'h', label: '高(m)', kind: 'num' }, { k: 'rot', label: '旋转°', kind: 'num' },
-    { k: 'style', label: '造型', kind: 'select', options: [['', '（默认）']].concat(LM_STYLES.map(function (s) { return [s, s + ' · ' + CM.LANDMARK_STYLES[s].name]; })) }
-  ];
-  var FAC_COLS = [
-    { k: 'id', label: 'id', kind: 'text', w: 90 }, { k: 'n', label: '名称', kind: 'text', w: 130 },
-    { k: 't', label: '类型', kind: 'select', options: FAC_TYPES.map(function (t) { return [t, t + ' · ' + CM.Fac.TYPES[t].name]; }) },
-    { k: 'lm', label: '地标 id', kind: 'text', w: 90 }, { k: 'at', label: '坐标 [x,y]', kind: 'json', w: 90 },
-    { k: 'pax', label: '接驳量曲线', kind: 'json', w: 150 }, { k: 'y0', label: '启用', kind: 'json', w: 70 },
-    { k: 'y1', label: '停用', kind: 'json', w: 70 }, { k: 'r', label: '半径', kind: 'num' },
-    { k: 'p', label: '目的占比', kind: 'json', w: 130 }
-  ];
-  var TASK_COLS = [
-    { k: 'id', label: 'id', kind: 'text', w: 70 }, { k: 'title', label: '标题', kind: 'text', w: 180 },
-    { k: 'type', label: '类型', kind: 'select', options: TASK_TYPES.map(function (t) { return [t, t + ' · ' + CM.Tasks.TYPES[t].name]; }) },
-    { k: 'appear', label: '出现 [y,m]', kind: 'json', w: 90 }, { k: 'deadline', label: '截止 [y,m]', kind: 'json', w: 90 },
-    { k: 'reward', label: '奖励', kind: 'num', w: 80 }, { k: 'target', label: 'target', kind: 'num', w: 70 },
-    { k: 'zone', label: 'zone', kind: 'num', w: 60 }, { k: 'fac', label: 'fac', kind: 'text', w: 80 },
-    { k: 'station', label: 'station', kind: 'text', w: 80 }, { k: 'basis', label: '口径', kind: 'text', w: 60 },
-    { k: 'sustain', label: '连续月', kind: 'num', w: 60 },
-    { k: 'anchors', label: '锚点（json）', kind: 'json', w: 200 }
-  ];
-  var EVENT_COLS = [
-    { k: 'y', label: '年', kind: 'int', w: 60 }, { k: 'm', label: '月', kind: 'int', w: 50 },
-    { k: 'title', label: '标题', kind: 'text', w: 160 }, { k: 'desc', label: '说明', kind: 'text', w: 260 },
-    { k: 'tag', label: '标签', kind: 'text', w: 70 }
-  ];
-
-  var NAV = [
-    { grp: '概览' },
-    { id: 'meta', label: '元数据与文案' },
-    { id: 'cfg', label: '配置' },
-    { grp: '空间' },
-    { id: 'map', label: '地图画布' },
-    { id: 'regions', label: '区域', count: function (d) { return (d.regions || []).length; } },
-    { id: 'centers', label: '职住中心', count: function (d) { return (d.centers || []).length; } },
-    { id: 'landmarks', label: '地标', count: function (d) { return (d.landmarks || []).length; } },
-    { id: 'facilities', label: '重要设施', count: function (d) { return (d.facilities || []).length; } },
-    { grp: '剧情' },
-    { id: 'tasks', label: '历史任务', count: function (d) { return (d.histTasks || []).length; } },
-    { id: 'events', label: '历史事件', count: function (d) { return (d.events || []).length; } },
-    { id: 'macro', label: '宏观经济' },
-    { grp: '其他' },
-    { id: 'plans', label: '用地配方' },
-    { id: 'rest', label: '其余数据' },
-    { id: 'raw', label: '整份 JSON' }
-  ];
-
-  // ============================================================ 渲染
-
-  function renderNav() {
-    var nav = document.getElementById('nav');
-    nav.innerHTML = '';
-    var d = (S.src && S.src.data) || {};
-    NAV.forEach(function (n) {
-      if (n.grp) { nav.appendChild(h('div', { class: 'grp', text: n.grp })); return; }
-      var cnt = n.count ? n.count(d) : null;
-      var bad = S.issues.some(function (i) { return i.section === n.id && i.level === 'error'; });
-      var a = h('a', { class: S.section === n.id ? 'on' : '', onclick: function () { S.section = n.id; render(); } },
-        h('span', { text: n.label }),
-        h('span', { style: 'display:flex;gap:6px;align-items:center' }, cnt == null ? null : h('span', { class: 'n', text: cnt }), h('span', { class: 'dot' })));
-      if (bad) a.classList.add('bad');
-      nav.appendChild(a);
-    });
-  }
-
-  function render() {
-    renderNav();
-    var main = document.getElementById('main');
-    main.innerHTML = '';
-    if (!S.src) return;
-    var d = S.src.data || {};
-    var m = S.src.meta || {};
-
-    if (S.section === 'map') {
-      main.appendChild(h('h2', { text: '地图画布' }));
-      main.appendChild(h('p', { class: 'sub', text: '拖动平移、滚轮缩放。点标记选中，按住拖动改坐标；选一个「放置」工具后点空白处新建。' }));
-      main.appendChild(h('div', { class: 'bar', id: 'maptools' }));
-      main.appendChild(h('div', { class: 'legend', id: 'maplegend' }));
-      main.appendChild(h('div', { class: 'mapwrap' }, h('canvas', { id: 'mapcv', class: 'mapcv' })));
-      main.appendChild(h('div', { id: 'inspector' }));
-      setupMap();
-      return;
-    }
-
-    if (S.section === 'meta') {
-      main.appendChild(h('h2', { text: '元数据与文案' }));
-      main.appendChild(h('p', { class: 'sub', text: '列表页、开局简报与地图卡片读到的字段。改动后记得同步 README / 地图清单。' }));
-      main.appendChild(formCard(m, META_FIELDS));
-      return;
-    }
-
-    if (S.section === 'cfg') {
-      main.appendChild(h('h2', { text: '配置' }));
-      main.appendChild(h('p', { class: 'sub', text: '只保存与基线（config.js 默认值）不同的键。取消勾选即恢复继承。值按 JSON 填写；对象要写完整对象，因为运行时是浅合并。' }));
-      var card = h('div', { class: 'card' });
-      CFG_KEYS.forEach(function (k) {
-        var own = S.src.cfg && Object.prototype.hasOwnProperty.call(S.src.cfg, k);
-        var row = h('div', { class: 'kv' });
-        row.appendChild(h('div', { class: 'k', text: k }));
-        row.appendChild(h('div', { class: 'base' + (own ? '' : ' on'), title: pretty(CM.CFG[k]), text: short(CM.CFG[k]) }));
-        var valBox = h('div', { class: 'val' });
-        if (own) {
-          var ta = h('textarea', { rows: 2, spellcheck: 'false' });
-          ta.value = pretty(S.src.cfg[k]);
-          ta.oninput = function () {
-            try { var v = JSON.parse(ta.value || 'null'); S.src.cfg[k] = v; ta.classList.remove('bad'); dirty(); precheck(); }
-            catch (e) { ta.classList.add('bad'); }
-          };
-          valBox.appendChild(ta);
-        } else valBox.appendChild(h('div', { class: 'base on', text: '继承基线' }));
-        row.appendChild(valBox);
-        row.appendChild(h('label', { class: 'tog' }, h('input', { type: 'checkbox', checked: own, onchange: function (e) {
-          S.src.cfg = S.src.cfg || {};
-          if (e.target.checked) S.src.cfg[k] = clone(CM.CFG[k]);
-          else delete S.src.cfg[k];
-          if (!Object.keys(S.src.cfg).length) delete S.src.cfg;
-          dirty(); render();
-        } }), '覆盖'));
-        card.appendChild(row);
-      });
-      main.appendChild(card);
-      main.appendChild(h('div', { class: 'note' }, '提示：W / H 会改变格网与交通小区数量，改动后所有坐标都要重新核对；START 决定开局年月。'));
-      return;
-    }
-
-    if (S.section === 'regions') {
-      main.appendChild(h('h2', { text: '区域' }));
-      main.appendChild(h('p', { class: 'sub', text: '区域用街道名或行政区在底图上选地，决定开放年份、用地配方与人口。open 为 null 表示永久保护（不可建设）。' }));
-      main.appendChild(table(d.regions || (d.regions = []), REGION_COLS,
-        function () { d.regions.push({ id: 'new' + (d.regions.length + 1), name: '新区域', open: (S.src.cfg && S.src.cfg.START ? S.src.cfg.START.y : CM.CFG.START.y) }); },
-        function (i) { d.regions.splice(i, 1); }));
-      return;
-    }
-
-    if (S.section === 'centers') {
-      main.appendChild(h('h2', { text: '职住中心' }));
-      main.appendChild(h('p', { class: 'sub', text: '人口与岗位的密度中心（人/km²）。生成后按全图总量归一化，所以这里写相对值即可。' }));
-      main.appendChild(table(d.centers || (d.centers = []), CENTER_COLS,
-        function () { d.centers.push({ x: 0, y: 0, pop: 10000, jobs: 5000, r: 2 }); },
-        function (i) { d.centers.splice(i, 1); }));
-      return;
-    }
-
-    if (S.section === 'landmarks') {
-      main.appendChild(h('h2', { text: '地标' }));
-      main.appendChild(h('p', { class: 'sub', text: '按落成年份出现的单体建筑。造型只能取已登记的值，写错会回退成普通楼宇。' }));
-      var hint = h('div', { class: 'note' });
-      hint.innerHTML = '可用造型：' + LM_STYLES.map(function (s) { return '<code>' + s + '</code> ' + CM.LANDMARK_STYLES[s].name + '（' + CM.LANDMARK_STYLES[s].kinds.join('/') + '）'; }).join('；');
-      main.appendChild(hint);
-      main.appendChild(table(d.landmarks || (d.landmarks = []), LM_COLS,
-        function () { d.landmarks.push({ id: 'lm' + (d.landmarks.length + 1), name: '新地标', kind: 'box', x: 0, y: 0, year: 2000, w: 60, d: 60, h: 40 }); },
-        function (i) { d.landmarks.splice(i, 1); }));
-      return;
-    }
-
-    if (S.section === 'facilities') {
-      main.appendChild(h('h2', { text: '重要设施' }));
-      main.appendChild(h('p', { class: 'sub', text: '火车站、机场、大学、医院、商圈等独立参与出行需求的设施。lm 或 at 二选一；枢纽（rail / air）用 pax 给接驳量。' }));
-      var hint2 = h('div', { class: 'note' });
-      hint2.innerHTML = '设施类型：' + FAC_TYPES.map(function (t) { return '<code>' + t + '</code> ' + CM.Fac.TYPES[t].name; }).join('；');
-      main.appendChild(hint2);
-      main.appendChild(table(d.facilities || (d.facilities = []), FAC_COLS,
-        function () { d.facilities.push({ id: 'f' + (d.facilities.length + 1), n: '新设施', t: 'shop', at: [0, 0] }); },
-        function (i) { d.facilities.splice(i, 1); }));
-      return;
-    }
-
-    if (S.section === 'tasks') {
-      main.appendChild(h('h2', { text: '历史任务' }));
-      main.appendChild(h('p', { class: 'sub', text: '按类型填参数。类型决定了需要哪些字段（见下方说明）；connect 用 anchors，coverage 用 target。' }));
-      var hint3 = h('div', { class: 'card' });
-      hint3.appendChild(h('div', { style: 'font-weight:600;margin-bottom:6px' }, '任务类型与必填参数'));
-      CM.Tasks.typeList().forEach(function (t) {
-        hint3.appendChild(h('div', { style: 'font-size:12.5px;margin:4px 0' },
-          h('code', { text: t.type }), ' ' + t.name + '（' + (t.basis ? '口径 ' + t.basis : '口径随任务') + '）：',
-          t.params.map(function (p) { return p[0] + (p[2] ? '?' : '') + ' — ' + p[1]; }).join('；')));
-      });
-      main.appendChild(hint3);
-      main.appendChild(table(d.histTasks || (d.histTasks = []), TASK_COLS,
-        function () { d.histTasks.push({ id: 't' + (d.histTasks.length + 1), title: '新任务', type: 'connect', appear: [(S.src.cfg && S.src.cfg.START ? S.src.cfg.START.y : CM.CFG.START.y), 1], deadline: [(S.src.cfg && S.src.cfg.START ? S.src.cfg.START.y : CM.CFG.START.y) + 8, 12], reward: 100000 }); },
-        function (i) { d.histTasks.splice(i, 1); }));
-      return;
-    }
-
-    if (S.section === 'events') {
-      main.appendChild(h('h2', { text: '历史事件' }));
-      main.appendChild(h('p', { class: 'sub', text: '写入城市纪事。按年代顺序排列，会上浮为提示。' }));
-      main.appendChild(table(d.events || (d.events = []), EVENT_COLS,
-        function () { d.events.push({ y: (S.src.cfg && S.src.cfg.START ? S.src.cfg.START.y : CM.CFG.START.y), m: 1, title: '新事件', desc: '' }); },
-        function (i) { d.events.splice(i, 1); }));
-      return;
-    }
-
-    if (S.section === 'macro') {
-      main.appendChild(h('h2', { text: '宏观经济' }));
-      main.appendChild(h('p', { class: 'sub', text: '仅真实城市启用；虚构地图对应 fake（不启用）。' }));
-      if (!S.src.cfg || !S.src.cfg.macro) {
-        main.appendChild(h('div', { class: 'card' }, h('div', { text: '当前没有 macro 配置。' }),
-          h('div', { class: 'note', text: '真实城市必须在 cfg 里覆盖 macro（GDP、生产率、财政、产业结构、事件）。到「配置」页勾选 macro 并填入对象。' })));
-        return;
-      }
-      var mac = S.src.cfg.macro;
-      var fields = [
-        { k: 'area', label: '统计范围', kind: 'text', wide: true },
-        { k: 'region', label: '地区', kind: 'text' },
-        { k: 'gdp0', label: '开局 GDP（万）', kind: 'num' },
-        { k: 'histEnd', label: '历史截止年', kind: 'int' },
-        { k: 'ref', label: '参考序列', kind: 'text' },
-        { k: 'infl', label: '价格序列', kind: 'text' },
-        { k: 'revElastic', label: '财政弹性', kind: 'num' },
-        { k: 'revRatio', label: '财政占 GDP', kind: 'json' },
-        { k: 'prod', label: '生产率趋势', kind: 'json' },
-        { k: 'longRun', label: '远期', kind: 'json' },
-        { k: 'struct', label: '产业结构暴露度', kind: 'json' },
-        { k: 'events', label: '经济事件', kind: 'json', wide: true, rows: 8 }
-      ];
-      main.appendChild(formCard(mac, fields));
-      return;
-    }
-
-    if (S.section === 'plans') {
-      main.appendChild(h('h2', { text: '用地配方' }));
-      main.appendChild(h('p', { class: 'sub', text: '每份配方是各类用地在同一街区内的占比，合计应为 1。区域通过 plan 字段引用。' }));
-      main.appendChild(formCard(d.plans || (d.plans = {}), Object.keys(d.plans).map(function (k) {
-        return { k: k, label: k, kind: 'json', rows: 3 };
-      })));
-      return;
-    }
-
-    if (S.section === 'rest') {
-      main.appendChild(h('h2', { text: '其余数据' }));
-      main.appendChild(h('p', { class: 'sub', text: '上面没有表单的字段（briefing、dataNote、initialNetwork、roadYears 等）。直接编辑 JSON。' }));
-      var known = { regions: 1, centers: 1, landmarks: 1, facilities: 1, histTasks: 1, events: 1, plans: 1 };
-      Object.keys(d).forEach(function (k) {
-        if (known[k]) return;
-        var card = h('div', { class: 'card' });
-        card.appendChild(h('div', { style: 'font-weight:600;margin-bottom:6px' }, k));
-        var ta = h('textarea', { rows: 6, spellcheck: 'false' });
-        ta.value = pretty(d[k]);
-        ta.oninput = function () {
-          try { var v = JSON.parse(ta.value || 'null'); if (v === null) delete d[k]; else d[k] = v; ta.classList.remove('bad'); dirty(); }
-          catch (e) { ta.classList.add('bad'); }
-        };
-        card.appendChild(ta);
-        main.appendChild(card);
-      });
-      return;
-    }
-
-    if (S.section === 'raw') {
-      main.appendChild(h('h2', { text: '整份 JSON' }));
-      main.appendChild(h('p', { class: 'sub', text: '直接编辑整个 source.json。改完点「应用」。' }));
-      var ta2 = h('textarea', { rows: 30, spellcheck: 'false', style: 'width:100%;font-size:12px' });
-      ta2.value = pretty(S.src);
-      var bar2 = h('div', { class: 'bar' }, h('button', { class: 'btn-s primary', onclick: function () {
-        try {
-          var v = JSON.parse(ta2.value);
-          S.src = v; ta2.classList.remove('bad'); dirty(); precheck(); render(); toast('已应用');
-        } catch (e) { ta2.classList.add('bad'); toast('JSON 解析失败：' + e.message); }
-      } }, '应用'), h('span', { class: 'count', text: '修改后需要重新应用才会生效' }));
-      main.appendChild(bar2);
-      main.appendChild(ta2);
-      return;
-    }
-  }
-
-  function short(v) {
-    if (v === undefined) return '—';
-    var s = JSON.stringify(v);
-    if (!s) s = String(v);
-    return s.length > 40 ? s.slice(0, 38) + '…' : s;
-  }
-
-  // ============================================================ 预检输出
-
-  function precheck() {
-    if (!S.src) return;
-    S.issues = validate(S.src);
-    var box = document.getElementById('issues');
-    box.innerHTML = '';
-    var errs = S.issues.filter(function (i) { return i.level === 'error'; }).length;
-    var warns = S.issues.length - errs;
-    document.getElementById('issCount').textContent = S.issues.length ? (errs + ' 错误 · ' + warns + ' 警告') : '无问题';
-    if (!S.issues.length) { box.appendChild(h('div', { class: 'empty', text: '✓ 结构预检通过' })); renderNav(); return; }
-    S.issues.forEach(function (i) {
-      box.appendChild(h('div', { class: 'iss ' + i.level, onclick: function () { S.section = i.section; render(); } },
-        h('span', { class: 'lv', text: i.level === 'error' ? 'ERR' : 'WARN' }),
-        h('span', { class: 'txt', text: i.msg })));
-    });
-    renderNav();
-  }
-
-  // ============================================================ 文件
-
-  function setSource(text, name, dir, handle) {
-    try {
-      var src = JSON.parse(text);
-      if (!isObj(src) || !isObj(src.meta)) throw new Error('缺少 meta');
-      S.src = src; S.name = name || 'source.json'; S.dir = dir || ''; S.handle = handle || null;
-      S.dirty = false;
-      document.getElementById('path').textContent = (S.dir ? S.dir + '/' : '') + S.name;
-      ['btnSave', 'btnSaveAs', 'btnCheck'].forEach(function (id) { document.getElementById(id).disabled = false; });
-      document.getElementById('btnSave').classList.remove('primary');
-      S.section = 'meta';
-      render(); precheck();
-      toast('已打开 ' + S.name);
-    } catch (e) {
-      toast('打开失败：' + e.message);
-    }
-  }
-
-  async function openFile() {
-    if (window.showOpenFilePicker) {
-      try {
-        var picked = await window.showOpenFilePicker({ types: [{ description: 'source.json', accept: { 'application/json': ['.json'] } }] });
-        var fh = picked[0], f = await fh.getFile(), text = await f.text();
-        setSource(text, f.name, (fh.name || '').slice(0, -f.name.length - 1), fh);
-        return;
-      } catch (e) { if (e && e.name === 'AbortError') return; }
-    }
-    document.getElementById('pick').click();
-  }
-
-  async function saveFile(asNew) {
-    var text = JSON.stringify(S.src, null, 2) + '\n';
-    if (!asNew && S.handle) {
-      try {
-        var w = await S.handle.createWritable();
-        await w.write(text); await w.close();
-        S.dirty = false;
-        document.getElementById('btnSave').classList.remove('primary');
-        document.getElementById('path').textContent = (S.dir ? S.dir + '/' : '') + S.name;
-        toast('已写回 ' + S.name);
-        return;
-      } catch (e) { toast('写回失败，改为下载：' + e.message); }
-    }
-    var blob = new Blob([text], { type: 'application/json' });
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = (S.src.meta && S.src.meta.id ? S.src.meta.id : 'source') + '.json';
-    a.click();
-    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
-    toast('已下载 ' + a.download);
-  }
-
-  // ============================================================ 启动
-
-  document.getElementById('btnOpen').onclick = openFile;
-  document.getElementById('btnSave').onclick = function () { saveFile(false); };
-  document.getElementById('btnSaveAs').onclick = function () { saveFile(true); };
-  document.getElementById('btnCheck').onclick = function () { precheck(); toast('已重新预检'); };
-  document.getElementById('pick').onchange = async function (e) {
-    var f = e.target.files && e.target.files[0]; if (!f) return;
-    setSource(await f.text(), f.name, '');
-    e.target.value = '';
-  };
-  window.addEventListener('dragover', function (e) { e.preventDefault(); document.getElementById('drop').classList.add('on'); });
-  window.addEventListener('dragleave', function (e) { if (e.relatedTarget === null) document.getElementById('drop').classList.remove('on'); });
-  window.addEventListener('drop', async function (e) {
-    e.preventDefault(); document.getElementById('drop').classList.remove('on');
-    var f = e.dataTransfer.files && e.dataTransfer.files[0];
-    if (f) setSource(await f.text(), f.name, '');
-  });
-  window.addEventListener('beforeunload', function (e) { if (S.dirty) { e.preventDefault(); e.returnValue = ''; } });
-  renderNav();
-
-  // 供 Node 测试调用
-  window.ED = {
-    validate: validate, state: S, setSource: setSource,
-    schema: { META_FIELDS: META_FIELDS, CFG_KEYS: CFG_KEYS, TASK_TYPES: TASK_TYPES, FAC_TYPES: FAC_TYPES, LM_STYLES: LM_STYLES },
-    // 画布相关（供测试与调试）：世界↔屏幕、标记集合、放置
-    map: MAP, w2s: w2s, s2w: s2w, markers: markers, placeAt: placeAt, draw: draw, buildBase: buildBase, loadGeo: loadGeoScript
-  };
-})();
-</script>
+<script src="../js/icons.js"></script>
+<script src="./editor.js"></script>
 </body>
 </html>
