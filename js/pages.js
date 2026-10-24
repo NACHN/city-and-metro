@@ -145,11 +145,11 @@
             b.appendChild(h('div', { class: 'note', style: { marginTop: busList.length ? '8px' : '0' } },
               busList.length ? '这一站周边没有新的步行盲区了。' : '这一站步行范围内已经覆盖了周边人口，没有找到值得开通接驳的盲区。'));
           } else {
-            b.appendChild(h('div', { class: 'note', style: { margin: '8px 0 4px' } }, '周边步行到不了的地方（按人口与岗位排序）：'));
+            b.appendChild(h('div', { class: 'note', style: { margin: '8px 0 4px' } }, '周边步行到不了的地方（设施与人流密集处）：'));
             const rows = h('div', { class: 'kv' });
             for (const c of cands) {
               rows.append(
-                h('div', { class: 'k' }, U.fmtPeople(c.w) + ' 人 · 直线 ' + U.fmtKm(c.d)),
+                h('div', { class: 'k' }, (c.name ? '「' + c.name + '」' : U.fmtPeople(c.w) + ' 人') + ' · 直线 ' + U.fmtKm(c.d)),
                 h('div', { class: 'v' }, h('button', { class: 'btn sm', onclick: function () { self.busOpen(id, c); } },
                   '开通 ' + U.fmtMoney(c.cost) + ' · 维护 ' + U.fmtMoney(c.ops) + '/月')));
             }
@@ -1511,7 +1511,7 @@
   // 连接任务的站点清单、连续月数、期限条（越临近越醒目）、奖励与未完成后果、定位入口
   const TASK_TYPE = {
     connect: ['route', '连通线路'], coverage: ['target', '地铁覆盖'], zoneCong: ['car', '缓解拥堵'], zoneCov: ['map', '片区覆盖'],
-    stationCrowd: ['people', '车站拥挤'], ridership: ['train', '客流增长'], recovery: ['coin', '运营收支'], facShare: ['pin', '设施接驳'],
+    stationCrowd: ['people', '车站拥挤'], ridership: ['train', '客流增长'], recovery: ['coin', '运营收支'], facShare: ['pin', '设施接驳'], facBus: ['bus', '接驳覆盖'],
   };
   UI.prototype.taskRing = function (v, cls) {
     const p = U.clamp(v || 0, 0, 1), C = 2 * Math.PI * 17;

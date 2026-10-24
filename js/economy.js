@@ -436,6 +436,32 @@
   //   params  必填参数及说明，供表单提示与校验
   //   evaluate(t, ctx) 返回 { ok, value, text }；ctx = { g, C, model, acc }
   const TYPES = {
+    // 接驳覆盖：设施周边无法设站（景区、保护区、山体），只能靠车站 + 接驳巴士把它接进网络。
+    // 判定不是「地铁到访比例」（景区设施的开车优势让这个比例永远上不去），而是「有没有接驳线到达入口」，
+    // 这样任务是可完成、可理解的：玩家需要先找最近的可建地块设站，再开一条接驳线。
+    facBus: {
+      name: '接驳覆盖', basis: 'net',
+      params: [['fac', '设施 id：需要在它的步行圈内开通接驳巴士，且车站已接入线网']],
+      evaluate: function (t, ctx) {
+        const g = ctx.g, C = ctx.C, fn = ctx.model && ctx.model.fn;
+        if (!C || !fn) return { ok: false, value: 0, text: '尚未建成线网' };
+        let f = null;
+        for (const x of fn.list) if (x.id === t.fac) { f = x; break; }
+        if (!f) return { ok: false, value: 0, text: '当前地图没有「' + t.fac + '」' };
+        if (!CFG.bus) return { ok: false, value: 0, text: '本模式没有接驳巴士' };
+        const R = CFG.bus.walkReachM + 1;
+        for (const sid in g.net.stations) {
+          const s = g.net.stations[sid];
+          if (!s.bus || !s.bus.length) continue;
+          const si = C.sIndex.get(sid);
+          if (si === undefined || !C.serviced[si]) continue;
+          for (const b of s.bus) {
+            if (U.dist(b.x, b.y, f.x, f.y) * CFG.CELL_M <= R) return { ok: true, value: 1, text: '「' + s.name + '」的接驳线已到达入口' };
+          }
+        }
+        return { ok: false, value: 0, text: '还没有接驳巴士到达「' + f.name + '」' };
+      },
+    },
     connect: {
       name: '连通锚点', basis: 'net',
       params: [['anchors', '锚点数组 { name, x, y, r }：每处都要有运营车站，且落在同一个连通分量里']],
@@ -664,8 +690,8 @@
     // 设施附近是否有可设站的地块。保护区、景区、山体与水域上都不能设站，
     // 不检查就会发出「地铁服务灵隐寺」这类永远无法完成的任务：景区整片不能设站，
     // 玩家把线路修到最近的合法地块也有 2.5 km，接驳后地铁比例仍到不了目标值。
-    const canStationNear = function (f) {
-      const R = CFG.walk.maxAccessM / CFG.CELL_M;
+    const canStationNear = function (f, radiusM) {
+      const R = (radiusM || CFG.walk.maxAccessM) / CFG.CELL_M;
       const i0 = Math.max(0, Math.floor(f.x - R)), i1 = Math.min(city.W - 1, Math.floor(f.x + R));
       const j0 = Math.max(0, Math.floor(f.y - R)), j1 = Math.min(city.H - 1, Math.floor(f.y + R));
       for (let j = j0; j <= j1; j++) {
@@ -688,7 +714,7 @@
       let best = null;
       for (const f of model.fn.list) {
         if (!free('fac:' + f.id, 'facShare')) continue;
-        if (!canStationNear(f)) continue;   // 附近没有能设站的地块，任务不可能完成
+        if (!canStationNear(f, CFG.walk.maxAccessM)) continue;   // 步行圈内没有能设站的地块，走接驳任务
         const basis = Tasks.facBasis(f), r = Tasks.facShareOf(model, f, basis);
         if (!r || r.vol < 3000 || r.share > 0.12) continue;
         const score = r.vol * (1 - r.share);
@@ -700,6 +726,23 @@
         cands.push({ type: 'facShare', coolKey: 'fac:' + f.id, fac: f.id, basis: best.basis, start: best.r.share, target: target, title: '地铁服务「' + f.name + '」',
           desc: f.name + '（' + f.T.name + '）每天约有 ' + U.fmtPeople(best.r.vol) + ' 人次' + what + '（' + bn.replace(/（.*）/, '') + '），乘地铁的比例只有 ' + U.fmtPct(best.r.share, 0) + '。在附近设站并接入线网，使乘地铁的比例达到 ' + U.fmtPct(target, 0) + '。统计口径：' + bn + '。',
           months: 30, reward: 45000 * ci });
+      }
+      // 周边无法步行设站、但接驳够得着的设施：改为「接驳覆盖」任务。
+      // 这类设施（景区、保护区）不可能达到「地铁到访比例」目标，任务应该考的是
+      // 「能不能想到用接驳巴士把它接进网络」，而不是让玩家去追一个模型上到不了的比例。
+      if (CFG.bus) {
+        for (const f of model.fn.list) {
+          if (!free('busfac:' + f.id, 'facBus')) continue;
+          if (canStationNear(f, CFG.walk.maxAccessM)) continue;    // 能直接设站的走 facShare
+          if (!canStationNear(f, CFG.bus.maxLenM)) continue;       // 连接驳都够不着，不发
+          const r = Tasks.facShareOf(model, f, Tasks.facBasis(f));
+          if (!r || r.vol < 3000) continue;
+          cands.push({ type: 'facBus', coolKey: 'busfac:' + f.id, fac: f.id,
+            title: '为「' + f.name + '」开通接驳巴士',
+            desc: f.name + '（' + f.T.name + '）周边 ' + Math.round(CFG.walk.maxAccessM) + ' m 内没有可以设站的地块——它在景区或保护区内，整片不能建设。在附近最近的合法地块修建车站，再从车站开通一条接驳巴士到它的入口。每天约有 ' + U.fmtPeople(r.vol) + ' 人次到访。',
+            months: 36, reward: 40000 * ci });
+          break;   // 一次只发一个
+        }
       }
     }
     // 本城专属动态任务（D.dynTasks）：在年份窗口内各发布一次，已满足的不发布

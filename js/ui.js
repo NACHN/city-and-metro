@@ -1197,16 +1197,34 @@
     }
     out.sort(function (a, b) { return b.w - a.w; });
     const pick = [];
+    // 优先列出附近的重要设施（景区、医院、机场…）：它们往往在保护区或景区里，
+    // 人口也不高，但正是接驳巴士最该服务的对象。带上名字，玩家才知道该往哪开。
+    const fn = g.model && g.model.fn;
+    if (fn) {
+      const facs = [];
+      for (const f of fn.list) {
+        if (!isFinite(f.x) || !isFinite(f.y)) continue;
+        const d = Math.hypot(f.x - st.x, f.y - st.y) * CFG.CELL_M;
+        if (d < 400 || d > B.maxLenM) continue;
+        if ((st.bus || []).some(function (b) { return Math.hypot(b.x - f.x, b.y - f.y) * CFG.CELL_M <= B.walkReachM; })) continue;
+        const sd = g.model.facStats(f.id, 'avg');
+        const vol = sd ? (f.T.hub ? sd.inn + sd.out : sd.inn) : 0;
+        if (vol < 1500) continue;
+        facs.push({ x: f.x, y: f.y, w: vol, d: d, name: f.name, fac: f.id });
+      }
+      facs.sort(function (a, b) { return b.w - a.w; });
+      for (const f of facs.slice(0, 2)) pick.push(f);
+    }
     for (const o of out) {
+      if (pick.length >= 4) break;
       if (pick.some(function (p) { return Math.hypot(p.x - o.x, p.y - o.y) * CFG.CELL_M < 700; })) continue;
       pick.push(o);
-      if (pick.length >= 4) break;
     }
     const ci = g.econ.costIndex(g.clock.y);
     return pick.map(function (o) {
       const lenM = o.d * 1.25;   // 直线之外还要绕路
       return {
-        x: o.x, y: o.y, lenM: lenM, w: o.w, d: o.d,
+        x: o.x, y: o.y, lenM: lenM, w: o.w, d: o.d, name: o.name || '', fac: o.fac || null,
         cost: lenM / 1000 * B.costPerKm * ci,      // 万元
         ops: lenM / 1000 * B.opsPerKmYear / 12,    // 万元/月
       };

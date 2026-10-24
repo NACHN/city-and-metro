@@ -263,7 +263,7 @@
   function demandOrigin(D, i) {
     const Z = D.Z, F = D.F, A = D.A, Ls = D.Ls, fA = D.fA, fL = D.fL, rate = D.rate, rw = D.rw, zJobs = D.zJobs, zAsum = D.zAsum;
     const zCx = D.zCx, zCy = D.zCy, nx = D.nx, ny = D.ny, hostZ = D.hostZ, kmPerCell = D.kmPerCell;
-    const busEq = D.busEq, isMall = D.isMall;
+    const facBus = D.facBus;
     const w = D.w, wf = D.wf, scores = D.scores, s = D.s, kk = D.kk, cand = D.cand, candF = D.candF, tot = D.tot, o = D.out;
     const dest = o.dest, c0 = o.t[0], c1 = o.t[1], c2 = o.t[2], c3 = o.t[3], c4 = o.t[4], c5 = o.t[5];
     const w0 = w[0], w1 = w[1], w2 = w[2], w3 = w[3], w4 = w[4], A0 = A[0], A1 = A[1], A2 = A[2], A3 = A[3], A4 = A[4];
@@ -289,9 +289,9 @@
         if (!fL[k] || hostZ[Z + k] === i) { for (let p = 1; p < 5; p++) wf[p][k] = 0; continue; }
         const dx = xi - nx[Z + k], dy = yi - ny[Z + k];
         let d = Math.sqrt(dx * dx + dy * dy) * kmPerCell;
-        // 上盖商场在车站上方，所以「接驳到这一站」等于「到这家商场」。
-        // 接驳端点附近的小区用接驳等效距离替代直线距离——吸引力本身不变，变的是谁能方便到达。
-        if (busEq && isMall[k] && busEq[i] < d) d = busEq[i];
+        // 接驳端点附近的小区，到设施的等效距离按「接驳 + 端点步行」算，比直线更近时替换。
+        // 上盖商场就在站上（端点→设施 = 0），景区设施则是端点开到门口后再走几步。
+        if (facBus) { const bv = facBus[k * Z + i]; if (bv < d) d = bv; }
         const e = Math.exp(-d / fL[k]);
         for (let p = 1; p < 5; p++) { const v = fA[p][k] * e; wf[p][k] = v; s[p] += v; }
       }
@@ -563,25 +563,30 @@
     const rsum = rate[0] + rate[1] + rate[2] + rate[3] + rate[4];
     const zAsum = new Float64Array(Z);
     for (let z = 0; z < Z; z++) zAsum[z] = A[1][z] + A[2][z] + A[3][z] + A[4][z];
-    // 接驳巴士把车站上盖商业的吸引力延伸到端点：busEq[z] 是该小区通过接驳到最近「商场站」的等效距离（km）。
-    // 商场在车站正上方，所以接驳到站就等于到商场；没有接驳线时这张表为空，不进入任何计算。
-    const busEq = new Float32Array(Z).fill(1e9);
-    const isMall = new Uint8Array(F);
+    // 接驳巴士把「这一站能服务到哪里」延伸到端点，站上的商场与附近的设施都跟着受益。
+    // facBus[k * Z + z] = 小区 z 接驳到端点、再步行到设施 k 的等效距离（km）；没有接驳可达时为 1e9。
+    // 只改「谁能方便到达」，不改设施的吸引量——总量仍守恒。
+    const facBus = new Float32Array(F * Z).fill(1e9);
     if (CFG.bus && this.net) {
       const B = CFG.bus, mpm = CFG.walk.mPerMin;
-      for (let k = 0; k < F; k++) if (fn.list[k].t === 'mall') isMall[k] = 1;
-      let any = false;
-      for (let k = 0; k < F; k++) if (isMall[k]) { any = true; break; }
-      if (any) {
-        for (const sid in this.net.stations) {
-          const st = this.net.stations[sid];
-          if (!st.bus || !st.bus.length) continue;
-          for (const b of st.bus) {
-            const eqKm = ((b.lenM / 1000 / B.speedKmh * 60 + B.waitMin) * mpm + CFG.walk.cellExtraM) / 1000;
-            for (let z = 0; z < Z; z++) {
-              const dx = this.zCx[z] - b.x, dy = this.zCy[z] - b.y;
-              if (Math.sqrt(dx * dx + dy * dy) * CFG.CELL_M > B.walkReachM + 150) continue;
-              if (eqKm < busEq[z]) busEq[z] = eqKm;
+      for (const sid in this.net.stations) {
+        const st = this.net.stations[sid];
+        if (!st.bus || !st.bus.length) continue;
+        for (const b of st.bus) {
+          const eqKm = ((b.lenM / 1000 / B.speedKmh * 60 + B.waitMin) * mpm + CFG.walk.cellExtraM) / 1000;
+          // 端点能服务的设施：步行 500 m 内（上盖商场就在站上，距离为 0）
+          const facs = [];
+          for (let k = 0; k < F; k++) {
+            const dd = Math.hypot(fn.nx[Z + k] - b.x, fn.ny[Z + k] - b.y) * CFG.CELL_M;
+            if (dd <= 500) facs.push({ k: k, km: dd / 1000 });
+          }
+          if (!facs.length) continue;
+          for (let z = 0; z < Z; z++) {
+            const dx = this.zCx[z] - b.x, dy = this.zCy[z] - b.y;
+            if (Math.sqrt(dx * dx + dy * dy) * CFG.CELL_M > B.walkReachM + 150) continue;
+            for (const f of facs) {
+              const v = eqKm + f.km;
+              if (v < facBus[f.k * Z + z]) facBus[f.k * Z + z] = v;
             }
           }
         }
@@ -596,7 +601,7 @@
     if (!ob || ob.cap < Z * 120) ob = this._odBufs[this._odFlip] = odBuffer(Z * 160);
     const D = { Z: Z, F: F, A: A, Ls: Ls, fA: fA, fL: fL, rate: rate, rw: rate.map(function (r) { return r / rsum; }), zPop: this.zPop, zJobs: this.zJobs, zAsum: zAsum,
       zCx: this.zCx, zCy: this.zCy, nx: fn.nx, ny: fn.ny, hostZ: fn.hostZ, kmPerCell: kmPerCell, hubs: hubs, hubTours: hubTours,
-      busEq: busEq, isMall: isMall,
+      facBus: facBus,
       w: [new Float64Array(Z), new Float64Array(Z), new Float64Array(Z), new Float64Array(Z), new Float64Array(Z)],
       wf: [null, new Float64Array(F), new Float64Array(F), new Float64Array(F), new Float64Array(F)],
       scores: new Float64Array(Z), s: new Float64Array(5), kk: new Float64Array(5), cand: new Int32Array(Z), candF: new Int32Array(Math.max(1, F)),
