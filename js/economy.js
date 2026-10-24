@@ -661,11 +661,34 @@
     if (g.econ.caps.opsTasks && model.daily && model.daily.metro > 50000 && free('recovery', 'recovery')) {
       cands.push({ type: 'recovery', target: 0.7, sustain: 3, title: '改善运营收支', desc: '连续 3 个月票款收入不低于运营费用的 70%。', months: 24, reward: 40000 * ci });
     }
+    // 设施附近是否有可设站的地块。保护区、景区、山体与水域上都不能设站，
+    // 不检查就会发出「地铁服务灵隐寺」这类永远无法完成的任务：景区整片不能设站，
+    // 玩家把线路修到最近的合法地块也有 2.5 km，接驳后地铁比例仍到不了目标值。
+    const canStationNear = function (f) {
+      const R = CFG.walk.maxAccessM / CFG.CELL_M;
+      const i0 = Math.max(0, Math.floor(f.x - R)), i1 = Math.min(city.W - 1, Math.floor(f.x + R));
+      const j0 = Math.max(0, Math.floor(f.y - R)), j1 = Math.min(city.H - 1, Math.floor(f.y + R));
+      for (let j = j0; j <= j1; j++) {
+        for (let i = i0; i <= i1; i++) {
+          const dx = i + 0.5 - f.x, dy = j + 0.5 - f.y;
+          if (dx * dx + dy * dy > R * R) continue;
+          const c = j * city.W + i;
+          const rg = city.regions[city.region[c]];
+          if (!rg || rg.scenic || !city.regionOpen[city.region[c]]) continue;
+          if (city.landFrac[c] < 0.5) continue;
+          if (city.protectedId[c] > 0) continue;
+          if (city.lu[c] === CM.LU.WATER || city.lu[c] === CM.LU.HILL || city.lu[c] === CM.LU.AIRPORT) continue;
+          return true;
+        }
+      }
+      return false;
+    };
     // 重要设施的地铁接驳（v1.9）：到访量较大、乘地铁比例很低的设施；口径按设施类型（见 Tasks.facBasis）
     if (model.facDaily && model.fn && model.net && g.compiled.stations.length) {
       let best = null;
       for (const f of model.fn.list) {
         if (!free('fac:' + f.id, 'facShare')) continue;
+        if (!canStationNear(f)) continue;   // 附近没有能设站的地块，任务不可能完成
         const basis = Tasks.facBasis(f), r = Tasks.facShareOf(model, f, basis);
         if (!r || r.vol < 3000 || r.share > 0.12) continue;
         const score = r.vol * (1 - r.share);

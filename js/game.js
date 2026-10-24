@@ -233,6 +233,9 @@
       city.buildLandPrice(yr, model.net ? model.net.acc : null);
       this.accrueProperty(yr);
       this.accrueValueCapture(yr);
+      // 接驳巴士的运营费按月摊销：它只与线路长度有关，不看客流，所以建早了就是纯支出
+      const busOps = this.busOpsPerMonth();
+      if (busOps > 0.01) this.econ.spend('busOps', busOps);
     }
     if (this.macro && CM.Macro) CM.Macro.sample(this);   // 本月的岗位与交通效率（年度 GDP 取全年平均）
     yield;
@@ -671,6 +674,19 @@
       city.version++;
       if (this.model) { this.model.facDaily = null; this.model.buildZones(); this.model.buildDemand(); this.model.wake(); }
     }
+  };
+
+  // 接驳巴士的年度运营费（万元/月）：按线路长度摊销，与客流无关。
+  Game.prototype.busOpsPerMonth = function () {
+    const B = CFG.bus;
+    if (!B) return 0;
+    let km = 0;
+    for (const id in this.net.stations) {
+      const s = this.net.stations[id];
+      if (!s.bus || !s.bus.length) continue;
+      for (const b of s.bus) km += (b.lenM || 0) / 1000;
+    }
+    return km * B.opsPerKmYear / 12;
   };
 
   // 站点周围（默认 300 m）的地价总额，万元。用于增值回收的年度增量计算。

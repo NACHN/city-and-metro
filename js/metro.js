@@ -620,6 +620,22 @@
             item('upgrade', '上盖开发 ' + s.name + '（' + P.levelName[lvN] + '，' + U.fmtInt(Math.abs(area)) + ' ㎡）', capDelta * ci / 1e4, id);   // 元 → 万元
           }
         }
+        // 接驳巴士（经营模式）：新开通的线路按长度一次计费（科目归入 upgrade），停运不退款
+        const BB = CFG.bus;
+        if (BB) {
+          const oldBus = {};
+          for (const b of (o.bus || [])) oldBus[b.id] = b;
+          const newBus = {};
+          for (const b of (s.bus || [])) {
+            newBus[b.id] = b;
+            if (oldBus[b.id]) continue;
+            const km = Math.max(0, (b.lenM || 0) / 1000);
+            if (km <= 0) continue;
+            res.changes.mod.push('车站「' + s.name + '」开通接驳巴士 ' + km.toFixed(2) + ' km');
+            item('upgrade', '接驳巴士 ' + s.name + '（' + km.toFixed(2) + ' km）', km * BB.costPerKm * ci, id);
+          }
+          for (const bid in oldBus) if (!newBus[bid]) res.changes.mod.push('车站「' + s.name + '」停运接驳巴士（不退款）');
+        }
       }
       if (!o || U.dist(s.x, s.y, o.x, o.y) > 1e-6 || s.type !== o.type) touchedSt.add(id);
       if (newSite) {

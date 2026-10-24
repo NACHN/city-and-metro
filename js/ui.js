@@ -1143,6 +1143,76 @@
     this.rerenderPage();
   };
 
+  // 接驳巴士（经营模式）：开通走与上盖开发同一条草案路径，确认建设才扣款。
+  // 与上盖不同，接驳线的运营费按月摊销，所以「建早了」是持续亏，不是一次性。
+  UI.prototype.busOpen = function (id, cand) {
+    const g = this.g();
+    if (!g || g.draft || !CFG.bus) return;
+    const y = g.clock.y, m = g.clock.m, B = CFG.bus;
+    const r = g.edit(function (n) {
+      const s = n.stations[id];
+      if (!s) return { error: '车站不存在' };
+      s.bus = s.bus || [];
+      if (s.bus.length >= (B.maxPerStation || 4)) return { error: '每站最多 ' + (B.maxPerStation || 4) + ' 条接驳线' };
+      let k = 1;
+      while (s.bus.some(function (b) { return b.id === 'b' + k; })) k++;
+      s.bus.push({ id: 'b' + k, x: cand.x, y: cand.y, lenM: cand.lenM, at: [y, m] });
+      return null;
+    });
+    if (r && r.error) { this.toast(r.error, 'bad'); return; }
+    this.rerenderPage();
+  };
+  UI.prototype.busClose = function (id, busId) {
+    const g = this.g();
+    if (!g || g.draft) return;
+    const r = g.edit(function (n) {
+      const s = n.stations[id];
+      if (!s || !s.bus) return { error: '这条接驳线已不存在' };
+      s.bus = s.bus.filter(function (b) { return b.id !== busId; });
+      return null;
+    });
+    if (r && r.error) { this.toast(r.error, 'bad'); return; }
+    this.rerenderPage();
+  };
+
+  // 车站周边的接驳盲区候选：直线 0.6–3 km 内、步行覆盖不到、人口或岗位较多的格子。
+  // 按价值排序并做间距去重——玩家点一下就开通，不需要在地图上画线，也不需要自己算距离。
+  UI.prototype.busCandidates = function (st) {
+    const g = this.g(), city = g.city, net = g.model && g.model.net;
+    const acc = net ? net.acc : null;
+    if (!acc || !city || !CFG.bus) return [];
+    const B = CFG.bus, maxM = CFG.walk.maxAccessM, W = city.W, H = city.H;
+    const out = [];
+    for (let j = 0; j < H; j++) {
+      for (let i = 0; i < W; i++) {
+        const c = j * W + i;
+        const w = city.pop[c] + city.jobs[c];
+        if (w < 400) continue;
+        if (acc.cellWalk[c] <= maxM) continue;
+        const dx = i + 0.5 - st.x, dy = j + 0.5 - st.y;
+        const d = Math.sqrt(dx * dx + dy * dy) * CFG.CELL_M;
+        if (d < 600 || d > B.maxLenM) continue;
+        out.push({ x: i + 0.5, y: j + 0.5, w: w, d: d });
+      }
+    }
+    out.sort(function (a, b) { return b.w - a.w; });
+    const pick = [];
+    for (const o of out) {
+      if (pick.some(function (p) { return Math.hypot(p.x - o.x, p.y - o.y) * CFG.CELL_M < 700; })) continue;
+      pick.push(o);
+      if (pick.length >= 4) break;
+    }
+    const ci = g.econ.costIndex(g.clock.y);
+    return pick.map(function (o) {
+      const lenM = o.d * 1.25;   // 直线之外还要绕路
+      return {
+        x: o.x, y: o.y, lenM: lenM, w: o.w, d: o.d,
+        cost: lenM / 1000 * B.costPerKm * ci,      // 万元
+        ops: lenM / 1000 * B.opsPerKmYear / 12,    // 万元/月
+      };
+    });
+  };
+
   UI.prototype.select = function (sel, noPage) {
     this.selection = sel;
     if (!sel) { this.highlightLine = null; if (!noPage && this.stack.length && ['station', 'line', 'road', 'zone', 'facility'].indexOf(this.stack[this.stack.length - 1].kind) >= 0) this.back(); return; }

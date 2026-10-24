@@ -263,6 +263,7 @@
   function demandOrigin(D, i) {
     const Z = D.Z, F = D.F, A = D.A, Ls = D.Ls, fA = D.fA, fL = D.fL, rate = D.rate, rw = D.rw, zJobs = D.zJobs, zAsum = D.zAsum;
     const zCx = D.zCx, zCy = D.zCy, nx = D.nx, ny = D.ny, hostZ = D.hostZ, kmPerCell = D.kmPerCell;
+    const busEq = D.busEq, isMall = D.isMall;
     const w = D.w, wf = D.wf, scores = D.scores, s = D.s, kk = D.kk, cand = D.cand, candF = D.candF, tot = D.tot, o = D.out;
     const dest = o.dest, c0 = o.t[0], c1 = o.t[1], c2 = o.t[2], c3 = o.t[3], c4 = o.t[4], c5 = o.t[5];
     const w0 = w[0], w1 = w[1], w2 = w[2], w3 = w[3], w4 = w[4], A0 = A[0], A1 = A[1], A2 = A[2], A3 = A[3], A4 = A[4];
@@ -286,7 +287,12 @@
       s[0] = s0; s[1] = s1; s[2] = s2; s[3] = s3; s[4] = s4;
       for (let k = 0; k < F; k++) {
         if (!fL[k] || hostZ[Z + k] === i) { for (let p = 1; p < 5; p++) wf[p][k] = 0; continue; }
-        const dx = xi - nx[Z + k], dy = yi - ny[Z + k], d = Math.sqrt(dx * dx + dy * dy) * kmPerCell, e = Math.exp(-d / fL[k]);
+        const dx = xi - nx[Z + k], dy = yi - ny[Z + k];
+        let d = Math.sqrt(dx * dx + dy * dy) * kmPerCell;
+        // 上盖商场在车站上方，所以「接驳到这一站」等于「到这家商场」。
+        // 接驳端点附近的小区用接驳等效距离替代直线距离——吸引力本身不变，变的是谁能方便到达。
+        if (busEq && isMall[k] && busEq[i] < d) d = busEq[i];
+        const e = Math.exp(-d / fL[k]);
         for (let p = 1; p < 5; p++) { const v = fA[p][k] * e; wf[p][k] = v; s[p] += v; }
       }
       let nc = 0, nf = 0;
@@ -557,6 +563,30 @@
     const rsum = rate[0] + rate[1] + rate[2] + rate[3] + rate[4];
     const zAsum = new Float64Array(Z);
     for (let z = 0; z < Z; z++) zAsum[z] = A[1][z] + A[2][z] + A[3][z] + A[4][z];
+    // 接驳巴士把车站上盖商业的吸引力延伸到端点：busEq[z] 是该小区通过接驳到最近「商场站」的等效距离（km）。
+    // 商场在车站正上方，所以接驳到站就等于到商场；没有接驳线时这张表为空，不进入任何计算。
+    const busEq = new Float32Array(Z).fill(1e9);
+    const isMall = new Uint8Array(F);
+    if (CFG.bus && this.net) {
+      const B = CFG.bus, mpm = CFG.walk.mPerMin;
+      for (let k = 0; k < F; k++) if (fn.list[k].t === 'mall') isMall[k] = 1;
+      let any = false;
+      for (let k = 0; k < F; k++) if (isMall[k]) { any = true; break; }
+      if (any) {
+        for (const sid in this.net.stations) {
+          const st = this.net.stations[sid];
+          if (!st.bus || !st.bus.length) continue;
+          for (const b of st.bus) {
+            const eqKm = ((b.lenM / 1000 / B.speedKmh * 60 + B.waitMin) * mpm + CFG.walk.cellExtraM) / 1000;
+            for (let z = 0; z < Z; z++) {
+              const dx = this.zCx[z] - b.x, dy = this.zCy[z] - b.y;
+              if (Math.sqrt(dx * dx + dy * dy) * CFG.CELL_M > B.walkReachM + 150) continue;
+              if (eqKm < busEq[z]) busEq[z] = eqKm;
+            }
+          }
+        }
+      }
+    }
     // 输出写入复用的类型数组（两套交替使用：新的需求表算完前，旧表保持不变）
     this._odBufs = this._odBufs || [null, null];
     const cur = this.od && this.od.dest ? this.od.dest.buffer : null;
@@ -566,6 +596,7 @@
     if (!ob || ob.cap < Z * 120) ob = this._odBufs[this._odFlip] = odBuffer(Z * 160);
     const D = { Z: Z, F: F, A: A, Ls: Ls, fA: fA, fL: fL, rate: rate, rw: rate.map(function (r) { return r / rsum; }), zPop: this.zPop, zJobs: this.zJobs, zAsum: zAsum,
       zCx: this.zCx, zCy: this.zCy, nx: fn.nx, ny: fn.ny, hostZ: fn.hostZ, kmPerCell: kmPerCell, hubs: hubs, hubTours: hubTours,
+      busEq: busEq, isMall: isMall,
       w: [new Float64Array(Z), new Float64Array(Z), new Float64Array(Z), new Float64Array(Z), new Float64Array(Z)],
       wf: [null, new Float64Array(F), new Float64Array(F), new Float64Array(F), new Float64Array(F)],
       scores: new Float64Array(Z), s: new Float64Array(5), kk: new Float64Array(5), cand: new Int32Array(Z), candF: new Int32Array(Math.max(1, F)),
@@ -733,6 +764,59 @@
           const z = city.zoneOf(c);
           let m = zMap.get(z); if (!m) { m = new Map(); zMap.set(z, m); }
           const e = m.get(k) || [0, 0]; e[0] += w; e[1] += w * cd; m.set(k, e);
+        }
+      }
+      // 接驳巴士：站点 → 端点 → 端点步行圈，按「等效步行距离」并入这一站的服务范围。
+      // 只扩展接驳口径（cellWalk / 小区与设施接驳表），不产生新的出行需求——总量仍由人口决定。
+      // 没有 bus 字段的存档与模式完全不走这段，所以既有数值不受影响。
+      if (CFG.bus && st.bus && st.bus.length) {
+        const B = CFG.bus;
+        const bd = (this._busDist && this._busDist.length === city.V) ? this._busDist : (this._busDist = new Float64Array(city.V).fill(INF));
+        const btouched = [];
+        for (const b of st.bus) {
+          const cb = city.cellAt(b.x, b.y);
+          if (cb < 0) continue;
+          const eqM = (b.lenM / 1000 / B.speedKmh * 60 + B.waitMin) * mpm;   // 车程 + 候车，折成等效步行米
+          const bi = cb % city.W, bj = (cb / city.W) | 0;
+          heap.clear(); btouched.length = 0;
+          for (const v of [bj * VW + bi, bj * VW + bi + 1, (bj + 1) * VW + bi, (bj + 1) * VW + bi + 1]) {
+            if (walk.deg[v] === 0) continue;
+            const d0 = U.dist(b.x, b.y, city.vx[v], city.vy[v]) * CFG.CELL_M;
+            if (d0 < bd[v]) { if (bd[v] >= INF) btouched.push(v); bd[v] = d0; heap.push(d0, v); }
+          }
+          if (heap.n) {
+            while (heap.n) {
+              const u = heap.pop(), du = heap.lastKey;
+              if (du > bd[u]) continue;
+              for (let e = walk.start[u]; e < walk.start[u + 1]; e++) {
+                const v = walk.to[e], nd = du + walk.len[e];
+                if (nd < bd[v] && nd <= B.walkReachM) { if (bd[v] >= INF) btouched.push(v); bd[v] = nd; heap.push(nd, v); }
+              }
+            }
+          }
+          for (let j = Math.max(0, bj - 2); j <= Math.min(city.H - 1, bj + 2); j++) {
+            for (let i = Math.max(0, bi - 2); i <= Math.min(city.W - 1, bi + 2); i++) {
+              const v0 = j * VW + i;
+              const wd = Math.min(bd[v0], bd[v0 + 1], bd[v0 + VW], bd[v0 + VW + 1]);
+              if (wd >= INF) continue;
+              // 接驳覆盖按「可达」处理：等效距离饱和到步行阈值。
+              // 现实的接驳体验（10 分钟车程 + 5 分钟候车 + 步行）确实比步行慢，
+              // 但它提供的是「原来根本到不了」的选项，所以要计入覆盖而不是被 15 分钟门槛挡掉。
+              // 真正限制范围的是 maxLenM（单条最长），不是这里的阈值。
+              let cd = eqM + wd + extra;
+              if (cd > maxM) cd = maxM;
+              const c = j * city.W + i;
+              if (cd < cellWalk[c]) { cellWalk[c] = cd; cellStation[c] = k; }
+              const fl = cellFac && cellFac.get(c);
+              if (fl) for (const f of fl) { let m = fMap.get(f); if (!m) { m = new Map(); fMap.set(f, m); } const e = m.get(k) || [0, 0]; e[0] += 1; e[1] += cd; m.set(k, e); }
+              const w = city.pop[c] + city.jobs[c];
+              if (w <= 0) continue;
+              const z = city.zoneOf(c);
+              let m = zMap.get(z); if (!m) { m = new Map(); zMap.set(z, m); }
+              const e = m.get(k) || [0, 0]; e[0] += w; e[1] += w * cd; m.set(k, e);
+            }
+          }
+          for (const v of btouched) bd[v] = INF;
         }
       }
       // 站外换乘
