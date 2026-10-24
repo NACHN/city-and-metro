@@ -44,7 +44,10 @@
     g.tasks = new CM.Tasks();
     g.model.solveNow(2);
     // 地价是经营模式的派生量：开局先算一次，之后每月随城市与线网更新（见 monthGen）
-    if (g.econ.caps.land) g.city.buildLandPrice(g.clock.y, g.model.net ? g.model.net.acc : null);
+    if (g.econ.caps.land) {
+      g.city.buildLandPrice(g.clock.y, g.model.net ? g.model.net.acc : null);
+      g.applyDevJobs();
+    }
     g.econ.startMonth(g.clock.y, g.clock.m);
     const e0 = D.events && D.events[0];
     if (e0) g.logEvent({ tag: e0.tag || '史实', title: e0.title, desc: e0.desc });
@@ -426,6 +429,7 @@
     for (const id in d.net.segments) d.net.segments[id].base = null;
     const summary = ev.changes.add.length + ' 项新建、' + ev.changes.mod.length + ' 项修改、' + ev.changes.del.length + ' 项拆除';
     this.net = d.net;
+    this.applyDevJobs();   // 上盖新增/取消带来的岗位变化，立即反映到出行需求
     this.netVersion++;
     this.rev++;
     this.compiled = M.compile(this.net, this.city);
@@ -505,35 +509,80 @@
   // 车站上盖开发：租金 = 建筑面积 × 售价 × 租售比 ÷ 12 × 出租率；维护费按建安计提。
   // 售价 ≈ 楼面地价（商住地价 ÷ 开发容积率）+ 建安，所以地价涨租金跟着涨，年代上涨由物价指数承担。
   // 出租率按开发年份爬坡（第 0/1/2/3 年），所以"建早了"在头几年是亏的。
-  Game.prototype.accrueProperty = function (year) {
-    const P = CFG.property, city = this.city, econ = this.econ;
-    if (!P || !city.landPrice) return null;
-    const ci = econ.costIndex(year), buildCost = P.buildCost * ci;
-    const ymNow = U.ymIndex(this.clock.y, this.clock.m);
+  // 单个站点的物业估算（纯函数，不做账）：面板即时显示用
+  Game.prototype.propertyOf = function (s) {
+    const P = CFG.property, city = this.city;
+    if (!P || !s || !(s.dev | 0)) return null;
+    const c = city.cellAt(s.x, s.y);
+    if (c < 0 || !city.landPrice || !(city.landPrice[c] > 0)) return null;
+    const ci = this.econ.costIndex(this.clock.y), buildCost = P.buildCost * ci, lv = s.dev | 0;
+    const area = (P.areaBySize[s.size] || 0) * (P.levels[lv] || 0);
+    const price = city.landPrice[c] / (P.far || 4) + buildCost;
     const p50 = (city.landStat && city.landStat.p50) || 0;
+    const rel = p50 > 0 ? city.landPrice[c] / p50 : 1;
+    const prem = 1 + (P.premiumGain || 0) * Math.max(0, Math.min(1, (rel - 1) / (P.premiumSpan || 3)));
+    const now = U.ymIndex(this.clock.y, this.clock.m);
+    const at = s.devAt ? U.ymIndex(s.devAt[0], s.devAt[1]) : now;
+    const held = P.ramp[Math.min(P.ramp.length - 1, Math.max(0, Math.floor((now - at) / 12)))];
+    const rent = area * price * P.rentYield / 12 * prem * held / 1e4;   // 万元/月
+    const maint = area * buildCost * P.maintain / 12 / 1e4;            // 万元/月
+    return { area: area, price: price, prem: prem, held: held, rent: rent, maint: maint, capex: area * buildCost / 1e4 };
+  };
+
+  Game.prototype.accrueProperty = function (year) {
+    const P = CFG.property, econ = this.econ;
+    if (!P || !this.city.landPrice) return null;
     let sites = 0, areaSum = 0, rentSum = 0, maintSum = 0;
     for (const id in this.net.stations) {
       const s = this.net.stations[id];
-      const lv = s.dev | 0;
-      if (!lv || !P.levels[lv]) continue;
-      const c = city.cellAt(s.x, s.y);
-      if (c < 0 || !(city.landPrice[c] > 0)) continue;
-      const area = (P.areaBySize[s.size] || 0) * P.levels[lv];
-      const price = city.landPrice[c] / (P.far || 4) + buildCost;   // 元/㎡ 建筑面积
-      // 商业溢价：地价越高的站，上盖越偏商业，租金相对住宅越高（吃满于中位的 1+span 倍）
-      const rel = p50 > 0 ? city.landPrice[c] / p50 : 1;
-      const prem = 1 + (P.premiumGain || 0) * Math.max(0, Math.min(1, (rel - 1) / (P.premiumSpan || 3)));
-      const at = s.devAt ? U.ymIndex(s.devAt[0], s.devAt[1]) : ymNow;
-      const held = P.ramp[Math.min(P.ramp.length - 1, Math.max(0, Math.floor((ymNow - at) / 12)))];
-      const rent = area * price * P.rentYield / 12 * prem * held;   // 元/月
-      const maint = area * buildCost * P.maintain / 12;             // 元/月
-      s.prop = { area: area, price: price, prem: prem, held: held, rent: rent / 1e4, maint: maint / 1e4 };
-      sites++; areaSum += area; rentSum += rent / 1e4; maintSum += maint / 1e4;
+      const est = this.propertyOf(s);
+      if (!est) continue;
+      s.prop = est;
+      sites++; areaSum += est.area; rentSum += est.rent; maintSum += est.maint;
     }
     this.propStat = { sites: sites, area: areaSum, rent: rentSum, maint: maintSum, net: rentSum - maintSum };
     if (rentSum > 0.01) econ.income('property', rentSum);
     if (maintSum > 0.01) econ.spend('propMaint', maintSum);
     return this.propStat;
+  };
+
+  // 上盖商业带来的岗位：作为该格的岗位容量加成，并在开发时按增量一次性补足（可增可减）
+  // 上盖的居住与就业负荷：住宅部分计入人口容量（所以真的会产生出行），商业部分计入岗位容量
+  Game.prototype.syncDevLoad = function () {
+    const P = CFG.property, city = this.city;
+    if (!P) return null;
+    if (!city.devJobs || city.devJobs.length !== city.N) city.devJobs = new Float32Array(city.N);
+    if (!city.devPop || city.devPop.length !== city.N) city.devPop = new Float32Array(city.N);
+    const jArr = city.devJobs, pArr = city.devPop;
+    jArr.fill(0); pArr.fill(0);
+    for (const id in this.net.stations) {
+      const s = this.net.stations[id], lv = s.dev | 0;
+      if (!lv) continue;
+      const c = city.cellAt(s.x, s.y);
+      if (c < 0) continue;
+      const area = (P.areaBySize[s.size] || 0) * (P.levels[lv] || 0);
+      pArr[c] += area * (P.resShare || 0) / (P.resAreaPerCap || 40);
+      jArr[c] += area * (1 - (P.resShare || 0)) * (P.jobsPerM2 || 0);
+    }
+    return { pop: pArr, jobs: jArr };
+  };
+  Game.prototype.applyDevJobs = function () {
+    const P = CFG.property, city = this.city;
+    if (!P || !this.econ.caps.land) return;
+    this.syncDevLoad();
+    let changed = false;
+    for (const id in this.net.stations) {
+      const s = this.net.stations[id], lv = s.dev | 0;
+      const c = city.cellAt(s.x, s.y);
+      if (c < 0) continue;
+      const area = lv ? (P.areaBySize[s.size] || 0) * (P.levels[lv] || 0) : 0;
+      const tPop = area * (P.resShare || 0) / (P.resAreaPerCap || 40);
+      const tJob = area * (1 - (P.resShare || 0)) * (P.jobsPerM2 || 0);
+      const dPop = tPop - (s.devPopDone || 0), dJob = tJob - (s.devJobsDone || 0);
+      if (Math.abs(dPop) > 0.5) { city.pop[c] = Math.max(0, city.pop[c] + dPop); s.devPopDone = tPop; changed = true; }
+      if (Math.abs(dJob) > 0.5) { city.jobs[c] = Math.max(0, city.jobs[c] + dJob); s.devJobsDone = tJob; changed = true; }
+    }
+    if (changed) { city.version++; if (this.model) { this.model.buildZones(); this.model.buildDemand(); } }
   };
 
   // ---------------- 存档 ----------------

@@ -127,7 +127,7 @@
       const P = CFG.property, lv = official.dev | 0;
       el.appendChild(this.sec('st-prop', '上盖物业', P.levelName[lv] || '未开发', function () {
         const b = h('div');
-        const pr = official.prop;
+        const pr = official.prop || g.propertyOf(official);
         if (!lv) b.appendChild(h('div', { class: 'note' }, '可以在车站上方开发物业：建成后按月收租，地价越高租得越贵；头两三年出租率爬坡，所以早建要先亏一阵。'));
         else if (pr) b.appendChild(self.kv([
           ['建筑面积', U.fmtInt(pr.area) + ' ㎡'],
@@ -141,11 +141,12 @@
         const canDev = !g.draft;
         if (canDev) {
           const row = h('div', { class: 'row', style: { marginTop: '8px', flexWrap: 'wrap' } });
-          [1, 2].forEach(function (to) {
-            if (lv >= to) return;
-            const area = (P.areaBySize[official.size] || 0) * ((P.levels[to] || 0) - (P.levels[lv] || 0));
-            const cost = area * P.buildCost * g.econ.costIndex(g.clock.y) / 1e4;   // 元 → 万元
-            row.appendChild(h('button', { class: 'btn sm', onclick: function () { self.devStation(id, to); } }, P.levelName[to] + ' · ' + U.fmtMoney(cost)));
+          [0, 1, 2].forEach(function (to) {
+            if (to === lv) return;
+            const dArea = (P.areaBySize[official.size] || 0) * ((P.levels[to] || 0) - (P.levels[lv] || 0));
+            const cost = dArea * P.buildCost * g.econ.costIndex(g.clock.y) / 1e4;   // 元 → 万元
+            const label = to === 0 ? '取消开发（不退款）' : (P.levelName[to] + ' · ' + U.fmtMoney(cost));
+            row.appendChild(h('button', { class: 'btn sm' + (to < lv ? ' ghost danger' : ''), onclick: function () { self.devStation(id, to); } }, label));
           });
           if (row.children.length) b.appendChild(row);
           b.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } }, '点选后进入草案，确认建设才扣款。'));

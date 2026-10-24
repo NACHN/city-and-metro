@@ -1135,7 +1135,7 @@
     const r = g.edit(function (n) {
       const s = n.stations[id];
       if (!s) return { error: '车站不存在' };
-      s.dev = Math.max(s.dev | 0, lv);
+      s.dev = lv;
       s.devAt = [y, m];
       return null;
     });

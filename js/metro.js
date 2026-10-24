@@ -606,7 +606,9 @@
         if (s.name !== o.name) res.changes.mod.push('车站更名：' + o.name + ' → ' + s.name);
         // 上盖物业（经营模式）：开发强度只升不降，费用按新增建筑面积一次计入建设支出
         const P = CFG.property, lvO = (o.dev | 0) || 0, lvN = (s.dev | 0) || 0;
-        if (P && lvN > lvO) {
+        if (P && lvN < lvO) {
+          res.changes.mod.push('车站「' + s.name + '」缩减上盖：' + P.levelName[lvN] + '（不退款）');
+        } else if (P && lvN > lvO) {
           const area = (P.areaBySize[s.size] || 0) * ((P.levels[lvN] || 0) - (P.levels[lvO] || 0));
           if (area > 0) {
             res.changes.mod.push('车站「' + s.name + '」上盖开发：' + P.levelName[lvN]);

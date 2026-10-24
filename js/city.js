@@ -1046,7 +1046,9 @@
       if (lf <= 0.05) continue;
       const P = L === LU.RURAL ? this.plan[c] : L;
       const cr = resCap(P) * eraMul * lf, cj = jobCap(P, this.regions[this.region[c]].plan) * eraMul * lf;
-      capR[c] = cr; capJ[c] = cj;
+      // 上盖带来的额外容量：住宅部分计入人口容量（会产生出行），商业部分计入岗位容量
+      capR[c] = cr + (this.devPop ? this.devPop[c] : 0);
+      capJ[c] = cj + (this.devJobs ? this.devJobs[c] : 0);
       const i = c % W, j = (c / W) | 0;
       let nb = 0;
       for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
