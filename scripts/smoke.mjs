@@ -1,9 +1,13 @@
 // 无头冒烟与数值回归：在 Node 里加载纯逻辑模块（不加载渲染与界面），
 // 对固定地图 / 模式推进固定月数，输出状态指纹。零依赖。
 //
-//   node scripts/smoke.mjs                        # 六图 × 两模式，推进 2 个月
+//   node scripts/smoke.mjs                        # 六图 × 各模式，推进 2 个月
 //   node scripts/smoke.mjs --months=6 --maps=gz,hk
+//   node scripts/smoke.mjs --months=0             # 只建局不推进（最快，用于纯初始态对比）
 //   node scripts/smoke.mjs --json                 # 只输出 JSON
+//
+// 推进方式：逐日 endDay（票款、运营、日期）直到跨月，再跑 monthGen。日历是真实移动的，
+// 所以跨年与跨年代的效应都会体现出来。
 //
 // 用途：改动模拟内核后对比两次运行的指纹，确认既有模式数值未漂移。
 // 注意：指纹包含地图数据与交通模型版本，所以跨版本比较前先确认地图数据未变。
@@ -59,20 +63,35 @@ function normalize(v) {
   return JSON.stringify(v, (k, x) => (NONDET.has(k) ? null : x));
 }
 
+// 推进一个月：逐日结算（票款、运营、日期）直到跨月，再跑月度生成。
+// 只跑 monthGen 而不 endDay 的话日历不动，"推进 N 个月"会变成同一个月跑 N 次，
+// 跨年与跨年代的效应全都测不出来。
+function advanceMonth(g) {
+  const y0 = g.clock.y, m0 = g.clock.m;
+  let days = 0;
+  while (g.clock.y === y0 && g.clock.m === m0) {
+    g.endDay();
+    if (++days > 40) throw new Error('推进超过 40 天仍未跨月（' + y0 + '-' + m0 + '）');
+  }
+  const it = g.monthGen();
+  for (let r = it.next(); !r.done; r = it.next()) { /* 跑完一个月 */ }
+  return days;
+}
+
 function runMap(mapId, mode) {
   CM.useMap(mapId);
   const g = CM.Game.create({ map: mapId, mode: mode, name: 'smoke' });
   g.model.solveNow(2);
-  for (let i = 0; i < months; i++) {
-    const it = g.monthGen();
-    for (let r = it.next(); !r.done; r = it.next()) { /* 跑完一个月 */ }
-  }
+  let days = 0;
+  for (let i = 0; i < months; i++) days += advanceMonth(g);
   const d = g.model.daily || {};
   const t = g.city.totals();
   const body = normalize(g.serialize());
   const row = {
     map: mapId,
     mode: mode,
+    at: g.clock.y + '-' + String(g.clock.m).padStart(2, '0'),
+    days: days,
     pop: Math.round(t.pop),
     jobs: Math.round(t.jobs),
     trips: Math.round(d.trips || 0),
@@ -108,7 +127,7 @@ for (const mapId of mapArg.split(',').map((s) => s.trim()).filter(Boolean)) {
       const r = runMap(mapId, mode);
       r.ms = Date.now() - t0;
       rows.push(r);
-      log([r.map.padEnd(9), r.mode.padEnd(10), String(r.pop).padStart(9), String(r.metro).padStart(8),
+      log([r.map.padEnd(9), r.mode.padEnd(10), String(r.at).padStart(8), String(r.pop).padStart(9), String(r.metro).padStart(8),
         String(r.share).padStart(8), String(r.funds).padStart(9), String(r.sat).padStart(7),
         (r.land ? ('地价 ' + r.land.mean + ' 中位 ' + r.land.p50 + ' 梯度 ' + r.land.gradient.toFixed(2) + '×').padEnd(34) : ''.padEnd(34)),
         r.hash].join('  '));
