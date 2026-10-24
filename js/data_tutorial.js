@@ -241,6 +241,9 @@
     modes: ['free'],
     geo: GEO, data: DATA,
     cfg: {
+      // 地价基准（元/㎡ 土地，开局年）：按本地建设成本的量级标定，理由见 TOD 与经济系统方案 §6.2。
+      // 虚构城市 2000（沿用广州口径）
+      land: Object.assign({}, CFG.land, { base: 300 }),
       W: W, H: H, START: { y: 2000, m: 1, d: 1, minute: 6 * 60 },
       workWeek: { sat: [[2000, 0]], school: [[2000, 0]] },   // 虚构城市：双休日
       growth: Object.assign({}, CFG.growth, { popCurve: [[2000, 4.2e5], [2005, 4.9e5], [2010, 5.7e5], [2015, 6.3e5], [2020, 6.8e5], [2030, 7.5e5], [2050, 8.2e5], [2300, 9.0e5]], histEnd: 2000 }),

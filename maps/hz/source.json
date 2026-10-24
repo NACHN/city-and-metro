@@ -1669,6 +1669,28 @@
       ],
       "metroBoostMax": 0.06
     },
+    "land": {
+      "base": 500,
+      "clearFactor": 1.4,
+      "poiGain": 0.9,
+      "poiGroup": {
+        "交通枢纽": 1,
+        "商业": 0.8,
+        "教育": 0.5,
+        "医疗": 0.5,
+        "旅游休闲": 0.4
+      },
+      "poiRadius": 4,
+      "accessGain": 0.7,
+      "accessScale": 700,
+      "densGain": 0.75,
+      "densRef": 1200,
+      "densPow": 0.6,
+      "densCap": 4,
+      "jobGain": 0.2,
+      "jobRef": 8000,
+      "maxMul": 12
+    },
     "econBase": 2000,
     "cost": {
       "trackPerKm": {
