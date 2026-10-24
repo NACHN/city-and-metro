@@ -633,7 +633,10 @@
       sites++; areaSum += est.area; rentSum += est.rent; maintSum += est.maint;
     }
     this.propStat = { sites: sites, area: areaSum, rent: rentSum, maint: maintSum, net: rentSum - maintSum };
-    if (rentSum > 0.01) econ.income('property', rentSum);
+    if (rentSum > 0.01) {
+      econ.income('property', rentSum);
+      econ.log('property', rentSum, 'gen', '上盖物业租金（' + sites + ' 处）', { y: this.clock.y, m: this.clock.m, d: 1 });
+    }
     if (maintSum > 0.01) econ.spend('propMaint', maintSum);
     return this.propStat;
   };
@@ -751,7 +754,10 @@
       } else s.capGain = 0;
     }
     this.capStat = { sites: sites, gain: gainSum, base: base };
-    if (gainSum > 0.01) econ.income('capture', gainSum);
+    if (gainSum > 0.01) {
+      econ.income('capture', gainSum);
+      econ.log('capture', gainSum, 'gen', 'TOD 增值分成（' + sites + ' 处）', { y: this.clock.y, m: this.clock.m, d: 1 });
+    }
     return this.capStat;
   };
 

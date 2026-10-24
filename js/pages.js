@@ -1120,16 +1120,30 @@
     const row = function (icon, label, v, cls) { return h('div', { class: 'fm-row ' + cls }, CM.icon(icon, 15), h('span', { class: 'grow' }, label), h('b', { class: 'num' }, v)); };
     const drawMonth = function () {
       const c = E.cur;
+      const inSum = (c.fare || 0) + (c.property || 0) + (c.capture || 0) + (c.reward || 0) + Math.max(0, (c.grant || 0) - (c.grantCapex || 0));
+      let bld = 0; for (const k of CM.Economy.BUILD_KINDS) bld += c[k] || 0;
+      const outSum = (c.ops || 0) + (c.propMaint || 0) + (c.busOps || 0) + (c.facMaint || 0) + bld + (c.interest || 0) + (c.principal || 0) + (c.penalty || 0);
+      const net = inSum - outSum;
+      const sub = Math.max(0, (c.grant || 0) - (c.grantCapex || 0));
       // 原生 replaceChildren 会把 null 写成文字，只传实际存在的节点
       mbox.replaceChildren.apply(mbox, [
         h('div', { class: 'fm-h' }, h('b', null, '本月收支'), h('span', { class: 'tiny muted' }, g.clock.y + '年' + g.clock.m + '月 · 已结算 ' + c.days + ' 天')),
-        free ? null : row('bank', '政府拨款', '+' + U.fmtMoney(c.grant), 'in'),
+        free || sub <= 0.01 ? null : row('bank', (c.grantCapex || 0) > 0.5 ? '运营补贴' : '政府拨款', '+' + U.fmtMoney(sub), 'in'),
+        (c.grantCapex || 0) > 0.5 ? row('hammer', '建设批次（转入专项资金，不计入收支）', '+' + U.fmtMoney(c.grantCapex), 'mute') : null,
         row('ticket', '票款', '+' + U.fmtMoney(c.fare), 'in'),
+        (c.property || 0) > 0.01 ? row('home', '上盖物业租金', '+' + U.fmtMoney(c.property), 'in') : null,
+        (c.capture || 0) > 0.01 ? row('coin', 'TOD 增值分成', '+' + U.fmtMoney(c.capture), 'in') : null,
         free || !c.reward ? null : row('gift', '任务奖励', '+' + U.fmtMoney(c.reward), 'in'),
         row('train', '运营成本', '−' + U.fmtMoney(c.ops), 'out'),
-        (c.busOps || 0) > 0.01 ? row('bus', '接驳巴士', '−' + U.fmtMoney(c.busOps), 'out') : null,
-        (function () { let b = 0; for (const k of CM.Economy.BUILD_KINDS) b += c[k] || 0; return b > 0.5 ? row('hammer', '建设支出', '−' + U.fmtMoney(b), 'out') : null; })(),
+        (c.propMaint || 0) > 0.01 ? row('home', '物业维护', '−' + U.fmtMoney(c.propMaint), 'out') : null,
+        (c.busOps || 0) > 0.01 ? row('bus', '接驳巴士运营', '−' + U.fmtMoney(c.busOps), 'out') : null,
+        (c.facMaint || 0) > 0.01 ? row('metro', '车站配套维护', '−' + U.fmtMoney(c.facMaint), 'out') : null,
+        bld > 0.5 ? row('hammer', '建设支出', '−' + U.fmtMoney(bld), 'out') : null,
         free || !((c.interest || 0) + (c.principal || 0) + (c.penalty || 0)) ? null : row('wallet', '偿债', '−' + U.fmtMoney((c.interest || 0) + (c.principal || 0) + (c.penalty || 0)), 'debt'),
+        h('div', { class: 'fm-sum' },
+          h('span', null, '收入 ' + U.fmtMoney(inSum)),
+          h('span', null, '支出 ' + U.fmtMoney(outSum)),
+          h('b', { class: net >= 0 ? 'good' : 'bad' }, '净额 ' + (net >= 0 ? '+' : '−') + U.fmtMoney(Math.abs(net)))),
         h('button', { class: 'linkbtn', onclick: function () { goFin(self, 'fisc'); } }, '收支明细与资金流水', CM.icon('chev', 14))].filter(Boolean));
     };
     drawMonth(); mbox._d = E.cur.days; this.live.push(function () { if (E.cur.days !== mbox._d) { mbox._d = E.cur.days; drawMonth(); } });
@@ -1139,9 +1153,21 @@
     // 下月拨款（经营挑战）
     if (!free) {
       const ny = g.clock.m === 12 ? g.clock.y + 1 : g.clock.y, nm = g.clock.m % 12 + 1;
-      el.appendChild(h('div', { class: 'fin-grant clickable', onclick: function () { goFin(self, 'fisc'); } },
-        h('div', { class: 'fg-h' }, CM.icon('bank', 16), h('b', null, '下月拨款预计'), h('span', { class: 'grow' }), h('b', { class: 'num' }, U.fmtMoney(E.grantFor(ny, nm))), CM.icon('chev', 14)),
-        this.grantChain(ny, nm, true)));
+      if (E.batchOn && E.batchOn()) {
+        // 批次模式没有「下月固定拨款」，这里显示的是「下一批建设资金」与「本月运营补贴」
+        const B = E.batchCfg(), yrs = B.years || 4, y0 = CFG.START.y;
+        const cyc = ((g.clock.y - y0) % yrs + yrs) % yrs;
+        const nb = g.clock.y - cyc + yrs;
+        const amt = E.annualQuota(nb) * yrs * (B.buildFactor || 1) * (0.6 + 0.8 * E.sat / 100);
+        const subM = Math.max(0, (E.cur.grant || 0) - (E.cur.grantCapex || 0));
+        el.appendChild(h('div', { class: 'fin-grant clickable', onclick: function () { goFin(self, 'fisc'); } },
+          h('div', { class: 'fg-h' }, CM.icon('bank', 16), h('b', null, '下一批建设资金'), h('span', { class: 'grow' }), h('b', { class: 'num' }, nb + ' 年 · ' + U.fmtMoney(amt)), CM.icon('chev', 14)),
+          h('div', { class: 'tiny muted', style: { marginTop: '2px' } }, '运营补贴（' + E.subsidyName() + ' · 承担运营成本的 ' + U.fmtPct(E.subsidyRate(), 0) + '）：本月 ' + U.fmtMoney(subM) + '，按客流逐日结算')));
+      } else {
+        el.appendChild(h('div', { class: 'fin-grant clickable', onclick: function () { goFin(self, 'fisc'); } },
+          h('div', { class: 'fg-h' }, CM.icon('bank', 16), h('b', null, '下月拨款预计'), h('span', { class: 'grow' }), h('b', { class: 'num' }, U.fmtMoney(E.grantFor(ny, nm))), CM.icon('chev', 14)),
+          this.grantChain(ny, nm, true)));
+      }
     }
     this.finLines(el);
     el.appendChild(this.sec('fi-fare', '票价', UI.fmtFare(E.fare.flat), function () { return self.fareEditor(); }, true, 'ticket'));
@@ -1310,7 +1336,7 @@
             ['建设专项资金余额', U.fmtMoney(E.capex) + '（只能建设与拆迁，可跨批滚存）'],
             ['补贴力度', E.subsidyName() + ' · 承担运营成本的 ' + U.fmtPct(E.subsidyRate(), 0)],
             ['本月运营', '成本 ' + U.fmtMoney(opsM) + ' · 票款 ' + U.fmtMoney(fareM) + ' · 补贴 ' + U.fmtMoney(subM)],
-            ['客均成本 / 客均票款', U.fmtMoney(perCost, 1) + ' / ' + U.fmtMoney(g.econ.fare.flat, 1),
+            ['客均成本 / 客均票款', CFG.money.sym + perCost.toFixed(1) + ' / ' + CFG.money.sym + g.econ.fare.flat.toFixed(1),
               cover >= 1 ? 'good' : (cover >= 0.8 ? 'warn' : 'bad')],
             ['本月覆盖', U.fmtPct(cover, 0), cover >= 1 ? 'good' : (cover >= 0.8 ? 'warn' : 'bad')],
             ['下一批预计', nextBatch + ' 年 1 月 · ' + U.fmtMoney(nextAmt)],
@@ -1510,13 +1536,22 @@
       // 玩家不必再去翻账本自己算一次。
       let oldInt = 0;
       for (const b of E.bonds) if (!b.done) oldInt += b.amount * b.rate;
-      const grantYr = Math.max(1, (E.batchOn && E.batchOn()) ? E.annualQuota(y) : E.grantFor(y, g.clock.m) * 12), intYr = oldInt + it, ratio = intYr / grantYr;
+      // 批次模式下还款只能靠「运营现金流」：票款 + 物业租金 + 运营补贴。
+      // 拿年盘子去比没有意义——那是建设专项资金，一分都不能还债。
+      const batch = E.batchOn && E.batchOn();
+      let opCash = 0;
+      if (batch) {
+        const L2 = E.ledger.slice(-12);
+        for (const r2 of L2) opCash += (r2.fare || 0) + (r2.property || 0) + (r2.subsidy || 0);
+        if (L2.length) opCash = opCash / L2.length * 12;
+      }
+      const base = Math.max(1, batch ? opCash : E.grantFor(y, g.clock.m) * 12), intYr = oldInt + it, ratio = intYr / base;
       pv.appendChild(self.kv([
         ['每年利息（含既有债务）', U.fmtMoney(intYr)],
-        ['占全年拨款', U.fmtPct(ratio, 0), ratio > 0.5 ? 'bad' : (ratio > 0.3 ? 'warn' : '')],
-        ['全年拨款', U.fmtMoney(grantYr)],
+        [batch ? '占年运营现金流' : '占全年拨款', U.fmtPct(ratio, 0), ratio > 0.5 ? 'bad' : (ratio > 0.3 ? 'warn' : '')],
+        [batch ? '年运营现金流（票款 + 物业 + 补贴）' : '全年拨款', U.fmtMoney(base)],
       ]));
-      pv.appendChild(h('div', { class: 'note', style: { marginTop: '4px' } }, ratio > 0.5 ? '利息已超过全年拨款的一半：再借只能靠票款和上盖去还，风险很高。' : (ratio > 0.3 ? '利息约占拨款的三到五成，还需要票款补一部分。' : '利息负担在拨款可以承受的范围内。')));
+      pv.appendChild(h('div', { class: 'note', style: { marginTop: '4px' } }, ratio > 0.5 ? '利息已超过年运营现金流的一半：还债只能挤占运营，风险很高。' : (ratio > 0.3 ? '利息约占运营现金流的三到五成，需要运营继续改善。' : '利息在运营现金流可以承受的范围内。') + (batch ? '（建设专项资金不能用于还债。）' : '')));
       pv.appendChild(h('div', { class: 'qline' }, q.parts.map(function (p, i) { return h('span', { class: p.k === 'base' ? '' : (p.v > 0.00005 ? 'bad' : (p.v < -0.00005 ? 'good' : 'muted')) }, (i ? (p.v < 0 ? ' − ' : ' + ') : '') + p.label.replace(/（.*）/, '') + ' ' + (Math.abs(p.v) * 100).toFixed(2) + '%'); })));
       ok.disabled = !(amount > 0);
     };

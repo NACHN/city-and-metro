@@ -186,6 +186,7 @@
       const c = this.cur, when = { y: c.y, m: c.m, d: U.daysInMonth(c.y, c.m) };
       if (c.fare > 0.5) this.log('fare', c.fare, 'gen', '本月票款（' + c.days + ' 天' + (c.wdDays || c.weDays ? '：' + (c.wdDays || 0) + ' 个工作日、' + (c.weDays || 0) + ' 个周末日' : '') + '）', when);
       if (c.ops > 0.5) this.log('ops', -c.ops, 'gen', '本月运营成本（' + c.days + ' 天）', when);
+      if ((c.subsidy || 0) > 0.5) this.log('grant', c.subsidy, 'gen', '本月运营补贴（运营成本 × ' + Math.round(this.subsidyRate() * 100) + '%）', when);
     }
     this.cur.closed = true;
     this.ledger.push(this.cur);
@@ -623,13 +624,16 @@
       },
     },
     recovery: {
-      name: '票款回收率', basis: 'ledger',
-      params: [['target', '票款 / 运营费用 目标'], ['sustain', '需连续达标的月数', true]],
+      name: '运营收支', basis: 'ledger',
+      params: [['target', '（票款 + 物业租金）/ 运营费用 目标'], ['sustain', '需连续达标的月数', true]],
       evaluate: function (t, ctx) {
         const g = ctx.g;
         const last = g.econ.ledger[g.econ.ledger.length - 1];
-        const v = last && last.ops > 0 ? last.fare / last.ops : 0;
-        return { ok: v >= t.target, value: v / t.target, text: '上月票款/运营费用 ' + U.fmtPct(v, 0) + ' / 目标 ' + U.fmtPct(t.target, 0) + (t.sustain ? '（需连续 ' + t.sustain + ' 个月，已 ' + (t.streak || 0) + ' 个月）' : '') };
+        // 口径是「营业收入」而不是「票款」：上盖物业的租金是运营收入的一部分，
+        // TOD 做到位就该算数，否则靠商业开发打平的任务永远判不过。补贴不计入——那等于白送。
+        const bus = last ? (last.fare || 0) + (last.property || 0) : 0;
+        const v = last && last.ops > 0 ? bus / last.ops : 0;
+        return { ok: v >= t.target, value: v / t.target, text: '上月（票款 + 物业）/运营费用 ' + U.fmtPct(v, 0) + ' / 目标 ' + U.fmtPct(t.target, 0) + (t.sustain ? '（需连续 ' + t.sustain + ' 个月，已 ' + (t.streak || 0) + ' 个月）' : '') };
       },
     },
   };
@@ -664,11 +668,14 @@
       out.push({ type: 'issued', task: t });
     }
     // 动态任务（开局一年后开始）
+    // 运营期任务就是主要资金来源，节奏要跟上：3–5 个月一次（按种子与月份散列，保持可复现），
+    // 同时在途最多 3 个，避免「半年一件、一年两件」把玩家卡在没钱的状态里。
     if (!this.nextDyn) this.nextDyn = ym + 12;
-    if (!D.noDynTasks && ym >= this.nextDyn && this.active.filter(function (t) { return t.kind === 'dyn'; }).length < 2 && g.compiled.stations.length >= 0) {
+    if (!D.noDynTasks && ym >= this.nextDyn && this.active.filter(function (t) { return t.kind === 'dyn'; }).length < 3 && g.compiled.stations.length >= 0) {
       const t = this.generate(g);
       if (t) { this.active.push(t); out.push({ type: 'issued', task: t }); }
-      this.nextDyn = ym + 6;
+      const gap = g.econ.batchOn && g.econ.batchOn() ? 3 + Math.floor(U.hash2(ym, 17, g.seed || 0) * 3) : 6;
+      this.nextDyn = ym + gap;
     }
     // 评估。交通模型升级过渡期（旧存档升级当月）：未达标时不清零连续月数，到期任务顺延 1 个月，不判失败
     const transit = g.inTransition ? g.inTransition(ym) : false;
@@ -698,8 +705,22 @@
         this.active.splice(this.active.indexOf(t), 1); this.failed.push(t);
         if (caps.rewards) {
           const E = CFG.economy;
-          g.econ.mods.push({ kind: 'grant', factor: E.failGrantFactor, until: ym + E.failGrantMonths - 1, reason: '任务未完成：' + t.title });
-          g.econ.mods.push({ kind: 'sat', delta: E.failSat, until: ym + E.failGrantMonths - 1, reason: '任务未完成：' + t.title });
+          if (g.econ.batchOn && g.econ.batchOn()) {
+            // 批次模式下没有「月拨款 ×0.85」可扣，惩罚统一成一条满意度 buff：
+            // 反复未完成只延长它，不叠加数值——否则会陷入越罚越深的死亡螺旋。
+            // 满意度同时是批次的乘数与补贴的乘数，所以「政府满意 → 下次给更多」这条正反馈成立。
+            const cur = g.econ.mods.filter(function (m) { return m.tag === 'task-fail'; })[0];
+            if (cur) {
+              cur.until = Math.max(cur.until, ym + E.failGrantMonths - 1);
+              cur.hits = (cur.hits || 1) + 1;
+              cur.reason = '任务连续未完成（' + cur.hits + ' 次）：' + t.title;
+            } else {
+              g.econ.mods.push({ kind: 'sat', delta: E.failSat, until: ym + E.failGrantMonths - 1, reason: '任务未完成：' + t.title, tag: 'task-fail', hits: 1 });
+            }
+          } else {
+            g.econ.mods.push({ kind: 'grant', factor: E.failGrantFactor, until: ym + E.failGrantMonths - 1, reason: '任务未完成：' + t.title });
+            g.econ.mods.push({ kind: 'sat', delta: E.failSat, until: ym + E.failGrantMonths - 1, reason: '任务未完成：' + t.title });
+          }
         }
         out.push({ type: 'failed', task: t });
       }
@@ -762,7 +783,7 @@
     }
     // 经营：票款覆盖
     if (g.econ.caps.opsTasks && model.daily && model.daily.metro > 50000 && free('recovery', 'recovery')) {
-      cands.push({ type: 'recovery', target: 0.7, sustain: 3, title: '改善运营收支', desc: '连续 3 个月票款收入不低于运营费用的 70%。', months: 24, reward: 40000 * ci });
+      cands.push({ type: 'recovery', target: 0.7, sustain: 3, title: '改善运营收支', desc: '连续 3 个月营业收入（票款 + 上盖物业租金）不低于运营费用的 70%。补贴不计入——它不算经营成果。', months: 24, reward: 40000 * ci });
     }
     // 设施附近是否有可设站的地块。保护区、景区、山体与水域上都不能设站，
     // 不检查就会发出「地铁服务灵隐寺」这类永远无法完成的任务：景区整片不能设站，
