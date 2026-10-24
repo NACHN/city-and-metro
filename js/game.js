@@ -535,6 +535,7 @@
         id: 'mall:' + id, name: s.name + ' · ' + (P.levelName[lv] || '上盖'), t: 'mall', T: Fac.TYPES.mall,
         x: s.x, y: s.y,
         r: (P.levelR || [0, 0.3, 0.6, 1.05])[lv],           // POI 半径：抬升地价的范围
+        poiW: (P.levelPoi || [0, 0.18, 0.5, 1.3])[lv],      // POI 强度：抬升地价的中心幅度
         L: (P.levelL || [0, 0.5, 1.2, 3.0])[lv],            // 吸引范围：站内只做顺路生意，综合体吸全市
         lmK: -1, open: -1e9, close: null,
         w: null, pax: null, p: { sh: 0.55, lz: 0.45 }, comArea: comArea,

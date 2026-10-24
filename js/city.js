@@ -907,7 +907,8 @@
     const gw = L.poiGroup || {};
     for (const f of fac) {
       if (!CM.Fac.active(f, year, this)) continue;
-      const w = gw[f.T.group] != null ? gw[f.T.group] : 0.4;
+      // 上盖商业按形态给 POI 强度（站内铺位几乎不抬地价，综合体显著拉动）
+      const w = f.poiW != null ? f.poiW : (gw[f.T.group] != null ? gw[f.T.group] : 0.4);
       if (!(w > 0)) continue;
       const S = Math.max(1.2, (f.r || 0.8) * L.poiRadius);
       const R = S * 2.5, r2 = R * R;
