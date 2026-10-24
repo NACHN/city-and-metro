@@ -511,13 +511,54 @@
   // 售价 ≈ 楼面地价（商住地价 ÷ 开发容积率）+ 建安，所以地价涨租金跟着涨，年代上涨由物价指数承担。
   // 出租率按开发年份爬坡（第 0/1/2/3 年），所以"建早了"在头几年是亏的。
   // 单个站点的物业估算（纯函数，不做账）：面板即时显示用
+  // 上盖商业的商圈：加权服务人口与商业供给，决定这家商场能分到多少消费。
+  // 消费总量守恒（由人口与人均零售额决定），盖得多只是分流——与「总出行由人口决定」同一原则。
+  Game.prototype.marketOf = function (s, comArea) {
+    const P = CFG.property, MK = P.market || {}, city = this.city;
+    const R = (MK.tradeRadiusM || 1500) / CFG.CELL_M;
+    const pScale = Math.max(0.5, R * (MK.popDecay || 0.8));       // 人口看整个商圈
+    const sScale = Math.max(0.5, R * (MK.supplyDecay || 0.33));   // 竞争只看近处
+    const i0 = Math.max(0, Math.floor(s.x - R)), i1 = Math.min(city.W - 1, Math.ceil(s.x + R));
+    const j0 = Math.max(0, Math.floor(s.y - R)), j1 = Math.min(city.H - 1, Math.ceil(s.y + R));
+    let catchPop = 0, base = 0;
+    for (let j = j0; j <= j1; j++) {
+      for (let i = i0; i <= i1; i++) {
+        const dx = i + 0.5 - s.x, dy = j + 0.5 - s.y, d = Math.sqrt(dx * dx + dy * dy);
+        if (d > R) continue;
+        const c = j * city.W + i;
+        // 消费力代理：办公与商业岗位带来的消费远高于居民均值（工作日午餐、商务、游客）
+        catchPop += (city.pop[c] + (MK.jobWeight || 0.5) * city.jobs[c]) * Math.exp(-d / pScale);
+        const L = city.lu[c];
+        if (L === CM.LU.COM || L === CM.LU.MIX) base += city.jobs[c] * (MK.m2PerJob || 20) * Math.exp(-d / sScale);
+      }
+    }
+    // 既有商业按「同类竞争」折算：社区商业与街铺不构成直接竞争，默认只算三成
+    base *= (MK.competeBase != null ? MK.competeBase : 0.3);
+    // 同商圈的其它上盖才是同质竞争，按距离给权重
+    let other = 0, peer = 0;
+    for (const id in this.net.stations) {
+      const o = this.net.stations[id];
+      if (o === s || !(o.dev | 0)) continue;
+      const dx = o.x - s.x, dy = o.y - s.y, d = Math.sqrt(dx * dx + dy * dy);
+      if (d > R) continue;
+      const a = (P.areaBySize[o.size] || 0) * (P.levels[o.dev | 0] || 0) * (1 - (P.resShare || 0));
+      // 同类商场之间的分流远强于「商场 vs 街铺」，所以给同业的供给一个放大权重
+      other += a * Math.exp(-d / (sScale * (MK.peerDecay || 1.8))) * (MK.peerFactor || 2.5); peer++;
+    }
+    const supply = Math.max(comArea, base + other + comArea);
+    let share = supply > 0 ? comArea / supply : 0;
+    if (share > (MK.maxShare || 1)) share = MK.maxShare || 1;   // 份额上限：没有商场能独占整个商圈
+    return { catchPop: catchPop, base: base, other: other, peer: peer, supply: supply, share: share };
+  };
+
   Game.prototype.propertyOf = function (s) {
-    const P = CFG.property, city = this.city;
+    const P = CFG.property, MK = P.market, city = this.city;
     if (!P || !s || !(s.dev | 0)) return null;
     const c = city.cellAt(s.x, s.y);
     if (c < 0 || !city.landPrice || !(city.landPrice[c] > 0)) return null;
     const ci = this.econ.costIndex(this.clock.y), buildCost = P.buildCost * ci, lv = s.dev | 0;
     const area = (P.areaBySize[s.size] || 0) * (P.levels[lv] || 0);
+    const resArea = area * (P.resShare || 0), comArea = area - resArea;
     const price = city.landPrice[c] / (P.far || 4) + buildCost;
     const p50 = (city.landStat && city.landStat.p50) || 0;
     const rel = p50 > 0 ? city.landPrice[c] / p50 : 1;
@@ -525,14 +566,22 @@
     const now = U.ymIndex(this.clock.y, this.clock.m);
     const at = s.devAt ? U.ymIndex(s.devAt[0], s.devAt[1]) : now;
     const held = P.ramp[Math.min(P.ramp.length - 1, Math.max(0, Math.floor((now - at) / 12)))];
-    const rentFull = area * price * P.rentYield / 12 * prem / 1e4;      // 万元/月（满租，用于回收期）
+    // 商业部分：商场模型（营业额 × 租金率）；住宅部分：售价 × 租售比。两者量纲完全不同。
+    const mk = this.marketOf(s, comArea);
+    const spend = U.interp(MK.spendPerCap, this.clock.y);
+    const turnover = mk.catchPop * spend * mk.share * prem;            // 元/年
+    const comRent = turnover * MK.rentRatio / 12 / 1e4;                // 万元/月
+    const resRent = resArea * price * MK.resYield / 12 / 1e4;          // 万元/月
+    const rentFull = comRent + resRent;
     const maint = area * buildCost * P.maintain / 12 / 1e4;            // 万元/月
     const capex = area * buildCost / 1e4;                              // 万元（一次性建安）
     const netFull = rentFull - maint;
     // 回收期必须用满租口径：拿爬坡期的实际租金算，会把"刚建成"普遍算成不划算
     const payback = netFull > 0.01 ? capex / (netFull * 12) : Infinity;
     return {
-      area: area, price: price, prem: prem, held: held,
+      area: area, comArea: comArea, resArea: resArea, price: price, prem: prem, held: held,
+      catchPop: mk.catchPop, share: mk.share, peer: mk.peer, supply: mk.supply, turnover: turnover,
+      comRent: comRent, resRent: resRent,
       rent: rentFull * held, maint: maint, rentFull: rentFull, netFull: netFull,
       capex: capex, payback: payback,
     };
