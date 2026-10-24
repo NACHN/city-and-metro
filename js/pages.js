@@ -122,43 +122,59 @@
       const moved = U.dist(official.x, official.y, s.x, s.y) * CFG.CELL_M;
       el.appendChild(h('div', { class: 'draft-diff' }, h('span', { class: 'dd-k' }, '已建'), h('span', null, official.name + ' · ' + desc(official)), h('span', { class: 'dd-arrow' }, '→'), h('span', { class: 'dd-k draft' }, '草案'), h('span', null, s.name + ' · ' + desc(s) + (moved > 1 ? ' · 移动 ' + Math.round(moved) + ' m' : ''))));
     }
-    // 接驳巴士（经营模式）：覆盖步行到不了的盲区（站间断口、景区与保护区内部、被铁路或快速路切断的街区）
+    // 接驳系统（经营模式）：车站先建接驳站，再按需要开线、配车。
+    // 配车决定班次，班次决定候车，候车决定等效步行距离——「投多少钱」和「有多大用」是同一件事。
     if (g.econ.caps.land && CFG.bus && official) {
-      const busList = official.bus || [];
-      let busKm = 0;
-      for (const x of busList) busKm += (x.lenM || 0) / 1000;
-      el.appendChild(this.sec('st-bus', '接驳巴士',
-        busList.length ? busList.length + ' 条 · ' + busKm.toFixed(1) + ' km · 年运营 ' + U.fmtMoney(busKm * CFG.bus.opsPerKmYear) : '未开通',
-        function () {
-          const b = h('div');
-          if (busList.length) {
-            const list = h('div', { class: 'kv' });
-            for (const x of busList) {
-              list.append(
-                h('div', { class: 'k' }, '接驳 ' + U.fmtKm(x.lenM) + ' · 年运营 ' + U.fmtMoney(x.lenM / 1000 * CFG.bus.opsPerKmYear)),
-                h('div', { class: 'v' }, h('button', { class: 'btn sm ghost danger', onclick: function () { self.busClose(id, x.id); } }, '停运')));
-            }
-            b.appendChild(list);
-          }
-          const cands = self.busCandidates(official);
-          if (!cands.length) {
-            b.appendChild(h('div', { class: 'note', style: { marginTop: busList.length ? '8px' : '0' } },
-              busList.length ? '这一站周边没有新的步行盲区了。' : '这一站步行范围内已经覆盖了周边人口，没有找到值得开通接驳的盲区。'));
-          } else {
-            b.appendChild(h('div', { class: 'note', style: { margin: '8px 0 4px' } }, '周边步行到不了的地方（设施与人流密集处）：'));
-            const rows = h('div', { class: 'kv' });
-            for (const c of cands) {
-              rows.append(
-                h('div', { class: 'k' }, (c.name ? '「' + c.name + '」' : U.fmtPeople(c.w) + ' 人') + ' · 直线 ' + U.fmtKm(c.d)),
-                h('div', { class: 'v' }, h('button', { class: 'btn sm', onclick: function () { self.busOpen(id, c); } },
-                  '开通 ' + U.fmtMoney(c.cost) + ' · 维护 ' + U.fmtMoney(c.ops) + '/月')));
-            }
-            b.appendChild(rows);
-          }
-          b.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } },
-            '接驳线只扩展这一站的服务范围，不凭空产生出行：原本走不到地铁的人改走地铁，出行总量不变。运营费按月固定支出，所以线路开得太早、客流还没起来时是亏的；单条最长 ' + (CFG.bus.maxLenM / 1000) + ' km，每站最多 ' + CFG.bus.maxPerStation + ' 条。'));
+      const B = CFG.bus, busList = official.bus || [], hub = official.busHub | 0;
+      let cars = 0;
+      for (const x of busList) cars += x.cars | 0;
+      const sumTxt = !hub ? '未建接驳站'
+        : (busList.length ? busList.length + ' 条 · ' + cars + ' 辆 · ' + U.fmtMoney(cars * B.opsPerVehicleYear) + '/年' : '接驳站已建 · 未开线');
+      el.appendChild(this.sec('st-bus', '接驳巴士', sumTxt, function () {
+        const b = h('div');
+        if (!hub) {
+          b.appendChild(h('div', { class: 'note' }, '这个车站还没有接驳站。接驳站是候车亭、站牌与首末站车位，建成后才能在这里开接驳线——用来覆盖步行到不了的盲区：站间断口、景区与保护区内部、被铁路或快速路切断的街区。'));
+          b.appendChild(h('div', { class: 'row', style: { marginTop: '8px' } },
+            h('button', { class: 'btn sm', onclick: function () { self.busHub(id); } },
+              '建接驳站 · ' + U.fmtMoney(B.hubCost * g.econ.costIndex(g.clock.y)))));
           return b;
-        }, false, 'bus'));
+        }
+        if (busList.length) {
+          const list = h('div', { class: 'kv' });
+          for (const x of busList) {
+            const nv = Math.max(1, x.cars | 0);
+            const hw = CM.Metro.busCycleMin(x.lenM) / nv;
+            list.append(
+              h('div', { class: 'k' }, '接驳 ' + U.fmtKm(x.lenM) + ' · 间隔 ' + hw.toFixed(1) + ' 分 · 等效步行 ' + Math.round(CM.Metro.busEqM(x)) + ' m'),
+              h('div', { class: 'v' },
+                h('button', { class: 'btn sm', onclick: function () { self.busCars(id, x.id, -1); } }, '−'),
+                h('span', { style: { margin: '0 4px' } }, nv + ' 辆'),
+                h('button', { class: 'btn sm', onclick: function () { self.busCars(id, x.id, 1); } }, '+'),
+                h('button', { class: 'btn sm ghost danger', style: { marginLeft: '6px' }, onclick: function () { self.busClose(id, x.id); } }, '停运')));
+          }
+          b.appendChild(list);
+          b.appendChild(h('div', { class: 'note', style: { marginTop: '4px' } },
+            '运营保养 ' + U.fmtMoney(cars * B.opsPerVehicleYear) + '/年（' + U.fmtMoney(cars * B.opsPerVehicleYear / 12) + '/月），与客流无关。加车能缩短间隔、提升吸引力，也同时抬高固定支出。'));
+        }
+        const cands = self.busCandidates(official);
+        if (!cands.length) {
+          b.appendChild(h('div', { class: 'note', style: { marginTop: busList.length ? '8px' : '0' } },
+            busList.length ? '这一站周边没有新的步行盲区了。' : '这一站步行范围内已经覆盖了周边人口，没有找到值得开通接驳的盲区。'));
+        } else {
+          b.appendChild(h('div', { class: 'note', style: { margin: '8px 0 4px' } }, '周边步行到不了的地方（设施与人流密集处）：'));
+          const rows = h('div', { class: 'kv' });
+          for (const c of cands) {
+            rows.append(
+              h('div', { class: 'k' }, (c.name ? '「' + c.name + '」' : U.fmtPeople(c.w) + ' 人') + ' · 直线 ' + U.fmtKm(c.d)),
+              h('div', { class: 'v' }, h('button', { class: 'btn sm', onclick: function () { self.busOpen(id, c); } },
+                '开通 ' + U.fmtMoney(c.cost) + ' · ' + c.cars + ' 辆')));
+          }
+          b.appendChild(rows);
+        }
+        b.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } },
+          '接驳线只扩展这一站的服务范围，不凭空产生出行：原本走不到地铁的人改走地铁，出行总量不变。购车一次投入，运营按月支出——线路开得太早、客流还没起来时是亏的。单条最长 ' + (B.maxLenM / 1000) + ' km，每站最多 ' + B.maxPerStation + ' 条。'));
+        return b;
+      }, false, 'bus'));
     }
     // 上盖物业（经营模式）：建设成本与月租净额，开发通过草案确认（与升级车站同一路径）
     if (g.econ.caps.land && official) {

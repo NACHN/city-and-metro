@@ -676,17 +676,18 @@
     }
   };
 
-  // 接驳巴士的年度运营费（万元/月）：按线路长度摊销，与客流无关。
+  // 接驳巴士的运营保养费（万元/月）：按配车算，与客流无关。
+  // 配车越多，班次越密、吸引力越强，但每月固定支出也越高——这就是「投多少钱换多大用」的价格。
   Game.prototype.busOpsPerMonth = function () {
     const B = CFG.bus;
     if (!B) return 0;
-    let km = 0;
+    let cars = 0;
     for (const id in this.net.stations) {
       const s = this.net.stations[id];
       if (!s.bus || !s.bus.length) continue;
-      for (const b of s.bus) km += (b.lenM || 0) / 1000;
+      for (const b of s.bus) cars += b.cars | 0;
     }
-    return km * B.opsPerKmYear / 12;
+    return cars * (B.opsPerVehicleYear || 0) / 12;
   };
 
   // 站点周围（默认 300 m）的地价总额，万元。用于增值回收的年度增量计算。

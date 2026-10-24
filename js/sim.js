@@ -4,7 +4,7 @@
 // v1.9：出行分为通勤、上学、购物、医疗、旅游休闲与交通枢纽接驳六类；重要设施作为独立的目的地节点（自有位置与步行接驳），
 // 普通设施按小区用地汇总；工作日与周末分别求解（两套各 4 个时段），实时交通按当天类型显示，日均指标按 5:2 加权。
 (function (CM) {
-  const U = CM.U, CFG = CM.CFG;
+  const U = CM.U, CFG = CM.CFG, M = CM.Metro;
   const NP = 4;
   const INF = 1e30;
   const PK = ['hw', 'sc', 'sh', 'md', 'lz', 'hb'], NPK = 6;
@@ -573,7 +573,7 @@
         const st = this.net.stations[sid];
         if (!st.bus || !st.bus.length) continue;
         for (const b of st.bus) {
-          const eqKm = ((b.lenM / 1000 / B.speedKmh * 60 + B.waitMin) * mpm + CFG.walk.cellExtraM) / 1000;
+          const eqKm = (M.busEqM(b) + CFG.walk.cellExtraM) / 1000;
           // 端点能服务的设施：步行 500 m 内（上盖商场就在站上，距离为 0）
           const facs = [];
           for (let k = 0; k < F; k++) {
@@ -781,7 +781,7 @@
         for (const b of st.bus) {
           const cb = city.cellAt(b.x, b.y);
           if (cb < 0) continue;
-          const eqM = (b.lenM / 1000 / B.speedKmh * 60 + B.waitMin) * mpm;   // 车程 + 候车，折成等效步行米
+          const eqM = M.busEqM(b);   // 车程 + 候车，折成等效步行米
           const bi = cb % city.W, bj = (cb / city.W) | 0;
           heap.clear(); btouched.length = 0;
           for (const v of [bj * VW + bi, bj * VW + bi + 1, (bj + 1) * VW + bi, (bj + 1) * VW + bi + 1]) {

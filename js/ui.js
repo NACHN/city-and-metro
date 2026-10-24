@@ -1152,16 +1152,49 @@
     const r = g.edit(function (n) {
       const s = n.stations[id];
       if (!s) return { error: '车站不存在' };
+      if (!s.busHub) return { error: '先建接驳站才能开线路' };
       s.bus = s.bus || [];
       if (s.bus.length >= (B.maxPerStation || 4)) return { error: '每站最多 ' + (B.maxPerStation || 4) + ' 条接驳线' };
       let k = 1;
       while (s.bus.some(function (b) { return b.id === 'b' + k; })) k++;
-      s.bus.push({ id: 'b' + k, x: cand.x, y: cand.y, lenM: cand.lenM, at: [y, m] });
+      s.bus.push({ id: 'b' + k, x: cand.x, y: cand.y, lenM: cand.lenM, cars: cand.cars || CM.Metro.busFleet(cand.lenM), at: [y, m] });
       return null;
     });
     if (r && r.error) { this.toast(r.error, 'bad'); return; }
     this.rerenderPage();
   };
+  // 建接驳站：一次性小额投入（候车亭、站牌、首末站车位），之后这个站才能开接驳线
+  UI.prototype.busHub = function (id) {
+    const g = this.g();
+    if (!g || g.draft || !CFG.bus) return;
+    const r = g.edit(function (n) {
+      const s = n.stations[id];
+      if (!s) return { error: '车站不存在' };
+      s.busHub = 1;
+      return null;
+    });
+    if (r && r.error) { this.toast(r.error, 'bad'); return; }
+    this.rerenderPage();
+  };
+  // 调整配车：加车缩短间隔、提升吸引力，同时抬高每月运营保养费
+  UI.prototype.busCars = function (id, busId, delta) {
+    const g = this.g();
+    if (!g || g.draft || !CFG.bus) return;
+    const B = CFG.bus;
+    const r = g.edit(function (n) {
+      const s = n.stations[id];
+      if (!s || !s.bus) return { error: '接驳线不存在' };
+      const b = s.bus.filter(function (x) { return x.id === busId; })[0];
+      if (!b) return { error: '接驳线不存在' };
+      const nv = U.clamp((b.cars | 0) + delta, B.minVehicles || 2, B.maxVehicles || 12);
+      if (nv === (b.cars | 0)) return { error: '配车已达上下限' };
+      b.cars = nv;
+      return null;
+    });
+    if (r && r.error) { this.toast(r.error, 'bad'); return; }
+    this.rerenderPage();
+  };
+
   UI.prototype.busClose = function (id, busId) {
     const g = this.g();
     if (!g || g.draft) return;
@@ -1223,10 +1256,12 @@
     const ci = g.econ.costIndex(g.clock.y);
     return pick.map(function (o) {
       const lenM = o.d * 1.25;   // 直线之外还要绕路
+      const cars = CM.Metro.busFleet(lenM);
       return {
         x: o.x, y: o.y, lenM: lenM, w: o.w, d: o.d, name: o.name || '', fac: o.fac || null,
-        cost: lenM / 1000 * B.costPerKm * ci,      // 万元
-        ops: lenM / 1000 * B.opsPerKmYear / 12,    // 万元/月
+        cars: cars,
+        cost: CM.Metro.busCost(cars) * ci,                   // 万元：买车
+        ops: cars * (B.opsPerVehicleYear || 0) / 12,         // 万元/月：运营保养
       };
     });
   };

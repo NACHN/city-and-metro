@@ -293,6 +293,32 @@
     }
     return null;
   };
+  // 接驳巴士的成本与吸引力都由「配车」推出来：配车决定班次，班次决定候车，候车决定等效步行距离。
+  // 接驳线没有公里造价——不是市政工程，只有买车与运营保养两笔。
+  M.busCycleMin = function (lenM) {   // 往返一周的时间（含调头）
+    const B = CFG.bus;
+    if (!B) return 0;
+    return 2 * lenM / (B.speedKmh * 1000 / 60) + (B.turnMin || 0);
+  };
+  M.busFleet = function (lenM) {      // 按目标间隔给出的建议配车数
+    const B = CFG.bus;
+    if (!B) return 0;
+    const n = Math.ceil(M.busCycleMin(lenM) / (B.targetHeadway || 5));
+    return Math.min(B.maxVehicles || 12, Math.max(B.minVehicles || 2, n));
+  };
+  M.busWaitMin = function (b) {       // 平均候车 = 间隔的一半 + 上车步行
+    const B = CFG.bus;
+    if (!B) return 0;
+    const cars = Math.max(1, b.cars | 0);
+    return M.busCycleMin(b.lenM) / cars / 2 + (B.boardMin || 0);
+  };
+  M.busEqM = function (b) {           // 等效步行距离（米）：车程 + 候车
+    const B = CFG.bus;
+    if (!B) return b.lenM;
+    return (b.lenM / 1000 / B.speedKmh * 60 + M.busWaitMin(b)) * CFG.walk.mPerMin;
+  };
+  M.busCost = function (cars) { return Math.max(0, cars | 0) * ((CFG.bus && CFG.bus.vehicleCost) || 0); };   // 万元
+
   M.addSegment = function (net, lineId, a, b, bends, type) {
     if (!net.stations[a] || !net.stations[b]) return { error: '绘线起点或终点车站已不存在，请重新选择起点' };
     if (a === b) return { error: '起点与终点为同一车站' };
@@ -620,9 +646,14 @@
             item('upgrade', '上盖开发 ' + s.name + '（' + P.levelName[lvN] + '，' + U.fmtInt(Math.abs(area)) + ' ㎡）', capDelta * ci / 1e4, id);   // 元 → 万元
           }
         }
-        // 接驳巴士（经营模式）：新开通的线路按长度一次计费（科目归入 upgrade），停运不退款
+        // 接驳系统（经营模式）：接驳站与车辆都按一次计费（科目归入 upgrade），停运不退款
         const BB = CFG.bus;
         if (BB) {
+          // 接驳站：候车亭、站牌、首末站车位，一次性小额投入
+          if (!(o.busHub | 0) && (s.busHub | 0)) {
+            res.changes.mod.push('车站「' + s.name + '」建成接驳站');
+            item('upgrade', '接驳站 ' + s.name, BB.hubCost * ci, id);
+          }
           const oldBus = {};
           for (const b of (o.bus || [])) oldBus[b.id] = b;
           const newBus = {};
@@ -632,7 +663,7 @@
             const km = Math.max(0, (b.lenM || 0) / 1000);
             if (km <= 0) continue;
             res.changes.mod.push('车站「' + s.name + '」开通接驳巴士 ' + km.toFixed(2) + ' km');
-            item('upgrade', '接驳巴士 ' + s.name + '（' + km.toFixed(2) + ' km）', km * BB.costPerKm * ci, id);
+            item('upgrade', '接驳巴士 ' + s.name + '（' + km.toFixed(2) + ' km · 配车 ' + (b.cars | 0) + ' 辆）', M.busCost(b.cars) * ci, id);
           }
           for (const bid in oldBus) if (!newBus[bid]) res.changes.mod.push('车站「' + s.name + '」停运接驳巴士（不退款）');
         }
