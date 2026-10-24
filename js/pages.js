@@ -144,6 +144,8 @@
             ['商业溢价', '×' + (pr.prem || 1).toFixed(2)],
             ['出租率', U.fmtPct(pr.held, 0)],
           ]));
+          const desc = P.levelDesc && P.levelDesc[lv];
+          if (desc) b.appendChild(h('div', { class: 'note', style: { margin: '4px 0' } }, desc));
           const visitTxt = pr.visitsReady
             ? U.fmtPeople(pr.visits) + ' 人次/年 · 客单价 ' + Math.round(pr.perTrip) + ' 元'
             : '计算中…（新开发的上盖要等出行模型重算）';
@@ -159,10 +161,12 @@
         const canDev = !g.draft;
         if (canDev) {
           const row = h('div', { class: 'row', style: { marginTop: '8px', flexWrap: 'wrap' } });
-          [0, 1, 2].forEach(function (to) {
+          const capCost = function (v) {
+            return (P.areaBySize[official.size] || 0) * (P.levels[v] || 0) * ((P.levelCost && P.levelCost[v]) || P.buildCost || 0);
+          };
+          [0, 1, 2, 3].forEach(function (to) {
             if (to === lv) return;
-            const dArea = (P.areaBySize[official.size] || 0) * ((P.levels[to] || 0) - (P.levels[lv] || 0));
-            const cost = dArea * P.buildCost * g.econ.costIndex(g.clock.y) / 1e4;   // 元 → 万元
+            const cost = Math.max(0, capCost(to) - capCost(lv)) * g.econ.costIndex(g.clock.y) / 1e4;   // 元 → 万元
             const label = to === 0 ? '取消开发（不退款）' : (P.levelName[to] + ' · ' + U.fmtMoney(cost));
             row.appendChild(h('button', { class: 'btn sm' + (to < lv ? ' ghost danger' : ''), onclick: function () { self.devStation(id, to); } }, label));
           });

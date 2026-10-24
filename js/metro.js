@@ -609,10 +609,15 @@
         if (P && lvN < lvO) {
           res.changes.mod.push('车站「' + s.name + '」缩减上盖：' + P.levelName[lvN] + '（不退款）');
         } else if (P && lvN > lvO) {
-          const area = (P.areaBySize[s.size] || 0) * ((P.levels[lvN] || 0) - (P.levels[lvO] || 0));
+          // 每级的总造价 = 面积上限 × 面积比例 × 该等级的建安单价；升级费取差值
+          const capCost = function (v) {
+            return (P.areaBySize[s.size] || 0) * (P.levels[v] || 0) * ((P.levelCost && P.levelCost[v]) || P.buildCost || 0);
+          };
+          const area = capCost(lvN) - capCost(lvO) > 0 ? (P.areaBySize[s.size] || 0) * ((P.levels[lvN] || 0) - (P.levels[lvO] || 0)) : 0;
           if (area > 0) {
             res.changes.mod.push('车站「' + s.name + '」上盖开发：' + P.levelName[lvN]);
-            item('upgrade', '上盖开发 ' + s.name + '（' + P.levelName[lvN] + '，' + U.fmtInt(area) + ' ㎡）', area * P.buildCost * ci / 1e4, id);   // 元 → 万元
+            const capDelta = Math.max(0, capCost(lvN) - capCost(lvO));
+            item('upgrade', '上盖开发 ' + s.name + '（' + P.levelName[lvN] + '，' + U.fmtInt(Math.abs(area)) + ' ㎡）', capDelta * ci / 1e4, id);   // 元 → 万元
           }
         }
       }

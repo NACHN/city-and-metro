@@ -527,17 +527,18 @@
       if (!lv) continue;
       if (city.cellAt(s.x, s.y) < 0) continue;
       const area = (P.areaBySize[s.size] || 0) * (P.levels[lv] || 0);
-      const comArea = area * (1 - (P.resShare || 0));
+      const resRatio = P.levelRes && P.levelRes[lv] != null ? P.levelRes[lv] : (P.resShare || 0);
+      const comArea = area * (1 - resRatio);
       if (comArea < 200) continue;
-      const MK = P.market || {}, si = s.size === 'S' ? 0 : (s.size === 'L' ? 2 : 1);
+      // 商业形态（站内 / 附建 / 综合体）决定吸引半径与周末属性，与站台规模无关
       out.push({
-        id: 'mall:' + id, name: s.name + ' 上盖商场', t: 'mall', T: Fac.TYPES.mall,
+        id: 'mall:' + id, name: s.name + ' · ' + (P.levelName[lv] || '上盖'), t: 'mall', T: Fac.TYPES.mall,
         x: s.x, y: s.y,
-        r: (MK.mallR || [0.5, 0.75, 1.05])[si],            // POI 半径：决定抬高周边地价的范围
-        L: (MK.mallL || [0.9, 1.7, 3.0])[si],              // 吸引范围：社区型只服务步行圈，市级型吸全市
+        r: (P.levelR || [0, 0.3, 0.6, 1.05])[lv],           // POI 半径：抬升地价的范围
+        L: (P.levelL || [0, 0.5, 1.2, 3.0])[lv],            // 吸引范围：站内只做顺路生意，综合体吸全市
         lmK: -1, open: -1e9, close: null,
         w: null, pax: null, p: { sh: 0.55, lz: 0.45 }, comArea: comArea,
-        we: (MK.mallWeekend || [1.05, 1.25, 1.5])[si], note: '', src: null,
+        we: (P.levelWeekend || [0, 1, 1.15, 1.5])[lv], note: '', src: null,
       });
     }
     const key = out.map(function (o) { return o.id + ':' + Math.round(o.comArea); }).join(',');
@@ -563,9 +564,12 @@
     if (!P || !s || !(s.dev | 0)) return null;
     const c = city.cellAt(s.x, s.y);
     if (c < 0 || !city.landPrice || !(city.landPrice[c] > 0)) return null;
-    const ci = this.econ.costIndex(this.clock.y), buildCost = P.buildCost * ci, lv = s.dev | 0;
+    const lv = s.dev | 0, ci = this.econ.costIndex(this.clock.y);
+    const unitCost = (P.levelCost && P.levelCost[lv]) || P.buildCost;
+    const buildCost = unitCost * ci;
     const area = (P.areaBySize[s.size] || 0) * (P.levels[lv] || 0);
-    const resArea = area * (P.resShare || 0), comArea = area - resArea;
+    const resRatio = P.levelRes && P.levelRes[lv] != null ? P.levelRes[lv] : (P.resShare || 0);
+    const resArea = area * resRatio, comArea = area - resArea;
     const price = city.landPrice[c] / (P.far || 4) + buildCost;
     const p50 = (city.landStat && city.landStat.p50) || 0;
     const rel = p50 > 0 ? city.landPrice[c] / p50 : 1;
@@ -575,7 +579,19 @@
     const held = P.ramp[Math.min(P.ramp.length - 1, Math.max(0, Math.floor((now - at) / 12)))];
     // 商业租金来自实际到访客流（OD 的结果）；住宅部分仍按「售价 × 租售比」
     const v = this.mallVisits(s);
-    const perTrip = U.interp(MK.ticketPrice, this.clock.y);                      // 元/人次
+    // 站内商业的顾客是「顺路进出站的乘客」，不是专程目的地——所以它的客流取
+    // 「站点日进站量 × 顺路转化率」与「设施吸引」的较大者。没有地铁客流时它就没生意，这也符合直觉。
+    if (lv === 1) {
+      const st = this.model && this.model.stDaily;
+      const C = this.model && this.model.net ? this.model.net.C : null;
+      const k = C && C.sIndex ? C.sIndex.get(s.id) : undefined;
+      if (k !== undefined && st && st.inn && st.inn.length > k) {
+        const pass = (st.inn[k] || 0) * 365 * (P.levelPassBy || 0.08);
+        if (pass > v.visits) { v.visits = pass; v.passBy = true; }
+      }
+    }
+    // 客单价按商业形态缩放：站内是便利店式小额，综合体才是商场客单价
+    const perTrip = U.interp(MK.ticketPrice, this.clock.y) * ((P.levelTicket && P.levelTicket[lv]) || 1);
     const turnover = v.visits * perTrip * prem;                                   // 元/年
     const comRent = turnover * MK.rentRatio / 12 / 1e4;                           // 万元/月
     const resRent = resArea * price * MK.resYield / 12 / 1e4;                     // 万元/月
