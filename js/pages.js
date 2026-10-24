@@ -1284,16 +1284,86 @@
     const slider = h('input', { type: 'range', min: R.min, max: R.max, step: R.step, value: E.fare.flat, 'aria-label': '全网统一票价' });
     const effect = h('div');
     const vot = U.interp(CFG.choice.vot, g.clock.y);
+    // 票价试算：拖动时给的是真实模型跑出来的客流与票款，不是线性外推。
+    // 曲线按「当前票价」那一点校准，所以当前值一定与界面上的实际数值一致。
+    const curveBox = h('div');
+    const curveNote = h('div', { class: 'note', style: { marginTop: '6px' } });
+    let curve = null, curveTimer = 0;
+    // 在已扫出的曲线里插值，滑块步进小于扫描点时也能给出连续结果
+    const curveAt = function (v) {
+      if (!curve || !curve.length) return null;
+      const last = curve[curve.length - 1];
+      if (v <= curve[0].fare) return curve[0];
+      if (v >= last.fare) return last;
+      for (let i = 1; i < curve.length; i++) {
+        const a = curve[i - 1], b = curve[i];
+        if (v <= b.fare) {
+          const t = (v - a.fare) / ((b.fare - a.fare) || 1);
+          return { fare: v, metro: a.metro + (b.metro - a.metro) * t, revenue: a.revenue + (b.revenue - a.revenue) * t };
+        }
+      }
+      return last;
+    };
+    const renderCurve = function () {
+      curveBox.innerHTML = '';
+      if (!curve) return;
+      let best = curve[0];
+      for (const r of curve) if (r.revenue > best.revenue) best = r;
+      const cur = E.fare.flat;
+      const el = h('div', { class: 'kv' });
+      for (const r of curve) {
+        const on = Math.abs(r.fare - cur) < 1e-6, opt = r === best && curve.length > 2;
+        el.append(
+          h('div', { class: 'k' }, UI.fmtFare(r.fare) + (on ? ' · 当前' : '')),
+          h('div', { class: 'v' + (opt && !on ? ' good' : '') },
+            U.fmtPeople(r.metro) + ' 人次 · ' + U.fmtMoney(r.revenue / 1e4) + (opt ? ' · 票款最高' : '')));
+      }
+      curveBox.appendChild(el);
+      curveNote.textContent = '用真实出行模型试算：票价变化会改变「坐地铁还是开车」的选择，所以客流与票款不是线性关系。试算在后台完成，不改动当前设置。';
+    };
+    const startCurve = function () {
+      const net = g.model && g.model.net;
+      const d = g.model && g.model.daily;
+      if (!net || !net.R || !d || !(d.metro > 0)) {
+        curveNote.textContent = '还没有地铁客流，暂时无法试算票价对客流的影响。修出线路并通车后会给出对照。';
+        return;
+      }
+      const cur = E.fare.flat, vals = [cur];
+      for (let k = 0; k < 5; k++) vals.push(R.min + (R.max - R.min) * k / 4);
+      const uniq = [];
+      for (const v of vals.map(function (x) { return Math.round(x / R.step) * R.step; }).sort(function (a, b) { return a - b; })) {
+        if (!uniq.length || Math.abs(uniq[uniq.length - 1] - v) > 1e-9) uniq.push(v);
+      }
+      curveNote.textContent = '正在用出行模型试算各票价下的客流…（约数秒）';
+      g.model.predictFare(uniq, function (rows) {
+        if (!rows || !rows.length || !rows.some(function (r) { return r.metro > 0; })) {
+          curveNote.textContent = '试算未完成（出行模型尚未收敛），稍后重新打开本面板可再试。';
+          return;
+        }
+        let at = rows[0];
+        for (const r of rows) if (Math.abs(r.fare - cur) < Math.abs(at.fare - cur)) at = r;
+        // 校准到界面上的真实数值：有限次迭代会留下千分级的系统偏差，用它把整条曲线拉齐
+        const k = at && at.metro > 0 ? (g.model.daily.metro / at.metro) : 1;
+        curve = rows.map(function (r) { return { fare: r.fare, metro: r.metro * k, revenue: r.revenue * k }; });
+        if (!box.isConnected) return;   // 面板已关闭，留着结果没有意义
+        if (curveBox.isConnected) { renderCurve(); show(+slider.value); }
+        else curveNote.textContent = '试算已完成，展开本区块查看各票价下的客流与票款。';
+      });
+    };
     const show = function (v) {
       val.textContent = UI.fmtFare(v);
       const d = g.model.daily || {}, riders = d.metro || 0;
       const sat = CM.Economy.fareSatEffect(v, g.clock.y);
       effect.innerHTML = '';
-      effect.appendChild(self.kv([
-        ['当前日票务收入', riders > 0 ? U.fmtMoney((d.fare || 0) / 10000) + '（' + U.fmtPeople(riders) + ' 人次）' : '暂无客流'],
-        v !== E.fare.flat && riders > 0 ? ['按新票价估算', '约 ' + U.fmtMoney(riders * v / 10000) + ' / 日（未计入客流变化）'] : null,
-        ['满意度影响', sat < -0.05 ? U.fmtSigned(sat, 1) + ' 分（票价负担，上限 −9）' : '无负担（票价不超过时间价值的 35%）', sat < -4 ? 'bad' : (sat < -0.05 ? 'warn' : 'good')],
-      ]));
+      const rows = [['当前日票务收入', riders > 0 ? U.fmtMoney((d.fare || 0) / 10000) + '（' + U.fmtPeople(riders) + ' 人次）' : '暂无客流']];
+      const at = v !== E.fare.flat ? curveAt(v) : null;
+      if (at && riders > 0) {
+        const dm = at.metro / riders - 1, dv = at.revenue / Math.max(1, d.fare) - 1;
+        rows.push(['改后日客流', U.fmtPeople(at.metro) + ' 人次（' + U.fmtSigned(dm * 100, 1, '%') + '）', dm < -0.15 ? 'bad' : (dm < -0.02 ? 'warn' : 'good')]);
+        rows.push(['改后日票款', U.fmtMoney(at.revenue / 1e4) + '（' + U.fmtSigned(dv * 100, 1, '%') + '）', dv > 0.005 ? 'good' : (dv < -0.005 ? 'warn' : '')]);
+      }
+      rows.push(['满意度影响', sat < -0.05 ? U.fmtSigned(sat, 1) + ' 分（票价负担，上限 −9）' : '无负担（票价不超过时间价值的 35%）', sat < -4 ? 'bad' : (sat < -0.05 ? 'warn' : 'good')]);
+      effect.appendChild(self.kv(rows));
     };
     slider.addEventListener('input', function () { show(+slider.value); });
     slider.addEventListener('change', function () {
@@ -1304,6 +1374,11 @@
       g.logEvent({ tag: '经营', title: '调整票价', desc: '全网统一票价 ' + v + ' ' + CFG.money.unit + '/次' });
       self.toast('票价已调整为 ' + UI.fmtFare(v) + '，居民出行选择正在重新计算', 'good');
       self.markUnsaved();
+      // 试算曲线以旧票价为基准，改价后作废；等模型重算完再按新票价重扫一次
+      curve = null; curveBox.innerHTML = ''; g.model.cancelPredict();
+      curveNote.textContent = '票价已改动，正在等待客流重新计算，随后会按新票价重新试算…';
+      if (curveTimer) clearTimeout(curveTimer);
+      curveTimer = setTimeout(startCurve, 2500);
       show(v);
     });
     show(E.fare.flat);
@@ -1311,7 +1386,12 @@
       h('div', { class: 'fare-slider' }, h('span', { class: 'tiny muted' }, CFG.money.sym + R.min), slider, h('span', { class: 'tiny muted' }, CFG.money.sym + R.max)),
       this.sec('fi-fare-fx', '票务收入与满意度影响', '', function () {
         return h('div', null, effect, h('div', { class: 'note', style: { marginTop: '6px' } }, '票价越高，乘车意愿越低、票务收入与满意度负担越高。' + g.clock.y + ' 年居民时间价值约 ' + vot.toFixed(1) + ' ' + CFG.money.unit + '/小时（估算）。松手后居民出行选择将在数秒内重新计算。'));
-      }, false, 'info'));
+      }, false, 'info'),
+      this.sec('fi-fare-cv', '票价试算', '', function () {
+        if (curve) renderCurve();
+        return h('div', null, curveBox, curveNote);
+      }, true, 'chart'));
+    startCurve();
     return box;
   };
 

@@ -985,7 +985,9 @@
     const K = { Z: Z, NZ: NZ, N: N, B: this.B, odStart: od.start, odDest: od.dest, t0: t[0], t1: t[1], t2: t[2], t3: t[3], t4: t[4], t5: t[5],
       co: co, cr: cr, cO: new Float64Array(NPK), cR: new Float64Array(NPK), facW: facW, facWe: facWe, odOk: od.F === F && od.key === fn.key,
       hostZ: hostZ, nx: nx, ny: ny, skT: skT, skK: skK, kmPerCell: kmPerCell,
-      cpk: prm.cpk, park: prm.park, vot: prm.vot, carAccess: prm.carAccess, walkW: prm.walkW, occ: prm.occ, theta: prm.theta, fareFlat: this.fareFor(0),
+      // fareFlat 允许被单次迭代覆盖（票价试算用）：这样试算不动 model.fare，不会污染主循环的状态
+      cpk: prm.cpk, park: prm.park, vot: prm.vot, carAccess: prm.carAccess, walkW: prm.walkW, occ: prm.occ, theta: prm.theta,
+      fareFlat: opts.fareFlat != null ? opts.fareFlat : this.fareFor(0),
       acc: acc, accOk: !!accOk, choices: choices, gtS: store ? store.gt : null, tmS: store ? store.tm : null, kmS: store ? store.km : null, DS: store ? store.D : null,
       perMin: IND.perMin, capSh: IND.cap.sh, capLz: IND.cap.lz,
       carDem: carDem, hasCar: hasCar, S: S, pT: pT, pM: pM, zTrips: P.zTrips, zMetro: P.zMetro, zAccess: P.zAccess, zJ: this.zJobs, blocks: blocks, desTot: P.desTot, desMetro: P.desMetro,
@@ -1328,6 +1330,50 @@
 
   // ---------------- 建设前预测 ----------------
   // 基于同一城市状态与票价，比较当前网络与草案网络（均从当前运行状态热启动，迭代次数相同）；工作日与周末分别计算
+  // ---------------- 票价试算 ----------------
+  // 票价只作用于方式选择（odOrigin 里的 pMc），但方式改变会反过来影响接驳与频次，
+  // 所以要给出可信的「改票价后客流与票款」，只能真的重跑一遍分配。
+  // 这里在独立缓冲上跑，不动 this.fare 与主循环状态；分帧执行，不阻塞界面。
+  Model.prototype.predictFare = function (fareVals, done) {
+    const self = this, net = this.net;
+    const gen = (function* () {
+      const out = [];
+      const total = Math.max(1, fareVals.length * DT.length * NP * 2);
+      let prog = 0;
+      for (const fv of fareVals) {
+        const per = [];
+        for (const dt of DT) {
+          const perDt = [];
+          for (let p = 0; p < NP; p++) {
+            const L = self.ctxs[dt].per[p];
+            if (!L || !L.stats) { perDt.push(null); continue; }
+            const P = {
+              arcVol: Float32Array.from(L.arcVol), arcTime: Float32Array.from(L.arcTime), skimT: Float32Array.from(L.skimT), skimK: Float32Array.from(L.skimK),
+              desTot: new Float32Array(self.B * self.B), desMetro: new Float32Array(self.B * self.B), zTrips: new Float32Array(self.Z), zMetro: new Float32Array(self.Z), zAccess: new Float32Array(self.Z),
+              stats: null, iters: Math.max(1, L.iters), dt: dt,
+            };
+            self.allocStatArrays(P);
+            self.initMetroPer(P, net, p, L, self.net);
+            const its = p === 3 ? 1 : 2;
+            for (let it = 0; it < its; it++) {
+              yield* self.iterate(net, P, p, { noSmooth: true, metroLam: it === 0 ? 0.7 : 0.6, buf: self.predBuf, fareFlat: fv });
+              prog++;
+            }
+            perDt.push(P);
+          }
+          per.push(perDt);
+        }
+        const dW = self.aggregate(per[0], net), dE = self.aggregate(per[1], net);
+        const d = self.weekAvg(dW, dE, net);
+        out.push({ fare: fv, metro: d.metro || 0, trips: d.trips || 0, revenue: d.fare || 0, share: d.metroShare || 0 });
+        yield;
+      }
+      return out;
+    })();
+    this.predJob = { gen: gen, done: done };
+    return gen;
+  };
+
   Model.prototype.predict = function (draftC, affectedLineIds, done) {
     const self = this;
     const gen = (function* () {
