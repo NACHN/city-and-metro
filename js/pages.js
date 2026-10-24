@@ -406,7 +406,8 @@
         for (let i = 0; i < daily.routeBoard.length; i++) allBoard += daily.routeBoard[i];
         const fareV = (g.model.fare && g.model.fare.flat) || CFG.fareDefault || 2;
         const yearFare = board * fareV * 365 / 1e4;                                  // 万元/年（上车人次近似）
-        const yearOps = ckm * CFG.ops.carKmCost * oi * 365 / 1e4;                     // 万元/年
+        // carKmCost 本身就是「万元/车厢公里」，所以 ckm × 单价 已经是万元，不能再除 1e4
+        const yearOps = ckm * CFG.ops.carKmCost * oi * 365;                           // 万元/年
         let propYear = 0, sites = 0;
         for (const sid of tp.stations) {
           const st = g.net.stations[sid];
