@@ -128,7 +128,7 @@
       el.appendChild(this.sec('st-prop', '上盖物业', P.levelName[lv] || '未开发', function () {
         const b = h('div');
         const pr = official.prop || g.propertyOf(official);
-        if (!lv) b.appendChild(h('div', { class: 'note' }, '可以在车站上方开发物业：商业部分按商场的营业额分成收租，人口越密、同业越少，分到的消费越多；住宅部分按售价收租。头两三年出租率爬坡，所以早建要先亏一阵。'));
+        if (!lv) b.appendChild(h('div', { class: 'note' }, '可以在车站上方开发物业：它会把这—带变成购物与休闲的目的地，带来实际到访客流，租金按营业额分成；通勤不会因此改变。头两三年出租率爬坡，所以早建要先亏一阵。'));
         else if (pr) {
           // 回收期用满租口径：刚建成时出租率是 0，用它算会把每个新站都判成不划算
           const pay = function (y) {
@@ -144,9 +144,12 @@
             ['商业溢价', '×' + (pr.prem || 1).toFixed(2)],
             ['出租率', U.fmtPct(pr.held, 0)],
           ]));
-          const peer = pr.peer > 0 ? '（同商圈另有 ' + pr.peer + ' 家）' : '（商圈内无同业）';
+          const visitTxt = pr.visitsReady
+            ? U.fmtPeople(pr.visits) + ' 人次/年 · 客单价 ' + Math.round(pr.perTrip) + ' 元'
+            : '计算中…（新开发的上盖要等出行模型重算）';
           b.appendChild(self.kv([
-            ['年营业额', U.fmtMoney(pr.turnover / 1e4) + ' · 份额 ' + U.fmtPct(pr.share, 1) + peer],
+            ['商业客流', visitTxt],
+            ['年营业额', U.fmtMoney(pr.turnover / 1e4)],
             ['月净额（当前）', U.fmtMoney(pr.rent - pr.maint)],
             ['建安投资', U.fmtMoney(pr.capex)],
             ['满租年净', U.fmtMoney(pr.netFull * 12)],

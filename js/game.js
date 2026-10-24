@@ -511,44 +511,46 @@
   // 售价 ≈ 楼面地价（商住地价 ÷ 开发容积率）+ 建安，所以地价涨租金跟着涨，年代上涨由物价指数承担。
   // 出租率按开发年份爬坡（第 0/1/2/3 年），所以"建早了"在头几年是亏的。
   // 单个站点的物业估算（纯函数，不做账）：面板即时显示用
-  // 上盖商业的商圈：加权服务人口与商业供给，决定这家商场能分到多少消费。
-  // 消费总量守恒（由人口与人均零售额决定），盖得多只是分流——与「总出行由人口决定」同一原则。
-  Game.prototype.marketOf = function (s, comArea) {
-    const P = CFG.property, MK = P.market || {}, city = this.city;
-    const R = (MK.tradeRadiusM || 1500) / CFG.CELL_M;
-    const pScale = Math.max(0.5, R * (MK.popDecay || 0.8));       // 人口看整个商圈
-    const sScale = Math.max(0.5, R * (MK.supplyDecay || 0.33));   // 竞争只看近处
-    const i0 = Math.max(0, Math.floor(s.x - R)), i1 = Math.min(city.W - 1, Math.ceil(s.x + R));
-    const j0 = Math.max(0, Math.floor(s.y - R)), j1 = Math.min(city.H - 1, Math.ceil(s.y + R));
-    let catchPop = 0, base = 0;
-    for (let j = j0; j <= j1; j++) {
-      for (let i = i0; i <= i1; i++) {
-        const dx = i + 0.5 - s.x, dy = j + 0.5 - s.y, d = Math.sqrt(dx * dx + dy * dy);
-        if (d > R) continue;
-        const c = j * city.W + i;
-        // 消费力代理：办公与商业岗位带来的消费远高于居民均值（工作日午餐、商务、游客）
-        catchPop += (city.pop[c] + (MK.jobWeight || 0.5) * city.jobs[c]) * Math.exp(-d / pScale);
-        const L = city.lu[c];
-        if (L === CM.LU.COM || L === CM.LU.MIX) base += city.jobs[c] * (MK.m2PerJob || 20) * Math.exp(-d / sScale);
-      }
+  // 把已开发的上盖同步成设施节点（Fac.dynamic）。商业面积决定它在全市购物中心面积里的份额，
+  // 份额决定它作为目的地能分到多少购物与休闲出行。摊薄来自 OD 分配，不需要竞争系数。
+  Game.prototype.syncDevMalls = function () {
+    const P = CFG.property, city = this.city, Fac = CM.Fac;
+    if (!Fac || !P || !this.econ.caps.land) {
+      // 非经营模式：清掉可能残留的动态设施，但只有确实需要清时才报"有变化"，
+      // 否则会凭空触发一次模型重建，把既有模式的初始状态也改掉
+      if (Fac && Fac.dynVersion != null && Fac.dynamic && Fac.dynamic.length) { this._mallKey = ''; Fac.setDynamic([]); return true; }
+      return false;
     }
-    // 既有商业按「同类竞争」折算：社区商业与街铺不构成直接竞争，默认只算三成
-    base *= (MK.competeBase != null ? MK.competeBase : 0.3);
-    // 同商圈的其它上盖才是同质竞争，按距离给权重
-    let other = 0, peer = 0;
+    const out = [];
     for (const id in this.net.stations) {
-      const o = this.net.stations[id];
-      if (o === s || !(o.dev | 0)) continue;
-      const dx = o.x - s.x, dy = o.y - s.y, d = Math.sqrt(dx * dx + dy * dy);
-      if (d > R) continue;
-      const a = (P.areaBySize[o.size] || 0) * (P.levels[o.dev | 0] || 0) * (1 - (P.resShare || 0));
-      // 同类商场之间的分流远强于「商场 vs 街铺」，所以给同业的供给一个放大权重
-      other += a * Math.exp(-d / (sScale * (MK.peerDecay || 1.8))) * (MK.peerFactor || 2.5); peer++;
+      const s = this.net.stations[id], lv = s.dev | 0;
+      if (!lv) continue;
+      if (city.cellAt(s.x, s.y) < 0) continue;
+      const area = (P.areaBySize[s.size] || 0) * (P.levels[lv] || 0);
+      const comArea = area * (1 - (P.resShare || 0));
+      if (comArea < 200) continue;
+      out.push({
+        id: 'mall:' + id, name: s.name + ' 上盖商场', t: 'mall', T: Fac.TYPES.mall,
+        x: s.x, y: s.y, r: 0.5, lmK: -1, open: -1e9, close: null,
+        w: null, pax: null, p: { sh: 0.55, lz: 0.45 }, comArea: comArea, note: '', src: null,
+      });
     }
-    const supply = Math.max(comArea, base + other + comArea);
-    let share = supply > 0 ? comArea / supply : 0;
-    if (share > (MK.maxShare || 1)) share = MK.maxShare || 1;   // 份额上限：没有商场能独占整个商圈
-    return { catchPop: catchPop, base: base, other: other, peer: peer, supply: supply, share: share };
+    const key = out.map(function (o) { return o.id + ':' + Math.round(o.comArea); }).join(',');
+    if (key === this._mallKey) return false;
+    this._mallKey = key;
+    Fac.setDynamic(out);
+    return true;
+  };
+
+  // 上盖商场的实际到访（人次/年）：由 OD 分配得出，模型未算完时为 0
+  Game.prototype.mallVisits = function (s) {
+    const m = this.model, fd = m && m.facDaily;
+    if (!fd || !fd.wd || !fd.wd.inn) return { visits: 0, wd: 0, we: 0, ready: false };
+    const k = m.facIndex ? m.facIndex('mall:' + s.id) : -1;
+    if (k < 0 || fd.wd.inn.length <= k) return { visits: 0, wd: 0, we: 0, ready: false };
+    const nWk = 250, nWe = 115;   // 年工作日 / 周末日数
+    const wd = fd.wd.inn[k] || 0, we = (fd.we && fd.we.inn) ? (fd.we.inn[k] || 0) : 0;
+    return { visits: wd * nWk + we * nWe, wd: wd, we: we, ready: true };
   };
 
   Game.prototype.propertyOf = function (s) {
@@ -566,21 +568,21 @@
     const now = U.ymIndex(this.clock.y, this.clock.m);
     const at = s.devAt ? U.ymIndex(s.devAt[0], s.devAt[1]) : now;
     const held = P.ramp[Math.min(P.ramp.length - 1, Math.max(0, Math.floor((now - at) / 12)))];
-    // 商业部分：商场模型（营业额 × 租金率）；住宅部分：售价 × 租售比。两者量纲完全不同。
-    const mk = this.marketOf(s, comArea);
-    const spend = U.interp(MK.spendPerCap, this.clock.y);
-    const turnover = mk.catchPop * spend * mk.share * prem;            // 元/年
-    const comRent = turnover * MK.rentRatio / 12 / 1e4;                // 万元/月
-    const resRent = resArea * price * MK.resYield / 12 / 1e4;          // 万元/月
+    // 商业租金来自实际到访客流（OD 的结果）；住宅部分仍按「售价 × 租售比」
+    const v = this.mallVisits(s);
+    const perTrip = U.interp(MK.ticketPrice, this.clock.y);                      // 元/人次
+    const turnover = v.visits * perTrip * prem;                                   // 元/年
+    const comRent = turnover * MK.rentRatio / 12 / 1e4;                           // 万元/月
+    const resRent = resArea * price * MK.resYield / 12 / 1e4;                     // 万元/月
     const rentFull = comRent + resRent;
-    const maint = area * buildCost * P.maintain / 12 / 1e4;            // 万元/月
-    const capex = area * buildCost / 1e4;                              // 万元（一次性建安）
+    const maint = area * buildCost * P.maintain / 12 / 1e4;                       // 万元/月
+    const capex = area * buildCost / 1e4;                                         // 万元（一次性建安）
     const netFull = rentFull - maint;
     // 回收期必须用满租口径：拿爬坡期的实际租金算，会把"刚建成"普遍算成不划算
     const payback = netFull > 0.01 ? capex / (netFull * 12) : Infinity;
     return {
       area: area, comArea: comArea, resArea: resArea, price: price, prem: prem, held: held,
-      catchPop: mk.catchPop, share: mk.share, peer: mk.peer, supply: mk.supply, turnover: turnover,
+      visits: v.visits, visitsReady: v.ready, perTrip: perTrip, turnover: turnover,
       comRent: comRent, resRent: resRent,
       rent: rentFull * held, maint: maint, rentFull: rentFull, netFull: netFull,
       capex: capex, payback: payback,
@@ -640,7 +642,11 @@
       if (Math.abs(dPop) > 0.5) { city.pop[c] = Math.max(0, city.pop[c] + dPop); s.devPopDone = tPop; changed = true; }
       if (Math.abs(dJob) > 0.5) { city.jobs[c] = Math.max(0, city.jobs[c] + dJob); s.devJobsDone = tJob; changed = true; }
     }
-    if (changed) { city.version++; if (this.model) { this.model.buildZones(); this.model.buildDemand(); } }
+    const malls = this.syncDevMalls();
+    if (changed || malls) {
+      city.version++;
+      if (this.model) { this.model.facDaily = null; this.model.buildZones(); this.model.buildDemand(); this.model.wake(); }
+    }
   };
 
   // 站点周围（默认 300 m）的地价总额，万元。用于增值回收的年度增量计算。

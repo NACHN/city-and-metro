@@ -18,6 +18,11 @@
     park: { name: '公园', icon: 'tree', p: { lz: 1 }, we: 1.15, L: 1.4, r: 1.0, group: '旅游休闲' },
     stadium: { name: '体育场馆', icon: 'stadium', p: { lz: 1 }, we: 1.3, L: 2.4, r: 0.6, group: '旅游休闲' },
     venue: { name: '会展中心', icon: 'expo', p: { sh: 0.6, lz: 0.4 }, we: 0.6, L: 2.4, r: 0.8, group: '商业' },
+    // 玩家在车站上盖开发的商场：由 Game 在开发变化时同步进 Fac.dynamic。
+    // 只影响**购物与休闲**目的，不碰通勤（工作地点不会因为商场出现而改变）。
+    // 吸引量按商业面积占「全市购物中心形态面积」的份额给出（见 sim.js buildDemandGen），
+    // 所以增加的是"这一带作为目的地的吸引力"，出行总量不变，变化的是去向与交通方式。
+    mall: { name: '上盖商场', icon: 'bag', p: { sh: 0.55, lz: 0.45 }, we: 1.2, L: 1.4, r: 0.5, group: '商业' },
   };
   const Fac = { TYPES: TYPES };
   CM.Fac = Fac;
@@ -26,8 +31,14 @@
   const curve = function (v) { return typeof v === 'number' ? [[0, v]] : v; };
 
   // 当前地图的设施表（按地图数据缓存）。lm：引用地标（位置、场地与落成年份取自地标）
+  // 玩家开发的上盖商场（动态设施）。由 Game 同步；版本号变化时让列表缓存失效，
+  // 从而触发 sim.js 重建设施节点与需求表，OD 会按新的吸引力重新分配。
+  Fac.dynamic = [];
+  Fac.dynVersion = 0;
+  Fac.setDynamic = function (arr) { Fac.dynamic = arr || []; Fac.dynVersion++; };
+
   Fac.list = function () {
-    if (D._facSrc === D.facilities && D._fac) return D._fac;
+    if (D._facSrc === D.facilities && D._fac && D._facVer === Fac.dynVersion) return D._fac;
     const out = [];
     const lms = D.landmarks || [];
     (D.facilities || []).forEach(function (s, i) {
@@ -44,7 +55,8 @@
       if (f.open == null) f.open = -1e9;
       out.push(f);
     });
-    D._fac = out; D._facSrc = D.facilities;
+    for (const d of Fac.dynamic) { d.k = out.length; out.push(d); }
+    D._fac = out; D._facSrc = D.facilities; D._facVer = Fac.dynVersion;
     return out;
   };
   Fac.byId = function (id) { const L = Fac.list(); for (const f of L) if (f.id === id) return f; return null; };

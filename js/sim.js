@@ -487,6 +487,19 @@
     out[1] = T.sc + (0.9 - T.sc) * sch * 0.5;
     return out;
   };
+  // 全市「购物中心形态」的零售面积（㎡）：商业岗位按有效零售面积折算，加上所有上盖商场的商业面积。
+  // 商场的吸引 = 本店商业面积 ÷ 全市供给。分母包含所有上盖，所以多盖一个，每家份额都会下降——
+  // 摊薄来自面积份额，不需要竞争系数。街区商铺、超市、餐饮不构成同面积竞争，所以不按岗位全面积计。
+  Model.prototype.mallSupply = function () {
+    const FN = this.fn, Z = this.Z; if (!FN) return null;
+    const m2 = (CFG.property.market && CFG.property.market.m2PerJob) || 1;
+    let jobs = 0;
+    for (let z = 0; z < Z; z++) jobs += this.zJobs[z];
+    let own = 0;
+    for (let k = 0; k < FN.F; k++) { const f = FN.list[k]; if (f.t === 'mall') own += f.comArea || 0; }
+    return { supply: Math.max(1, jobs * m2 + own), jobs: jobs, own: own, m2: m2 };
+  };
+
   // 时间切片版本：每 16 个起点让出一次；结果在最后一次性替换 this.od
   // 生产约束的重力模型：各目的的出行总量只由居住人口与出行率决定，设施只改变去向（不凭空增加出行）；
   // 枢纽接驳由设施给定（外生的铁路与航空旅客），按人口与岗位分布到全市
@@ -502,17 +515,31 @@
     const sumA = [0, 0, 0, 0, 0];
     for (let p = 1; p < 5; p++) for (let z = 0; z < Z; z++) { A[p][z] = this.zA[(p - 1) * Z + z]; sumA[p] += A[p][z]; }
     const fA = [null, new Float64Array(F), new Float64Array(F), new Float64Array(F), new Float64Array(F)];
+    const MS = this.mallSupply();
+    const maxShare = (CFG.property.market && CFG.property.market.maxMallShare) || 0.35;
+    // 上盖商场的份额 = 它的商业面积 ÷ 全市购物中心形态面积。
+    // 注意用 filter 之后的索引 k，不能用 f.k（Fac.list 的全局序号，设施停用后会错位）。
+    const mallShare = function (k) {
+      if (!MS) return 0;
+      const a = fn.list[k].comArea || 0;
+      return MS.supply > 0 ? Math.min(maxShare, a / MS.supply) : 0;
+    };
     const fL = new Float64Array(F), hubs = [];
     for (let k = 0; k < F; k++) {
       const f = fn.list[k];
       if (f.T.hub) { hubs.push(k); continue; }
       fL[k] = L2 * f.T.L;
-      const s = Fac.share(f, y);
+      const isMall = f.t === 'mall', s = Fac.share(f, y);
+      const mShare = isMall ? mallShare(k) : 0;
       for (let p = 1; p < 5; p++) {
         const fr = f.p[PK[p]] || 0; if (!fr) continue;
-        const a = s * fr * sumA[p];
+        // 上盖商场只改变购物与休闲的去向：工作地点不会因为商场出现而改变，通勤 OD 不动
+        if (isMall && p !== SH && p !== LZ) continue;
+        const a = isMall ? mShare * fr * sumA[p] : s * fr * sumA[p];
         fA[p][k] = a;
-        if (f.lmK < 0) { const hz = fn.hostZ[Z + k]; A[p][hz] = Math.max(A[p][hz] * 0.3, A[p][hz] - a); }
+        // 上盖商场不从小区吸引里扣除：它的份额已经限定"能分到全市多少"，
+        // 若再从单个小区扣，会直接触发 30% 下限，把整片本地商业抹掉（实测会让地铁客流凭空下降 8%）
+        if (f.lmK < 0 && !isMall) { const hz = fn.hostZ[Z + k]; A[p][hz] = Math.max(A[p][hz] * 0.3, A[p][hz] - a); }
       }
     }
     // 枢纽接驳：城市一端按人口与岗位（含商务、酒店）分布，距离衰减较弱
