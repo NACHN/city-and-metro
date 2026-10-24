@@ -1942,7 +1942,7 @@
       "metroBoostMax": 0.06
     },
     "land": {
-      "base": 150,
+      "base": 800,
       "clearFactor": 1.4,
       "poiGain": 0.9,
       "poiGroup": {
