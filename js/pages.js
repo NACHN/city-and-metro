@@ -129,15 +129,28 @@
         const b = h('div');
         const pr = official.prop || g.propertyOf(official);
         if (!lv) b.appendChild(h('div', { class: 'note' }, '可以在车站上方开发物业：建成后按月收租，地价越高租得越贵；头两三年出租率爬坡，所以早建要先亏一阵。'));
-        else if (pr) b.appendChild(self.kv([
-          ['建筑面积', U.fmtInt(pr.area) + ' ㎡'],
-          ['估算售价', U.fmtMoney(pr.price / 1e4) + ' /㎡'],
-          ['商业溢价', '×' + (pr.prem || 1).toFixed(2)],
-          ['出租率', U.fmtPct(pr.held, 0)],
-          ['月租金', '+ ' + U.fmtMoney(pr.rent)],
-          ['月维护', '− ' + U.fmtMoney(pr.maint)],
-          ['月净额', U.fmtMoney(pr.rent - pr.maint)],
-        ]));
+        else if (pr) {
+          // 回收期用满租口径：刚建成时出租率是 0，用它算会把每个新站都判成不划算
+          const pay = function (y) {
+            if (!isFinite(y) || !(y > 0)) return '不会回本 · 不划算';
+            if (y <= 8) return y.toFixed(1) + ' 年 · 很值得';
+            if (y <= 15) return y.toFixed(1) + ' 年 · 值得做';
+            if (y <= 25) return y.toFixed(1) + ' 年 · 勉强';
+            return y.toFixed(1) + ' 年 · 不划算';
+          };
+          b.appendChild(self.kv([
+            ['建筑面积', U.fmtInt(pr.area) + ' ㎡'],
+            ['估算售价', U.fmtMoney(pr.price / 1e4) + ' /㎡'],
+            ['商业溢价', '×' + (pr.prem || 1).toFixed(2)],
+            ['出租率', U.fmtPct(pr.held, 0)],
+          ]));
+          b.appendChild(self.kv([
+            ['月净额（当前）', U.fmtMoney(pr.rent - pr.maint)],
+            ['建安投资', U.fmtMoney(pr.capex)],
+            ['满租年净', U.fmtMoney(pr.netFull * 12)],
+            ['回收期', pay(pr.payback)],
+          ]));
+        }
         const canDev = !g.draft;
         if (canDev) {
           const row = h('div', { class: 'row', style: { marginTop: '8px', flexWrap: 'wrap' } });
@@ -153,6 +166,27 @@
         }
         return b;
       }, !!lv));
+    }
+    // 周边地价与增值分成（经营模式）：地价是物业租金与增值回收的共同来源
+    if (g.econ.caps.land && official) {
+      const V = CFG.valueCapture;
+      const sum = g.stationLandSum(official);
+      el.appendChild(this.sec('st-land', '周边地价', sum > 0 ? U.fmtMoney(sum) : '', function () {
+        const b = h('div'), city = g.city;
+        if (!city.landPrice || !city.landStat) { b.appendChild(h('div', { class: 'note' }, '地价计算中…')); return b; }
+        const c = city.cellAt(official.x, official.y);
+        const lp = c >= 0 ? city.landPrice[c] : 0, p50 = city.landStat.p50 || 0;
+        const rows = [
+          ['本站地价', lp > 0 ? U.fmtMoney(lp) + ' /㎡' : '—'],
+          ['全城中位', p50 > 0 ? U.fmtMoney(p50) + ' /㎡' : '—'],
+        ];
+        if (p50 > 0 && lp > 0) rows.push(['相对全城', (lp / p50).toFixed(2) + '×']);
+        rows.push([(V.radiusM || 300) + ' m 内总额', U.fmtMoney(sum)]);
+        rows.push(['上一年增值分成', (official.capGain || 0) > 0.01 ? '+ ' + U.fmtMoney(official.capGain) : '—']);
+        b.appendChild(self.kv(rows));
+        b.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } }, '每年 1 月按周边地价较上年的涨幅 × ' + U.fmtPct(V.rate || 0, 0) + ' 结算一次。地价因站点可达性提升而上涨，这部分增量归运营方——这是把地价直接变成现金流的唯一科目。'));
+        return b;
+      }, false));
     }
     const C = g.model.net ? g.model.net.C : null;
     const k = C && official ? C.sIndex.get(id) : undefined;
@@ -1071,7 +1105,7 @@
     const box = h('div');
     const group = function (title, rows, cls) { box.appendChild(h('div', { class: 'fl-g ' + (cls || '') }, h('div', { class: 'fl-h' }, title), this.kv(rows))); }.bind(this);
     if (!free) box.appendChild(this.kv([['期初一般资金', M(c.start)], ['期初建设专项资金', M(c.capexStart)]]));
-    group('财政收入', [['政府拨款', '+ ' + M(c.grant)], ['票款', '+ ' + M(c.fare)], (c.property || 0) > 0.01 ? ['物业租金', '+ ' + M(c.property)] : null, ['任务奖励', '+ ' + M(c.reward)]], 'in');
+    group('财政收入', [['政府拨款', '+ ' + M(c.grant)], ['票款', '+ ' + M(c.fare)], (c.property || 0) > 0.01 ? ['物业租金', '+ ' + M(c.property)] : null, (c.capture || 0) > 0.01 ? ['TOD 增值分成', '+ ' + M(c.capture)] : null, ['任务奖励', '+ ' + M(c.reward)]], 'in');
     if (!free) group('融资到账（不计入收入）', [['债券募集 → 建设专项资金', '+ ' + M(c.bond)]], 'fin');
     group('建设支出', [['建设与拆迁', '− ' + M(buildOf(c))], !free ? ['其中由专项资金支付', M(c.capexUse)] : null], 'out');
     group('运营成本', [['列车运行与车站', '− ' + M(c.ops)], (c.propMaint || 0) > 0.01 ? ['物业维护', '− ' + M(c.propMaint)] : null], 'out');

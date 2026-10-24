@@ -232,6 +232,7 @@
     if (this.econ.caps.land) {
       city.buildLandPrice(yr, model.net ? model.net.acc : null);
       this.accrueProperty(yr);
+      this.accrueValueCapture(yr);
     }
     if (this.macro && CM.Macro) CM.Macro.sample(this);   // 本月的岗位与交通效率（年度 GDP 取全年平均）
     yield;
@@ -524,9 +525,17 @@
     const now = U.ymIndex(this.clock.y, this.clock.m);
     const at = s.devAt ? U.ymIndex(s.devAt[0], s.devAt[1]) : now;
     const held = P.ramp[Math.min(P.ramp.length - 1, Math.max(0, Math.floor((now - at) / 12)))];
-    const rent = area * price * P.rentYield / 12 * prem * held / 1e4;   // 万元/月
+    const rentFull = area * price * P.rentYield / 12 * prem / 1e4;      // 万元/月（满租，用于回收期）
     const maint = area * buildCost * P.maintain / 12 / 1e4;            // 万元/月
-    return { area: area, price: price, prem: prem, held: held, rent: rent, maint: maint, capex: area * buildCost / 1e4 };
+    const capex = area * buildCost / 1e4;                              // 万元（一次性建安）
+    const netFull = rentFull - maint;
+    // 回收期必须用满租口径：拿爬坡期的实际租金算，会把"刚建成"普遍算成不划算
+    const payback = netFull > 0.01 ? capex / (netFull * 12) : Infinity;
+    return {
+      area: area, price: price, prem: prem, held: held,
+      rent: rentFull * held, maint: maint, rentFull: rentFull, netFull: netFull,
+      capex: capex, payback: payback,
+    };
   };
 
   Game.prototype.accrueProperty = function (year) {
@@ -583,6 +592,50 @@
       if (Math.abs(dJob) > 0.5) { city.jobs[c] = Math.max(0, city.jobs[c] + dJob); s.devJobsDone = tJob; changed = true; }
     }
     if (changed) { city.version++; if (this.model) { this.model.buildZones(); this.model.buildDemand(); } }
+  };
+
+  // 站点周围（默认 300 m）的地价总额，万元。用于增值回收的年度增量计算。
+  Game.prototype.stationLandSum = function (s) {
+    const city = this.city, V = CFG.valueCapture;
+    if (!V || !city.landPrice) return 0;
+    const R = (V.radiusM || 300) / CFG.CELL_M, r2 = R * R;
+    const i0 = Math.max(0, Math.floor(s.x - R)), i1 = Math.min(city.W - 1, Math.ceil(s.x + R));
+    const j0 = Math.max(0, Math.floor(s.y - R)), j1 = Math.min(city.H - 1, Math.ceil(s.y + R));
+    let sum = 0;
+    for (let j = j0; j <= j1; j++) {
+      for (let i = i0; i <= i1; i++) {
+        const dx = i + 0.5 - s.x, dy = j + 0.5 - s.y;
+        if (dx * dx + dy * dy > r2) continue;
+        const v = city.landPrice[j * city.W + i];
+        if (v > 0) sum += v;
+      }
+    }
+    // 元/㎡ × 每格面积(m²) ÷ 1e4 = 万元
+    return sum * CFG.CELL_M * CFG.CELL_M / 1e4;
+  };
+
+  // 增值回收：每年 1 月按「站点周边地价总额的年度增量 × 回收率」结算一次。
+  // 首次结算没有上一年快照（capPrev），所以新站第一年不计收入——与实际征收口径一致。
+  Game.prototype.accrueValueCapture = function (year) {
+    const V = CFG.valueCapture, econ = this.econ;
+    if (!V || !this.city.landPrice) return null;
+    const jan = this.clock.m === 1;
+    let gainSum = 0, sites = 0, base = 0;
+    for (const id in this.net.stations) {
+      const s = this.net.stations[id];
+      const sum = this.stationLandSum(s);
+      s.capSum = sum;
+      if (!jan) continue;
+      const prev = s.capPrev || 0;
+      s.capPrev = sum;
+      if (prev > 0 && sum > prev) {
+        const gain = (sum - prev) * (V.rate || 0);
+        s.capGain = gain; gainSum += gain; sites++; base += sum;
+      } else s.capGain = 0;
+    }
+    this.capStat = { sites: sites, gain: gainSum, base: base };
+    if (gainSum > 0.01) econ.income('capture', gainSum);
+    return this.capStat;
   };
 
   // ---------------- 存档 ----------------
