@@ -106,4 +106,6 @@
 
 **Copyright © 2026 VinsonFung。保留所有权利，禁止商业使用。**
 
+本仓库是 [NACHN](https://github.com/NACHN) 在原作基础上的修改版（经营模式、土地与物业经济等），原作版权与许可不变，署名同时保留。
+
 公开仓库仅允许非商业学习、研究与游玩。收费、广告变现、商业产品、服务或分发均不在授权范围内，修改或改名不构成例外。具体见 [LICENSE.txt](./LICENSE.txt)。OpenStreetMap 地理数据遵循 ODbL 1.0，见[第三方许可说明](./THIRD_PARTY_NOTICES.txt)。

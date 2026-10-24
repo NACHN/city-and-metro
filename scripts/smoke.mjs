@@ -58,7 +58,8 @@ const CM = globalThis.CM;
 const log = (...a) => { if (!jsonOnly) console.log(...a); };
 
 // 去掉每次新建都会变的字段，只留下模拟结果
-const NONDET = new Set(['id', 'gameId', 'createdAt', 'savedAt', 'name']);
+// gameVersion 是元数据（升版本号不该动基线），与模拟结果无关；其余字段全部参与指纹
+const NONDET = new Set(['id', 'gameId', 'createdAt', 'savedAt', 'name', 'gameVersion']);
 function normalize(v) {
   return JSON.stringify(v, (k, x) => (NONDET.has(k) ? null : x));
 }
