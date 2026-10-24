@@ -122,6 +122,55 @@
       const moved = U.dist(official.x, official.y, s.x, s.y) * CFG.CELL_M;
       el.appendChild(h('div', { class: 'draft-diff' }, h('span', { class: 'dd-k' }, '已建'), h('span', null, official.name + ' · ' + desc(official)), h('span', { class: 'dd-arrow' }, '→'), h('span', { class: 'dd-k draft' }, '草案'), h('span', null, s.name + ' · ' + desc(s) + (moved > 1 ? ' · 移动 ' + Math.round(moved) + ' m' : ''))));
     }
+    // 车站配套（经营模式）：出入口决定「愿意走多远进站」，P+R 决定「最后一段怎么走」。
+    // 两者都按级投资、按原值 2%/年维护——所以「建早了」是持续支出，不是一次性买卖。
+    if (g.econ.caps.land && CFG.stationFacility && official) {
+      const SF = CFG.stationFacility, Met = CM.Metro, ci = g.econ.costIndex(g.clock.y);
+      const exLv = official.exitLv | 0, prLv = official.prLv | 0;
+      const capex = Met.facCapex(official);
+      const maintY = capex * (SF.maint || 0) * g.econ.opsIndex(g.clock.y);
+      const sumTxt = '步行可达 ' + Met.exitAccessM(exLv) + ' m' + (prLv ? ' · P+R ' + SF.pr.name[prLv] : '');
+      el.appendChild(this.sec('st-upg', '车站配套', sumTxt, function () {
+        const b = h('div');
+        b.appendChild(h('div', { class: 'kv' },
+          h('div', { class: 'k' }, '出入口'),
+          h('div', { class: 'v' }, (SF.exit.name[exLv] || '无') + ' · 进出站步行半径 ' + Met.exitAccessM(exLv) + ' m')));
+        b.appendChild(h('div', { class: 'note' }, '出入口越多，乘客愿意走的最后一段越短。每加一级把半径提高 225 m，覆盖面积按半径平方增长（1 级 +44%、2 级 +78%、3 级 +115%），所以这是个贵但看得见效果的投资。'));
+        const exRow = h('div', { class: 'row', style: { marginTop: '8px', flexWrap: 'wrap' } });
+        for (let lv = 1; lv <= 3; lv++) {
+          const done = lv <= exLv, add = (Met.exitCost(lv) - Met.exitCost(exLv)) * ci;
+          exRow.appendChild(h('button', {
+            class: 'btn sm' + (done ? ' ghost' : ''), disabled: done ? true : null,
+            onclick: function () { self.stFacility(id, 'exit', lv); },
+          }, done ? '已建成' : (SF.exit.name[lv] + ' · ' + SF.exit.accessM[lv] + ' m · ' + U.fmtMoney(add))));
+        }
+        b.appendChild(exRow);
+        // P+R：2005 年起才有的东西，之前只显示说明
+        if (g.clock.y >= (SF.pr.openYear || 0)) {
+          b.appendChild(h('div', { class: 'kv', style: { marginTop: '10px' } },
+            h('div', { class: 'k' }, 'P+R 停车场'),
+            h('div', { class: 'v' }, prLv ? SF.pr.name[prLv] : '无')));
+          b.appendChild(h('div', { class: 'note' }, '开车到站、再换乘地铁：站口 ' + SF.pr.reachM + ' m 内的步行段按 ' + Math.round(SF.pr.walkMul * 100) + '% 折算，相当于把服务范围往外推了一圈。只对外围、停车便宜的车站有意义。'));
+          const prRow = h('div', { class: 'row', style: { marginTop: '8px', flexWrap: 'wrap' } });
+          for (let lv = 1; lv <= 3; lv++) {
+            const done = lv <= prLv, add = (Met.prCost(lv) - Met.prCost(prLv)) * ci;
+            prRow.appendChild(h('button', {
+              class: 'btn sm' + (done ? ' ghost' : ''),
+              onclick: function () { if (!done) self.stFacility(id, 'pr', lv); },
+            }, done ? '已建成' : (SF.pr.name[lv] + ' · ' + U.fmtMoney(add))));
+          }
+          b.appendChild(prRow);
+        } else {
+          b.appendChild(h('div', { class: 'note', style: { marginTop: '10px' } }, 'P+R 停车场（开车到站换乘）' + (SF.pr.openYear || 2005) + ' 年才开放。'));
+        }
+        if (capex > 0) {
+          b.appendChild(h('div', { class: 'kv', style: { marginTop: '10px' } },
+            h('div', { class: 'k' }, '配套原值'),
+            h('div', { class: 'v' }, U.fmtMoney(capex * ci) + ' · 维护 ' + U.fmtMoney(maintY) + '/年（2%）')));
+        }
+        return b;
+      }, false, 'metro'));
+    }
     // 接驳系统（经营模式）：车站先建接驳站，再按需要开线、配车。
     // 配车决定班次，班次决定候车，候车决定等效步行距离——「投多少钱」和「有多大用」是同一件事。
     if (g.econ.caps.land && CFG.bus && official) {
@@ -349,15 +398,22 @@
     if (!tree) return h('div', { class: 'callout warn' }, '车站周边暂无可步行到达的道路，暂无覆盖。');
     const vm = new Map(); for (let q = 0; q < tree.verts.length; q++) vm.set(tree.verts[q], tree.dist[q]);
     const city = g.city, VW = city.VW, ci = Math.floor(s.x), cj = Math.floor(s.y);
-    const sums = [0, 0, 0], jobs = [0, 0, 0];
-    for (let j = Math.max(0, cj - 6); j <= Math.min(city.H - 1, cj + 6); j++) for (let i = Math.max(0, ci - 6); i <= Math.min(city.W - 1, ci + 6); i++) {
+    // 分档随时间按本站的进出站半径走：出入口升级后多出一档，玩家能看见「多走的这部分换来了多少人」
+    const lim = acc.stLimit ? acc.stLimit[k] : CFG.walk.maxAccessM;
+    const th = [5, 10, 15];
+    if (lim > CFG.walk.maxAccessM + 1) th.push(Math.round(lim / CFG.walk.mPerMin));
+    const sums = th.map(function () { return 0; }), jobs = th.map(function () { return 0; });
+    const rw = Math.ceil(lim / CFG.CELL_M) + 1;
+    for (let j = Math.max(0, cj - rw); j <= Math.min(city.H - 1, cj + rw); j++) for (let i = Math.max(0, ci - rw); i <= Math.min(city.W - 1, ci + rw); i++) {
       const v0 = j * VW + i;
       let m = Infinity; for (const v of [v0, v0 + 1, v0 + VW, v0 + VW + 1]) { const dd = vm.get(v); if (dd !== undefined && dd < m) m = dd; }
       m += CFG.walk.cellExtraM;
       const c = j * city.W + i;
-      for (let q = 0; q < 3; q++) if (m <= (q + 1) * 5 * CFG.walk.mPerMin) { sums[q] += city.pop[c]; jobs[q] += city.jobs[c]; }
+      for (let q = 0; q < th.length; q++) if (m <= th[q] * CFG.walk.mPerMin) { sums[q] += city.pop[c]; jobs[q] += city.jobs[c]; }
     }
-    return h('div', null, this.kv([['步行 5 分钟内', U.fmtPeople(sums[0]) + ' 人 · ' + U.fmtPeople(jobs[0]) + ' 岗位'], ['步行 10 分钟内', U.fmtPeople(sums[1]) + ' 人 · ' + U.fmtPeople(jobs[1]) + ' 岗位'], ['步行 15 分钟内', U.fmtPeople(sums[2]) + ' 人 · ' + U.fmtPeople(jobs[2]) + ' 岗位']]),
+    return h('div', null, this.kv(th.map(function (v, q) {
+      return ['步行 ' + v + ' 分钟内' + (q === 3 ? '（出入口升级）' : ''), U.fmtPeople(sums[q]) + ' 人 · ' + U.fmtPeople(jobs[q]) + ' 岗位'];
+    })),
       h('div', { class: 'note', style: { marginTop: '6px' } }, (potential ? '仅为预览：车站未通车前不计入任何覆盖统计。' : '') + '按实际道路步行距离计算（含街道到建筑的平均距离），河流、断路与没有道口或地道的地面铁路会阻隔。'));
   };
   // 拥挤诊断：区分车站容量不足与列车运力不足，给出对应的处理入口
@@ -493,6 +549,12 @@
       let ckm = 0;
       for (const r of routes) for (let p = 0; p < 4; p++) ckm += g.model.live.per[p].freq[r[1]] * 2 * r[0].lenM / 1000 * r[0].cars * (p === 3 ? 5 : g.model.pHours[p]);
       grid.append(this.stat('日运营费用（' + (g.model.dayType === 'we' ? '周末' : '工作日') + '）', U.fmtMoney(ckm * CFG.ops.carKmCost * oi), '列车 ' + U.fmtInt(ckm) + ' 车厢公里'));
+      // 选型与线形参照（A5）：全程时分与旅行速度。站距一拉长，旅速就上去，但覆盖会掉——
+      // 这两个数放在一起才好判断，单看里程没有意义。
+      const rt0 = routes[0][0], mc0 = CFG.metro, nSt0 = rt0.stIdx.length;
+      const rideMin = rt0.runSec / 60 + mc0.dwell / 60 * Math.max(0, nSt0 - 1);
+      grid.append(this.stat('全程时分' + (routes.length > 1 ? '（' + rt0.label + '）' : ''), rideMin.toFixed(0) + ' 分钟',
+        '旅行速度 ' + (rt0.lenM / 1000 / (rideMin / 60)).toFixed(1) + ' km/h · 平均站间 ' + U.fmtKm(rt0.lenM / Math.max(1, nSt0 - 1))));
       el.appendChild(grid);
       // 线路总账（经营模式）：票款、运营与沿线上盖放在同一张表里，一眼看出这条线养不养得活
       const acc = g.econ.caps.land ? this.lineAccount(lid) : null;
@@ -756,7 +818,17 @@
     }
     const x = model.zCx[z], y = model.zCy[z];
     const rg = g.city.regionAt(x, y);
-    if (rg) el.appendChild(h('div', { class: 'note', style: { marginTop: '8px' } }, '所属区域：' + rg.name + (g.city.regionOpen[g.city.regions.indexOf(rg)] ? '（已开放）' : '（尚未开放，' + U.regionLock(rg) + '）')));
+    if (rg) {
+      const ri = g.city.regions.indexOf(rg), open = g.city.regionOpen[ri];
+      // 开放门槛摆出来（A12）：玩家不用自己反推「还要多少人 / 还要几年」。
+      let need = '';
+      if (!open) {
+        const pop = g.city.totals().pop;
+        if (rg.open != null) need = ' · 参考 ' + rg.open + ' 年开放';
+        if (rg.pop) need += ' · 人口达到 ' + U.fmtPeople(rg.pop) + ' 可提前开放' + (pop < rg.pop ? '（还差 ' + U.fmtPeople(rg.pop - pop) + ' 人）' : '（已达标，等待下次城市发展）');
+      }
+      el.appendChild(h('div', { class: 'note', style: { marginTop: '8px' } }, '所属区域：' + rg.name + (open ? '（已开放）' : '（尚未开放，' + U.regionLock(rg) + need + '）')));
+    }
     el.appendChild(h('div', { class: 'row', style: { marginTop: '8px' } }, h('button', { class: 'btn sm ghost', onclick: function () { self.locateZone(z); } }, '定位')));
     return { title: g.zoneName(z), el: el };
   };
@@ -1268,6 +1340,7 @@
   const BK = CM.Economy.BUILD_KINDS;
   const buildOf = function (r) { let s = 0; for (const k of BK) s += r[k] || 0; return s; };
   const incomeOf = function (r) { return (r.grant || 0) + (r.fare || 0) + (r.reward || 0); };
+  const opsOf = function (r) { return (r.ops || 0) + (r.propMaint || 0) + (r.busOps || 0) + (r.facMaint || 0); };
   const serviceOf = function (r) { return (r.interest || 0) + (r.principal || 0) + (r.penalty || 0); };
   UI.prototype.ledgerBlock = function () {
     const g = this.g(), E = g.econ, c = E.cur, free = E.isFree(), oi = E.opsIndex(g.clock.y), M = function (v) { return U.fmtMoney(v || 0); };
@@ -1278,12 +1351,14 @@
     group('财政收入', [['政府拨款', '+ ' + M(c.grant)], ['票款', '+ ' + M(c.fare)], (c.property || 0) > 0.01 ? ['物业租金', '+ ' + M(c.property)] : null, (c.capture || 0) > 0.01 ? ['TOD 增值分成', '+ ' + M(c.capture)] : null, ['任务奖励', '+ ' + M(c.reward)]], 'in');
     if (!free) group('融资到账（不计入收入）', [['债券募集 → 建设专项资金', '+ ' + M(c.bond)]], 'fin');
     group('建设支出', [['建设与拆迁', '− ' + M(buildOf(c))], !free ? ['其中由专项资金支付', M(c.capexUse)] : null], 'out');
-    group('运营成本', [['列车运行与车站', '− ' + M(c.ops)], (c.propMaint || 0) > 0.01 ? ['物业维护', '− ' + M(c.propMaint)] : null], 'out');
+    group('运营成本', [['列车运行与车站', '− ' + M(c.ops)], (c.propMaint || 0) > 0.01 ? ['物业维护', '− ' + M(c.propMaint)] : null,
+      (c.busOps || 0) > 0.01 ? ['接驳巴士运营', '− ' + M(c.busOps)] : null,
+      (c.facMaint || 0) > 0.01 ? ['车站配套维护', '− ' + M(c.facMaint)] : null], 'out');
     if (!free) group('偿债', [['利息', '− ' + M(c.interest)], ['本金偿还', '− ' + M(c.principal)], ['逾期费用', '− ' + M(c.penalty)]], 'debt');
     box.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } }, '每日运营成本约 ' + U.fmtMoney(((g.model.daily && g.model.daily.carKm) || 0) * CFG.ops.carKmCost * oi + st) + '（列车运行 + ' + g.compiled.stations.length + ' 座车站），票款与运营成本逐日结算；利息与本金在每月初拨款之后支付。'));
     if (E.ledger.length) {
       const t = h('table', { class: 'tbl', style: { marginTop: '8px' } }, h('tr', null, h('th', null, '月份'), h('th', null, '财政收入'), !free ? h('th', null, '融资') : null, h('th', null, '建设'), h('th', null, '运营'), !free ? h('th', null, '偿债') : null, h('th', null, '期末')));
-      for (const r of E.ledger.slice(-12).reverse()) t.appendChild(h('tr', null, h('td', null, r.y + '.' + r.m), h('td', null, U.fmtYi(incomeOf(r), 2)), !free ? h('td', null, r.bond ? U.fmtYi(r.bond, 2) : '—') : null, h('td', null, U.fmtYi(buildOf(r), 2)), h('td', null, U.fmtYi(r.ops || 0, 2)), !free ? h('td', null, serviceOf(r) ? U.fmtYi(serviceOf(r), 2) : '—') : null, h('td', { class: r.end < 0 ? 'bad' : '' }, free ? '—' : U.fmtYi(r.end, 1))));
+      for (const r of E.ledger.slice(-12).reverse()) t.appendChild(h('tr', null, h('td', null, r.y + '.' + r.m), h('td', null, U.fmtYi(incomeOf(r), 2)), !free ? h('td', null, r.bond ? U.fmtYi(r.bond, 2) : '—') : null, h('td', null, U.fmtYi(buildOf(r), 2)), h('td', null, U.fmtYi(opsOf(r), 2)), !free ? h('td', null, serviceOf(r) ? U.fmtYi(serviceOf(r), 2) : '—') : null, h('td', { class: r.end < 0 ? 'bad' : '' }, free ? '—' : U.fmtYi(r.end, 1))));
       box.append(h('div', { class: 'tiny muted', style: { marginTop: '8px' } }, '最近 12 个月（' + CFG.money.yi + '；期末为一般资金）'), h('div', { class: 'tbl-wrap' }, t));
     }
     return box;
@@ -1387,6 +1462,17 @@
       pv.innerHTML = '';
       pv.appendChild(self.kv([['年利率（发行时锁定）', (rate * 100).toFixed(2) + '%'], ['每年利息', U.fmtMoney(it)], ['利息合计（' + term + ' 年）', U.fmtMoney(it * term)],
         ['首次付息', (g.clock.y + 1) + '年' + g.clock.m + '月'], ['到期还本', (g.clock.y + term) + '年' + g.clock.m + '月 ' + U.fmtMoney(amount)], ['发行后建设专项资金', U.fmtMoney(E.capex + amount)]]));
+      // 借多少才合适（A11）：把「每年利息 ÷ 全年拨款」摆出来。这是判断「还不还得起」的两个数，
+      // 玩家不必再去翻账本自己算一次。
+      let oldInt = 0;
+      for (const b of E.bonds) if (!b.done) oldInt += b.amount * b.rate;
+      const grantYr = Math.max(1, E.grantFor(y, g.clock.m) * 12), intYr = oldInt + it, ratio = intYr / grantYr;
+      pv.appendChild(self.kv([
+        ['每年利息（含既有债务）', U.fmtMoney(intYr)],
+        ['占全年拨款', U.fmtPct(ratio, 0), ratio > 0.5 ? 'bad' : (ratio > 0.3 ? 'warn' : '')],
+        ['全年拨款', U.fmtMoney(grantYr)],
+      ]));
+      pv.appendChild(h('div', { class: 'note', style: { marginTop: '4px' } }, ratio > 0.5 ? '利息已超过全年拨款的一半：再借只能靠票款和上盖去还，风险很高。' : (ratio > 0.3 ? '利息约占拨款的三到五成，还需要票款补一部分。' : '利息负担在拨款可以承受的范围内。')));
       pv.appendChild(h('div', { class: 'qline' }, q.parts.map(function (p, i) { return h('span', { class: p.k === 'base' ? '' : (p.v > 0.00005 ? 'bad' : (p.v < -0.00005 ? 'good' : 'muted')) }, (i ? (p.v < 0 ? ' − ' : ' + ') : '') + p.label.replace(/（.*）/, '') + ' ' + (Math.abs(p.v) * 100).toFixed(2) + '%'); })));
       ok.disabled = !(amount > 0);
     };

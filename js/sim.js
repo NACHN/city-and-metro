@@ -694,8 +694,16 @@
   Model.prototype.computeAccess = function (C) {
     const city = this.city, walk = city.walk, VW = city.VW, N = C.stations.length;
     const maxM = CFG.walk.maxAccessM, xferM = CFG.walk.transferMaxM, extra = CFG.walk.cellExtraM, mpm = CFG.walk.mPerMin;
+    const SF = CFG.stationFacility;
     const nC = city.N, Z = this.Z, fn = this.fn, F = fn ? fn.F : 0, NZ = Z + F;
+    // 车站级的进出站半径：出入口每加一级都把「愿意走多远进站」抬高一段。
+    // 只有出入口升级过的车站才会大于 maxM，所以没有这条线的存档与模式结果逐字节不变。
+    const stLimit = new Float32Array(N);
+    for (let k = 0; k < N; k++) stLimit[k] = M.exitAccessM(C.stations[k].exitLv | 0);
     const cellWalk = new Float32Array(nC).fill(Infinity), cellStation = new Int32Array(nC).fill(-1);
+    // 每一格对应的「判定半径」：谁覆盖了它，就用谁的门槛。否则升级了出入口的车站
+    // 覆盖到的 1.3 km 处会被全网的 1,125 m 门槛判成未覆盖。
+    const cellLim = new Float32Array(nC).fill(maxM);
     const dist = this._wdist || (this._wdist = new Float64Array(city.V).fill(INF));
     if (dist.length !== city.V) { this._wdist = new Float64Array(city.V).fill(INF); }
     const D_ = this._wdist;
@@ -705,8 +713,8 @@
     const zMap = new Map(), fMap = new Map();
     const cellFac = fn ? fn.cellFac : null;
     const trees = [], accessible = new Uint8Array(N), catchPop = new Float32Array(N), transfers = [];
-    const limit = Math.max(maxM, xferM) + 200;
-    const treeRules = maxM + ':' + xferM + ':' + CFG.CELL_M;
+    const treeRules = maxM + ':' + xferM + ':' + CFG.CELL_M + ':' + ((SF && SF.exit && SF.exit.accessM.join(',')) || '')
+      + ':' + ((SF && SF.pr && [SF.pr.reachM, SF.pr.walkMul].join(',')) || '');
     if (this._treeWalk !== walk || this._treeRules !== treeRules) { this._treeWalk = walk; this._treeRules = treeRules; this._walkTrees = new Map(); }
     const treeCache = this._walkTrees;
     for (let k = 0; k < N; k++) {
@@ -715,8 +723,15 @@
       const c0 = city.cellAt(st.x, st.y);
       if (c0 < 0) continue;
       const ci = c0 % city.W, cj = (c0 / city.W) | 0;
+      // 这一站的服务半径与搜索范围都跟着出入口走：原来固定 ±6 格（1.5 km）会把 1,650 m 的
+      // 升级直接吃掉，所以窗口按本站半径算，并给「换乘」口径留出余量。
+      const smax = stLimit[k];
+      const limit = Math.max(smax, xferM) + 200;
+      const win = Math.ceil(smax / CFG.CELL_M) + 1;
+      const prOn = !!(SF && SF.pr && (st.prLv | 0) > 0);
       heap.clear(); touched.length = 0;
-      const treeKey = st.x + ':' + st.y;
+      // 步行树缓存必须带上本站半径，否则会在两个出入口等级不同的车站之间互相命中（T10）
+      const treeKey = st.x + ':' + st.y + ':' + smax;
       const cachedTree = treeCache.get(treeKey);
       if (cachedTree) {
         trees[k] = cachedTree.tree; accessible[k] = 1;
@@ -753,13 +768,15 @@
       // 只有接入运营线路的车站提供服务：未通车站不计覆盖、不参与接驳与站外换乘
       if (C.serviced && !C.serviced[k]) { for (const v of touched) D_[v] = INF; continue; }
       // 覆盖格
-      for (let j = Math.max(0, cj - 6); j <= Math.min(city.H - 1, cj + 6); j++) {
-        for (let i = Math.max(0, ci - 6); i <= Math.min(city.W - 1, ci + 6); i++) {
+      for (let j = Math.max(0, cj - win); j <= Math.min(city.H - 1, cj + win); j++) {
+        for (let i = Math.max(0, ci - win); i <= Math.min(city.W - 1, ci + win); i++) {
           const v0 = j * VW + i;
-          const cd = Math.min(D_[v0], D_[v0 + 1], D_[v0 + VW], D_[v0 + VW + 1]) + extra;
-          if (cd > maxM) continue;
+          let cd = Math.min(D_[v0], D_[v0 + 1], D_[v0 + VW], D_[v0 + VW + 1]) + extra;
+          // P+R：开车到站，站口 800 m 内的最后一段步行按 0.85 折减（换乘总时间也含停车与取车，这里只折步行）
+          if (prOn && cd <= SF.pr.reachM) cd *= (SF.pr.walkMul || 1);
+          if (cd > smax) continue;
           const c = j * city.W + i;
-          if (cd < cellWalk[c]) { cellWalk[c] = cd; cellStation[c] = k; }
+          if (cd < cellWalk[c]) { cellWalk[c] = cd; cellStation[c] = k; cellLim[c] = smax; }
           // 重要设施的场地格：按格计（设施本身可能没有居住人口）
           const fl = cellFac && cellFac.get(c);
           if (fl) for (const f of fl) { let m = fMap.get(f); if (!m) { m = new Map(); fMap.set(f, m); } const e = m.get(k) || [0, 0]; e[0] += 1; e[1] += cd; m.set(k, e); }
@@ -809,9 +826,9 @@
               // 但它提供的是「原来根本到不了」的选项，所以要计入覆盖而不是被 15 分钟门槛挡掉。
               // 真正限制范围的是 maxLenM（单条最长），不是这里的阈值。
               let cd = eqM + wd + extra;
-              if (cd > maxM) cd = maxM;
+              if (cd > smax) cd = smax;
               const c = j * city.W + i;
-              if (cd < cellWalk[c]) { cellWalk[c] = cd; cellStation[c] = k; }
+              if (cd < cellWalk[c]) { cellWalk[c] = cd; cellStation[c] = k; cellLim[c] = smax; }
               const fl = cellFac && cellFac.get(c);
               if (fl) for (const f of fl) { let m = fMap.get(f); if (!m) { m = new Map(); fMap.set(f, m); } const e = m.get(k) || [0, 0]; e[0] += 1; e[1] += cd; m.set(k, e); }
               const w = city.pop[c] + city.jobs[c];
@@ -848,7 +865,7 @@
       for (const c of this.zoneCells[z]) {
         const w = city.pop[c] + city.jobs[c];
         tot += w;
-        if (cellWalk[c] <= maxM) { cov += w; wsum += w * cellWalk[c]; }
+        if (cellWalk[c] <= cellLim[c]) { cov += w; wsum += w * cellWalk[c]; }
       }
       zCov[z] = tot > 0 ? cov / tot : 0;
       zWalk[z] = cov > 0 ? wsum / cov / mpm : 0;
@@ -863,7 +880,7 @@
     for (let k = 0; k < F; k++) {
       const cs = fn.cells[k], n = Math.max(1, cs.length);
       let cov = 0, wsum = 0;
-      for (const c of cs) if (cellWalk[c] <= maxM) { cov++; wsum += cellWalk[c]; }
+      for (const c of cs) if (cellWalk[c] <= cellLim[c]) { cov++; wsum += cellWalk[c]; }
       zCov[Z + k] = cov / n; zWalk[Z + k] = cov > 0 ? wsum / cov / mpm : 0;
       const m = fMap.get(k);
       if (m && cov > 0) {
@@ -875,8 +892,8 @@
     }
     // 人口覆盖率
     let pc = 0, pt = 0;
-    for (let c = 0; c < nC; c++) { pt += city.pop[c]; if (cellWalk[c] <= maxM) pc += city.pop[c]; }
-    return { cellWalk: cellWalk, cellStation: cellStation, zl: zl, zCov: zCov, zWalk: zWalk, trees: trees, accessible: accessible, catchPop: catchPop, transfers: transfers, coverage: pt > 0 ? pc / pt : 0, NZ: NZ, facKey: fn ? fn.key : '' };
+    for (let c = 0; c < nC; c++) { pt += city.pop[c]; if (cellWalk[c] <= cellLim[c]) pc += city.pop[c]; }
+    return { cellWalk: cellWalk, cellStation: cellStation, cellLim: cellLim, stLimit: stLimit, zl: zl, zCov: zCov, zWalk: zWalk, trees: trees, accessible: accessible, catchPop: catchPop, transfers: transfers, coverage: pt > 0 ? pc / pt : 0, NZ: NZ, facKey: fn ? fn.key : '' };
   };
 
   Model.prototype.buildMetro = function (C) {

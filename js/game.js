@@ -236,6 +236,10 @@
       // 接驳巴士的运营费按月摊销：它只与线路长度有关，不看客流，所以建早了就是纯支出
       const busOps = this.busOpsPerMonth();
       if (busOps > 0.01) this.econ.spend('busOps', busOps);
+      // 车站配套（出入口 / P+R / 接驳站）的维护：按原值 2%/年摊销到月
+      const fac = this.facilityMaint(yr);
+      this.facStat = fac;
+      if (fac.month > 0.01) this.econ.spend('facMaint', fac.month);
     }
     if (this.macro && CM.Macro) CM.Macro.sample(this);   // 本月的岗位与交通效率（年度 GDP 取全年平均）
     yield;
@@ -688,6 +692,22 @@
       for (const b of s.bus) cars += b.cars | 0;
     }
     return cars * (B.opsPerVehicleYear || 0) / 12;
+  };
+
+  // 车站配套的维护费：出入口、P+R 与接驳站都是「建了就要一直养」的东西。
+  // 按配套原值（1990 年价）的 2%/年计提，再随运营价格指数上涨；按月摊入运营成本。
+  // 这是「建早了」的真实代价——没有它，配套就变成了一次性的白送。
+  Game.prototype.facilityMaint = function (year) {
+    const SF = CFG.stationFacility, Met = CM.Metro;
+    if (!SF || !Met || !Met.facCapex) return { capex: 0, year: 0, month: 0, stations: 0 };
+    const ci = this.econ.opsIndex(year);
+    let capex = 0, n = 0;
+    for (const id in this.net.stations) {
+      const v = Met.facCapex(this.net.stations[id]);
+      if (v > 0) { capex += v; n++; }
+    }
+    const yr = capex * (SF.maint || 0) * ci;
+    return { capex: capex, year: yr, month: yr / 12, stations: n };
   };
 
   // 站点周围（默认 300 m）的地价总额，万元。用于增值回收的年度增量计算。

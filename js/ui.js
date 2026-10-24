@@ -1208,6 +1208,25 @@
     this.rerenderPage();
   };
 
+  // 车站配套（出入口 / P+R）：与接驳站同一条路径——先进草案，确认建设才扣款。
+  // 升级费按级差计（见 Metro.evaluate），建成后按原值 2%/年计提维护。
+  UI.prototype.stFacility = function (id, kind, lv) {
+    const g = this.g();
+    if (!g || g.draft || !CFG.stationFacility) return;
+    const SF = CFG.stationFacility, y = g.clock.y;
+    const isPr = kind === 'pr', def = isPr ? SF.pr : SF.exit, key = isPr ? 'prLv' : 'exitLv';
+    if (def && y < (def.openYear || 0)) { this.toast((def.openYear || 0) + ' 年才开放这项配套', 'bad'); return; }
+    const r = g.edit(function (n) {
+      const s = n.stations[id];
+      if (!s) return { error: '车站不存在' };
+      if ((s[key] | 0) === lv) return { error: '已经是 ' + def.name[lv] };
+      s[key] = lv;
+      return null;
+    });
+    if (r && r.error) { this.toast(r.error, 'bad'); return; }
+    this.rerenderPage();
+  };
+
   // 车站周边的接驳盲区候选：直线 0.6–3 km 内、步行覆盖不到、人口或岗位较多的格子。
   // 按价值排序并做间距去重——玩家点一下就开通，不需要在地图上画线，也不需要自己算距离。
   UI.prototype.busCandidates = function (st) {
@@ -1221,7 +1240,7 @@
         const c = j * W + i;
         const w = city.pop[c] + city.jobs[c];
         if (w < 400) continue;
-        if (acc.cellWalk[c] <= maxM) continue;
+        if (acc.cellWalk[c] <= (acc.cellLim ? acc.cellLim[c] : maxM)) continue;
         const dx = i + 0.5 - st.x, dy = j + 0.5 - st.y;
         const d = Math.sqrt(dx * dx + dy * dy) * CFG.CELL_M;
         if (d < 600 || d > B.maxLenM) continue;
@@ -1333,6 +1352,14 @@
     }, true, 'tasks'));
     el.appendChild(this.sec('dr-cost', '费用', U.fmtMoney(ev.total), function () {
       const box = h('div');
+      // 科目小计：拆迁占比一眼可见（A2）。总价相同而拆迁占比不同的两套方案，
+      // 长期账完全不一样——拆迁是一次性沉没成本，轨道才是可比的工程量。
+      const sums = { construction: 0, demolition: 0, upgrade: 0, relocation: 0 };
+      for (const it of ev.items) sums[it.kind] = (sums[it.kind] || 0) + it.amount;
+      const share = function (v) { return ev.total > 0.5 ? ' · ' + U.fmtPct(v / ev.total, 0) : ''; };
+      const rows = [['轨道与车站', sums.construction], ['拆迁补偿', sums.demolition], ['改扩建', sums.upgrade], ['搬迁', sums.relocation]]
+        .filter(function (r) { return r[1] > 0.5; });
+      if (rows.length) box.appendChild(this.kv(rows.map(function (r) { return [r[0], U.fmtMoney(r[1]) + share(r[1]), r[0] === '拆迁补偿' && r[1] / Math.max(1, ev.total) > 0.5 ? 'bad' : '']; })));
       for (const it of ev.items) box.appendChild(h('div', { class: 'chg small' }, h('span', null, it.label), h('span', { class: 'num' }, U.fmtMoney(it.amount))));
       if (!ev.items.length) box.appendChild(h('div', { class: 'note' }, '本次修改不产生费用（拆除与小范围调整免费）。'));
       box.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } }, g.econ.isFree() ? '自由建造：资金不限。' : '当前资金 ' + U.fmtMoney(g.econ.funds) + '。'));

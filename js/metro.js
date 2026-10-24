@@ -319,6 +319,37 @@
   };
   M.busCost = function (cars) { return Math.max(0, cars | 0) * ((CFG.bus && CFG.bus.vehicleCost) || 0); };   // 万元
 
+  // ---------------- 车站配套（出入口 / P+R） ----------------
+  // 出入口决定「乘客愿意走多远进站」：每加一级把步行半径抬高 225 m，覆盖面积按平方增长。
+  // P+R 改变的是「最后一段怎么走」：站口 800 m 内开车到站，等效步行距离打八五折。
+  M.exitAccessM = function (lv) {
+    const F = CFG.stationFacility, arr = F && F.exit && F.exit.accessM;
+    if (!arr) return CFG.walk.maxAccessM;
+    return arr[U.clamp(lv | 0, 0, arr.length - 1)];
+  };
+  M.exitCost = function (lv) {          // 万元（1990 年价），累计造价
+    const F = CFG.stationFacility, arr = F && F.exit && F.exit.cost;
+    if (!arr) return 0;
+    return arr[U.clamp(lv | 0, 0, arr.length - 1)];
+  };
+  M.prSpaces = function (lv) {
+    const F = CFG.stationFacility, arr = F && F.pr && F.pr.spaces;
+    if (!arr) return 0;
+    return arr[U.clamp(lv | 0, 0, arr.length - 1)];
+  };
+  M.prCost = function (lv) {            // 万元（1990 年价）
+    const F = CFG.stationFacility;
+    if (!F || !F.pr) return 0;
+    return M.prSpaces(lv) * (F.pr.costPerSpace || 0);
+  };
+  // 一个车站的全部配套原值（万元，1990 年价）：出入口 + P+R + 接驳站。
+  // 车辆的运营保养另算（按配车逐月摊销），不在这里重复计。
+  M.facCapex = function (s) {
+    if (!s) return 0;
+    const hub = (CFG.bus && (s.busHub | 0)) ? CFG.bus.hubCost : 0;
+    return M.exitCost(s.exitLv | 0) + M.prCost(s.prLv | 0) + hub;
+  };
+
   M.addSegment = function (net, lineId, a, b, bends, type) {
     if (!net.stations[a] || !net.stations[b]) return { error: '绘线起点或终点车站已不存在，请重新选择起点' };
     if (a === b) return { error: '起点与终点为同一车站' };
@@ -552,13 +583,18 @@
     if (!city.street[c]) return 0.06;
     return U.clamp((city.pop[c] + city.jobs[c]) / 2500, 0.15, 1.6) * (1 - city.taken[c]);
   };
-  M.trackCost = function (g, type, year) {
+  // 造价拆解：把「跨江 / 穿山 / 保护建筑加固 / 跨铁路」从总价里单列出来。
+  // 玩家要判断的是「绕行还是硬穿」，只有把这几项拆开才比得出来（附 A3）。
+  M.trackBreakdown = function (g, type, year) {
     const ci = costIndex(year), C = CFG.cost;
-    let v = g.lenM / 1000 * C.trackPerKm[type] + g.waterM / 1000 * C.riverPerKm[type];
-    if (type === 'underground') v += g.hillM / 1000 * C.hillPerKm + g.protM / 1000 * C.protectedPerKm;
-    v += M.railCrossCost(g, type);
-    return v * ci;
+    const base = g.lenM / 1000 * C.trackPerKm[type], water = g.waterM / 1000 * C.riverPerKm[type];
+    const hill = type === 'underground' ? g.hillM / 1000 * C.hillPerKm : 0;
+    const prot = type === 'underground' ? g.protM / 1000 * C.protectedPerKm : 0;
+    const rail = M.railCrossCost(g, type);
+    const total = base + water + hill + prot + rail;
+    return { base: base * ci, water: water * ci, hill: hill * ci, prot: prot * ci, rail: rail * ci, total: total * ci };
   };
+  M.trackCost = function (g, type, year) { return M.trackBreakdown(g, type, year).total; };
   // 跨越铁路的附加费用（基年价格）：地下线下穿地面铁路、高架线上跨地面或高架铁路，每处按等效长度计
   M.railCrossN = function (g, type) { return type === 'underground' ? (g.railS || 0) : (type === 'elevated' ? (g.railS || 0) + (g.railV || 0) : 0); };
   M.railCrossCost = function (g, type) {
@@ -667,6 +703,24 @@
           }
           for (const bid in oldBus) if (!newBus[bid]) res.changes.mod.push('车站「' + s.name + '」停运接驳巴士（不退款）');
         }
+        // 车站配套（经营模式）：出入口与 P+R 按级计费，只收增量；降级不退款
+        const SF = CFG.stationFacility;
+        if (SF) {
+          const eO = o.exitLv | 0, eN = s.exitLv | 0;
+          if (eN > eO) {
+            res.changes.mod.push('车站「' + s.name + '」出入口升至' + SF.exit.name[eN] + '（步行可达 ' + SF.exit.accessM[eN] + ' m）');
+            item('upgrade', '出入口 ' + s.name + '（' + SF.exit.name[eN] + '）', (M.exitCost(eN) - M.exitCost(eO)) * ci, id);
+          } else if (eN < eO) {
+            res.changes.mod.push('车站「' + s.name + '」出入口降为' + SF.exit.name[eN] + '（不退款）');
+          }
+          const pO = o.prLv | 0, pN = s.prLv | 0;
+          if (pN > pO) {
+            res.changes.mod.push('车站「' + s.name + '」P+R 停车场 ' + SF.pr.name[pN]);
+            item('upgrade', 'P+R 停车场 ' + s.name + '（' + SF.pr.name[pN] + '）', (M.prCost(pN) - M.prCost(pO)) * ci, id);
+          } else if (pN < pO) {
+            res.changes.mod.push('车站「' + s.name + '」P+R 停车场缩减为' + SF.pr.name[pN] + '（不退款）');
+          }
+        }
       }
       if (!o || U.dist(s.x, s.y, o.x, o.y) > 1e-6 || s.type !== o.type) touchedSt.add(id);
       if (newSite) {
@@ -748,8 +802,14 @@
       }
       if (full) { touched.add(id); res.paidLen[id] = g.lenM; }
       if (full) {
-        const rn = M.railCrossN(g, s.type);
-        item('construction', (base && base.length ? '改建轨道 ' : '新建轨道 ') + lbl + '（' + U.fmtKm(g.lenM) + (g.waterM > 1 ? '，' + (s.type === 'underground' ? '越江隧道 ' : '跨江桥梁 ') + U.fmtKm(g.waterM) : '') + (rn ? '，' + (s.type === 'underground' ? '下穿' : '上跨') + '铁路 ' + rn + ' 处' : '') + '）', M.trackCost(g, s.type, year), id);
+        const rn = M.railCrossN(g, s.type), bd = M.trackBreakdown(g, s.type, year);
+        const lead = base && base.length ? '改建轨道 ' : '新建轨道 ';
+        item('construction', lead + lbl + '（' + U.fmtKm(g.lenM) + '，' + CFG.metro.typeName[s.type] + '）', bd.base, id);
+        // 附加费用单列（A3）：不拆开的话，「绕行 300 m」和「越江一次」在总价里分不出来
+        if (bd.water > 1) item('construction', '越江隧道附加 ' + lbl + '（' + U.fmtKm(g.waterM) + '）', bd.water, id);
+        if (bd.hill > 1) item('construction', '山体隧道附加 ' + lbl + '（' + U.fmtKm(g.hillM) + '）', bd.hill, id);
+        if (bd.prot > 1) item('construction', '保护建筑下方加固 ' + lbl, bd.prot, id);
+        if (bd.rail > 1) item('construction', (s.type === 'underground' ? '下穿' : '上跨') + '铁路 ' + rn + ' 处 ' + lbl, bd.rail, id);
         const dm = M.trackDemolition(city, g, s.type, year);
         item('demolition', '沿线拆迁 ' + lbl, dm.cost, id);
         res.demolitions.push.apply(res.demolitions, dm.cells);

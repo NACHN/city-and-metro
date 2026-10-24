@@ -1723,7 +1723,8 @@
         if (gapCell) { const v = gapCell[c] / 0.0625; if (v > 400) { const t = U.clamp(Math.sqrt(v / 60000), 0, 1); col = U.ramp([[0, [255, 214, 170]], [0.5, [236, 112, 72]], [1, [180, 24, 34]]], t); a = 0.12 + 0.45 * t; } }
       } else if (lay === 'cover' && LO.cover === 'station') {
         const w = acc ? acc.cellWalk[c] : Infinity, k = acc ? acc.cellStation[c] : -1;
-        if (k >= 0 && w <= CFG.walk.maxAccessM) { col = stCol(k); a = 0.42 - 0.18 * U.clamp(w / CFG.walk.maxAccessM, 0, 1); }
+        const lim = acc ? (acc.cellLim ? acc.cellLim[c] : CFG.walk.maxAccessM) : CFG.walk.maxAccessM;
+        if (k >= 0 && w <= lim) { col = stCol(k); a = 0.42 - 0.18 * U.clamp(w / lim, 0, 1); }
         else if (p > 4000) { col = [215, 48, 39]; a = U.clamp(0.1 + p / 120000, 0, 0.38); }
       } else if (lay === 'pop') {
         // 浅色单色渐变、半透明（最高约 0.5），道路与地名仍清楚可见
@@ -1740,11 +1741,14 @@
         }
       } else if (this.layer === 'cover') {
         const w = acc ? acc.cellWalk[c] : Infinity;
+        const lim = acc ? (acc.cellLim ? acc.cellLim[c] : CFG.walk.maxAccessM) : CFG.walk.maxAccessM;
         const m = w / CFG.walk.mPerMin;
-        if (m <= 5) { col = [27, 140, 70]; a = 0.5; }
+        if (w > lim) { if (p > 4000) { col = [215, 48, 39]; a = U.clamp(0.1 + p / 120000, 0, 0.38); } }
+        else if (m <= 5) { col = [27, 140, 70]; a = 0.5; }
         else if (m <= 10) { col = [90, 180, 100]; a = 0.42; }
         else if (m <= 15) { col = [160, 214, 130]; a = 0.36; }
-        else if (p > 4000) { col = [215, 48, 39]; a = U.clamp(0.1 + p / 120000, 0, 0.38); }
+        // 出入口升级后的 15–22 分钟可达圈：颜色再淡一档，说明它只对愿意多走的人才成立
+        else { col = [196, 226, 168]; a = 0.3; }
       } else if (this.layer === 'region') {
         const rg = city.regions[city.region[c]];
         if (rg.scenic) { col = [120, 170, 110]; a = 0.25; }
@@ -2918,8 +2922,8 @@
       const uv = city.edgeVerts(e); rail.push([uv[0] % VW, (uv[0] / VW) | 0, uv[1] % VW, (uv[1] / VW) | 0]);
     }
     if (acc && this.layerOpt.cover === 'station') {
-      const cs = acc.cellStation, cw = acc.cellWalk, mx = CFG.walk.maxAccessM;
-      const st = function (c) { return cw[c] <= mx ? cs[c] : -1; };
+      const cs = acc.cellStation, cw = acc.cellWalk, cl = acc.cellLim, mx = CFG.walk.maxAccessM;
+      const st = function (c) { return cw[c] <= (cl ? cl[c] : mx) ? cs[c] : -1; };
       for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
         const c = j * W + i, a = st(c); if (a < 0) continue;
         if (i + 1 < W) { const b = st(c + 1); if (b >= 0 && b !== a) bound.push([i + 1, j, i + 1, j + 1]); }
@@ -2939,7 +2943,7 @@
     if (!sel || sel.kind !== 'station' || !acc) return;
     const k = model.net.C.sIndex.get(sel.id); if (k === undefined) return;
     const tr = acc.trees[k]; if (!tr) return;
-    const city = this.game.city, W = city.W, H = city.H, VW = city.VW, mx = CFG.walk.maxAccessM, extra = CFG.walk.cellExtraM;
+    const city = this.game.city, W = city.W, H = city.H, VW = city.VW, mx = (acc.stLimit ? acc.stLimit[k] : CFG.walk.maxAccessM), extra = CFG.walk.cellExtraM;
     const dv = new Map(); for (let q = 0; q < tr.verts.length; q++) dv.set(tr.verts[q], tr.dist[q]);
     const inR = function (i, j) {
       if (i < 0 || j < 0 || i >= W || j >= H) return false;
@@ -2948,7 +2952,8 @@
       return m + extra <= mx;
     };
     const st = model.net.C.stations[k], ci = Math.floor(st.x), cj = Math.floor(st.y), edges = [];
-    for (let j = cj - 7; j <= cj + 7; j++) for (let i = ci - 7; i <= ci + 7; i++) {
+    const rw = Math.ceil(mx / CFG.CELL_M) + 1;
+    for (let j = cj - rw; j <= cj + rw; j++) for (let i = ci - rw; i <= ci + rw; i++) {
       if (!inR(i, j)) continue;
       if (!inR(i - 1, j)) edges.push([i, j, i, j + 1]); if (!inR(i + 1, j)) edges.push([i + 1, j, i + 1, j + 1]);
       if (!inR(i, j - 1)) edges.push([i, j, i + 1, j]); if (!inR(i, j + 1)) edges.push([i, j + 1, i + 1, j + 1]);
