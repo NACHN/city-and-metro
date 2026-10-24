@@ -40,6 +40,7 @@
     g.compiled = M.compile(g.net, g.city);
     g.model.setNetwork(g.compiled);
     g.econ = new CM.Economy(g.mode, g.clock.y, g.clock.m);
+    g.econ.revOf = function (yy) { return g.fiscalRev(yy); };
     g.model.fare = g.econ.fare;
     g.tasks = new CM.Tasks();
     g.model.solveNow(2);
@@ -754,6 +755,15 @@
     return this.capStat;
   };
 
+  // 上一年度地方财政收入（万元）：财政配比（建设批次）的唯一输入。
+  // 没有城市经济（教程、虚构地图）或还没有记录时返回 0，拨款退回 grantBase 基数表。
+  Game.prototype.fiscalRev = function (y) {
+    const m = this.macro;
+    if (!m || !m.rec || !m.rec.length) return 0;
+    for (let i = m.rec.length - 1; i >= 0; i--) if (m.rec[i].y === y) return m.rec[i].rev || 0;
+    return 0;
+  };
+
   // ---------------- 存档 ----------------
   Game.prototype.serialize = function () {
     return {
@@ -800,6 +810,7 @@
     g.compiled = M.compile(g.net, g.city);
     g.model.setNetwork(g.compiled);
     g.econ = CM.Economy.restore(s.econ);
+    g.econ.revOf = function (yy) { return g.fiscalRev(yy); };
     g.model.fare = g.econ.fare;
     g.tasks = CM.Tasks.restore(s.tasks);
     g.events = s.events || []; g.history = s.history || []; g.firedEvents = s.firedEvents || {};

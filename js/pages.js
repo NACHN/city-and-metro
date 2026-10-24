@@ -1167,7 +1167,7 @@
     const box = h('div', { class: 'gchain' + (compact ? ' compact' : '') });
     const step = function (label, v, cls) { box.appendChild(h('div', { class: 'gc-step ' + (cls || '') }, h('small', null, label), h('b', { class: 'num' }, v))); };
     step('基础额度', U.fmtMoney(E.grantQuota(y, m)));
-    for (const f of E.grantFactors(y, m)) step(f.kind === 'fisc' ? '财力' : (f.kind === 'sat' ? '满意度' : '任务'), '×' + f.f.toFixed(2), f.f >= 1.005 ? 'up' : (f.f <= 0.995 ? 'down' : ''));
+    for (const f of E.grantFactors(y, m)) step(f.kind === 'fisc' ? '财力' : (f.kind === 'ratio' ? '配比' : (f.kind === 'perf' ? '业绩' : (f.kind === 'sat' ? '满意度' : '任务'))), f.kind === 'ratio' ? '—' : '×' + f.f.toFixed(2), f.f >= 1.005 ? 'up' : (f.f <= 0.995 ? 'down' : ''));
     return box;
   };
 
@@ -1281,18 +1281,44 @@
         h('div', { class: 'ec-row' },
           h('div', null, h('small', null, '占 GDP'), h('b', null, rr ? (rr * 100).toFixed(1) + '%' : '—')),
           h('div', null, h('small', null, (F.y || g.clock.y) + ' 年财力系数'), h('b', { class: (F.f || 1) >= 1 ? 'good' : 'warn' }, '×' + (F.f || 1).toFixed(2))),
-          h('div', null, h('small', null, '地铁资金占比'), h('b', null, !free && L ? ((E.grantQuota(g.clock.y, g.clock.m) * (F.f || 1) * 12) / Math.max(1, L.rev) * 100).toFixed(1) + '%' : '—'))));
+          h('div', null, h('small', null, '地铁资金占比'), h('b', null, !free && L ? ((E.batchOn && E.batchOn() ? E.annualQuota(g.clock.y) : E.grantQuota(g.clock.y, g.clock.m) * (F.f || 1) * 12) / Math.max(1, L.rev) * 100).toFixed(1) + '%' : '—'))));
       el.appendChild(card);
       el.appendChild(h('div', { class: 'note', style: { margin: '4px 2px 8px' } }, 'GDP 不等于财政收入：地方财政收入约为地图范围 GDP 的一定比例，随经济周期的波动更大；其中只有一部分安排给地铁。每年 1 月按上一年的实际财政收入与预期之比确定当年的财力系数（平滑后限定在 ×0.70–1.30），全年不变。' + (L ? '' : '第一个完整年度结算后开始生效。')));
     }
     if (!free) {
       const ny = g.clock.m === 12 ? g.clock.y + 1 : g.clock.y, nm = g.clock.m % 12 + 1;
+      // 建设批次（经营模式）：建设资金不再按月发，每 N 年一次给盘子，中间月份只有运营补贴。
+      // 这就是「节奏」——攒钱太慢的问题由批次解决，而不是靠提高月补贴。
+      if (E.batchOn && E.batchOn()) {
+        const B = E.batchCfg(), yrs = B.years || 4, y0 = CFG.START.y;
+        const cyc = ((g.clock.y - y0) % yrs + yrs) % yrs;
+        const curBatch = g.clock.y - cyc, nextBatch = curBatch + yrs;
+        const curAmt = E.isBatchYear(g.clock.y) ? E.batchFor(g.clock.y) : 0;
+        const nextAmt = E.annualQuota(nextBatch) * yrs * (B.buildShare || 0.85) * (0.6 + 0.8 * E.sat / 100);
+        const opsMonth = E.annualQuota(g.clock.y) / 12 * (1 - (B.buildShare || 0.85));
+        const rev = (L && L.rev) || 0;
+        el.appendChild(this.sec('fi-batch', '建设批次', E.isBatchYear(g.clock.y) ? '本年发放 ' + U.fmtMoney(curAmt) : '下一批 ' + nextBatch + ' 年 · ' + U.fmtMoney(nextAmt), function () {
+          const b = h('div');
+          b.appendChild(self.kv([
+            ['批次周期', '每 ' + yrs + ' 年一批（' + curBatch + '–' + (curBatch + yrs - 1) + ' 年）'],
+            ['本批建设资金', curAmt > 0 ? U.fmtMoney(curAmt) : '本年不是批次年'],
+            ['下一批预计', nextBatch + ' 年 1 月 · ' + U.fmtMoney(nextAmt)],
+            ['本月运营补贴', U.fmtMoney(opsMonth)],
+            ['配比（占财政收入）', rev > 0 ? U.fmtPct(E.annualQuota(g.clock.y) / rev, 1) : '—'],
+            ['票款自给率 → 业绩系数', U.fmtPct(E.selfSufficiency(), 0) + ' → ×' + E.perfFactor().toFixed(2)],
+          ]));
+          b.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } }, '建设资金一次给一个盘子，直接进建设专项资金：只能用于建设与拆迁，不能补运营、不能付利息。中间月份只有运营补贴，票款与补贴共同支撑日常运营——所以做得好的线网（自给率高）下一批盘子更大。'));
+          return b;
+        }, true, 'bank'));
+      }
       el.appendChild(this.sec('fi-grant', '地铁拨款依据', '下月 ' + U.fmtMoney(E.grantFor(ny, nm)), function () {
         const b = h('div');
         b.appendChild(self.grantChain(ny, nm, false));
         b.appendChild(h('div', { class: 'chg small', style: { marginTop: '6px' } }, h('b', null, '下月（' + ny + '年' + nm + '月）拨款'), h('b', { class: 'num' }, U.fmtMoney(E.grantFor(ny, nm)))));
         for (const f of E.grantFactors(ny, nm)) if (f.kind === 'task') b.appendChild(h('div', { class: 'tiny muted' }, '· ' + f.label + ' ×' + f.f.toFixed(2)));
-        b.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } }, '基础额度按城市与年代设定；财力系数来自城市经济（上一年地方财政收入）；满意度系数 ×0.6–1.4；任务未完成时在 ' + CFG.economy.failGrantMonths + ' 个月内 ×' + CFG.economy.failGrantFactor + '（多项叠加最低按 ×0.6）。拨款每月初发放一次，不会重复发放或补发。'));
+        b.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } }, (E.batchOn && E.batchOn())
+          ? '月拨款 = 年资金盘子 ÷ 12，年盘子 = 上一年地方财政收入 × 配比 × 业绩系数；其中 ' + Math.round((E.batchCfg().buildShare || 0.85) * 100) + '% 进建设批次（每 ' + E.batchCfg().years + ' 年一次），其余按月发作运营补贴。满意度系数 ×0.6–1.4；任务未完成时在 ' + CFG.economy.failGrantMonths + ' 个月内 ×' + CFG.economy.failGrantFactor + '。'
+          : '基础额度按城市与年代设定；财力系数来自城市经济（上一年地方财政收入）；满意度系数 ×0.6–1.4；任务未完成时在 ' + CFG.economy.failGrantMonths + ' 个月内 ×' + CFG.economy.failGrantFactor + '（多项叠加最低按 ×0.6）。拨款每月初发放一次，不会重复发放或补发。'));
         return b;
       }, true, 'bank'));
     }
@@ -1467,7 +1493,7 @@
       // 玩家不必再去翻账本自己算一次。
       let oldInt = 0;
       for (const b of E.bonds) if (!b.done) oldInt += b.amount * b.rate;
-      const grantYr = Math.max(1, E.grantFor(y, g.clock.m) * 12), intYr = oldInt + it, ratio = intYr / grantYr;
+      const grantYr = Math.max(1, (E.batchOn && E.batchOn()) ? E.annualQuota(y) : E.grantFor(y, g.clock.m) * 12), intYr = oldInt + it, ratio = intYr / grantYr;
       pv.appendChild(self.kv([
         ['每年利息（含既有债务）', U.fmtMoney(intYr)],
         ['占全年拨款', U.fmtPct(ratio, 0), ratio > 0.5 ? 'bad' : (ratio > 0.3 ? 'warn' : '')],

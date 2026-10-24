@@ -83,17 +83,64 @@
   // 财力系数（城市经济，macro.js）：上一年实际地方财政收入 ÷ 预期，每年 1 月确定一次；没有城市经济的地图为 1
   Economy.prototype.fiscalFactor = function () { return this.fisc && isFinite(this.fisc.f) ? this.fisc.f : 1; };
   // 基础额度：按城市与年代设定的地铁资金基数（不含财力、满意度与任务调整）
-  Economy.prototype.grantQuota = function (y, m) { return U.interp(CFG.economy.grantBase, y + ((m || 1) - 1) / 12); };
+  Economy.prototype.grantQuota = function (y, m) {
+    if (!this.batchOn()) return U.interp(CFG.economy.grantBase, y + ((m || 1) - 1) / 12);
+    return this.annualQuota(y) / 12;
+  };
+  // ---------------- 建设批次（D1，仅经营模式） ----------------
+  // 把钱从「月流」改成「批次流」：每 4 年一次性给一个建设盘子，其余月份只有运营补贴。
+  // 总量与逐年发放相当，但节奏从挤牙膏变成「一批开工若干个工地」——这是现实中地铁建设的真实节奏。
+  // 配比 k 随城市成熟递减，所以后期的盘子跟着财政收入一起涨，能支撑一批几十公里。
+  Economy.prototype.batchCfg = function () { return CFG.batch || null; };
+  // 只在经营模式生效：free / challenge 的拨款口径一个字都不改
+  Economy.prototype.batchOn = function () { return !!(CFG.batch && this.caps && this.caps.land); };
+  Economy.prototype.isBatchYear = function (y) { const B = this.batchCfg(); return !!(B && ((y - CFG.START.y) % (B.years || 4)) === 0); };
+  // 票款自给率（近 12 个月票款 ÷ 运营成本）：下一批盘子的大小由它决定
+  Economy.prototype.selfSufficiency = function () {
+    const L = this.ledger;
+    let fare = 0, ops = 0;
+    for (let i = Math.max(0, L.length - 12); i < L.length; i++) { fare += L[i].fare || 0; ops += (L[i].ops || 0) + (L[i].facMaint || 0) + (L[i].busOps || 0); }
+    return ops > 0.5 ? fare / ops : 0;
+  };
+  Economy.prototype.perfFactor = function () {
+    const B = this.batchCfg();
+    if (!B) return 1;
+    const s = U.clamp(this.selfSufficiency(), 0, B.perfCap || 1.5);
+    return (B.perfFrom || 0.9) + (B.perfGain || 0.3) * s;
+  };
+  // 年度资金盘子（万元/年）：有财政记录就用「上一年地方财政收入 × k」，没有就退回基数表
+  Economy.prototype.annualQuota = function (y) {
+    const B = this.batchCfg();
+    if (!B) return U.interp(CFG.economy.grantBase, y) * 12;
+    const rev = this.revOf ? this.revOf(y - 1) : 0;
+    if (!(rev > 0)) return U.interp(CFG.economy.grantBase, y) * 12;
+    return rev * U.interp(B.k, y) * (B.factor || 1) * this.perfFactor();
+  };
+  // 本批建设资金（万元）：批次年的 1 月一次性到账，直接进建设专项资金
+  Economy.prototype.batchFor = function (y) {
+    const B = this.batchCfg();
+    if (!B || !this.batchOn() || !this.isBatchYear(y)) return 0;
+    const f = 0.6 + 0.8 * this.sat / 100, ym = U.ymIndex(y, 1);
+    let mf = 1; for (const md of this.mods) if (md.kind === 'grant' && md.until >= ym) mf *= md.factor;
+    return this.annualQuota(y) * (B.years || 4) * (B.buildShare || 0.85) * f * Math.max(0.6, mf);
+  };
   Economy.prototype.grantFor = function (y, m) {
     const ym = U.ymIndex(y, m);
     let f = 0.6 + 0.8 * this.sat / 100, mf = 1;
     for (const md of this.mods) if (md.kind === 'grant' && md.until >= ym) mf *= md.factor;
+    // 批次模式下财政数据已经含经济波动，不再叠财力系数（会重复计入）
+    if (this.batchOn()) return this.grantQuota(y, m) * f * Math.max(0.6, mf);
     return this.grantQuota(y, m) * this.fiscalFactor() * f * Math.max(0.6, mf);
   };
   Economy.prototype.grantFactors = function (y, m) {
     const ym = U.ymIndex(y, m);
     const list = [];
-    if (this.fisc) list.push({ label: '财力系数（' + (this.fisc.y || y) + ' 年预算）', f: this.fiscalFactor(), kind: 'fisc' });
+    if (this.batchOn()) {
+      // 批次模式：额度 = 财政收入 × 配比 × 业绩，财力系数已经含在财政收入里，不再叠
+      const B = this.batchCfg();
+      list.push({ label: '配比（占财政收入 ' + U.fmtPct(U.interp(B.k, y), 1) + '）', f: 1, kind: 'ratio' });
+      list.push({ label: '业绩系数（票款自给率 ' + U.fmtPct(this.selfSufficiency(), 0) + '）', f: this.perfFactor(), kind: 'perf' });
+    } else if (this.fisc) list.push({ label: '财力系数（' + (this.fisc.y || y) + ' 年预算）', f: this.fiscalFactor(), kind: 'fisc' });
     list.push({ label: '满意度系数（' + Math.round(this.sat) + '）', f: 0.6 + 0.8 * this.sat / 100, kind: 'sat' });
     for (const md of this.mods) if (md.kind === 'grant' && md.until >= ym) list.push({ label: md.reason + '（至 ' + Math.floor(md.until / 12) + '年' + (md.until % 12 + 1) + '月）', f: md.factor, kind: 'task' });
     return list;
@@ -101,8 +148,18 @@
   // 新月份：先开新账（期初 = 上月期末），任务奖励等记入新月；再发放本月拨款
   Economy.prototype.openMonth = function (y, m) { this.cur = blankMonth(y, m, this.funds, this.capex); };
   Economy.prototype.payGrant = function (y, m) {
-    if (!this.isFree()) { const v = this.grantFor(y, m); this.income('grant', v); this.log('grant', v, 'gen', '政府拨款', { y: y, m: m, d: 1 }); }
-    else this.cur.grant = 0;
+    if (this.isFree()) { this.cur.grant = 0; return; }
+    const v = this.grantFor(y, m);
+    this.income('grant', v);
+    // 批次年 1 月：建设盘子一次性到账，并立刻划进建设专项资金（只能建设、不能补运营或付息）
+    const b = (m === 1) ? this.batchFor(y) : 0;
+    if (b > 0) {
+      this.income('grant', b);
+      this.funds -= b; this.capex += b;
+      this.cur.grantCapex = (this.cur.grantCapex || 0) + b;
+    }
+    const note = b > 0 ? '政府拨款与建设批次（转入专项资金）' : (this.batchOn() ? '政府拨款（运营补贴）' : '政府拨款');
+    this.log('grant', v + b, 'gen', note, { y: y, m: m, d: 1 });
   };
   Economy.prototype.startMonth = function (y, m) { this.openMonth(y, m); this.payGrant(y, m); };
   // 封账：记录期末并归档；之后的收支一律记入下一个月
@@ -203,7 +260,10 @@
   Economy.prototype.bondCfg = function () { return CFG.economy.bonds || null; };
   Economy.prototype.canBorrow = function () { return !this.isFree() && !!this.bondCfg(); };
   // 当年基础月拨款（含财力系数，不含满意度与任务调整）：融资额度与债务上限按此计算
-  Economy.prototype.baseGrant = function (y) { return U.interp(CFG.economy.grantBase, y) * this.fiscalFactor(); };
+  Economy.prototype.baseGrant = function (y) {
+    if (this.batchOn()) return this.annualQuota(y) / 12;   // 批次模式下「月拨款」是年盘子的 1/12
+    return U.interp(CFG.economy.grantBase, y) * this.fiscalFactor();
+  };
   // 新发行债券的利率报价：有城市经济时按经济环境与财政状况浮动（macro.js）；已发行债券按合同利率，不受影响
   Economy.prototype.bondQuote = function (kind, y, term) {
     if (this.quoteFn) { try { const q = this.quoteFn(kind, y, term); if (q && isFinite(q.rate)) return q; } catch (e) { console.error(e); } }
