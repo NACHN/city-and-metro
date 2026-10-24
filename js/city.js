@@ -938,7 +938,10 @@
       if (walk) { const wm = Math.min(walk[c] || 0, 4000); accMul = 1 + L.accessGain * Math.exp(-wm / L.accessScale); }
       const dens = Math.min(L.densCap, (this.pop[c] + 1.5 * this.jobs[c]) / L.densRef);
       const denMul = (1 + L.densGain * Math.pow(dens, L.densPow)) * (1 + L.jobGain * Math.min(3, this.jobs[c] / L.jobRef));
+      // 基础乘子 → 按本图梯度系数拉伸（gradK=1 时不改变）
       let mul = poiMul * accMul * denMul;
+      const gk = L.gradK || 1;
+      if (gk !== 1) mul = 1 + (mul - 1) * gk;
       if (mul > L.maxMul) mul = L.maxMul;
       const v = L.base * ind * mul;
       P[c] = v; MUL[c] = mul; sum += v; n++; if (v > mx) mx = v;
@@ -968,7 +971,9 @@
     if (!this.landMul || !L || !L.clearFactor) return CFG.cost.demolishPerCell;
     const m = this.landMul[c];
     if (!(m > 0)) return 0;
-    return L.base * m * L.clearFactor * CELL_KM2 * 1e6 / 10000;
+    const v = L.base * m * L.clearFactor * CELL_KM2 * 1e6 / 10000;
+    const cap = (L.clearCapTunnel || 0) * (CFG.cost.trackPerKm || {}).underground;
+    return cap > 0 ? Math.min(v, cap) : v;
   };
 
   // ---------------- 建筑高度 ----------------

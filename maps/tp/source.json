@@ -2174,6 +2174,9 @@
     "land": {
       "base": 8000,
       "clearFactor": 1.4,
+      "clearCapTunnel": 2,
+      "gradK": 1.6,
+      "maxMul": 30,
       "poiGain": 0.9,
       "poiGroup": {
         "交通枢纽": 1,
@@ -2190,8 +2193,7 @@
       "densPow": 0.6,
       "densCap": 4,
       "jobGain": 0.2,
-      "jobRef": 8000,
-      "maxMul": 12
+      "jobRef": 8000
     },
     "money": {
       "code": "TWD",
