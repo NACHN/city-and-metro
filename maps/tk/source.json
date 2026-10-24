@@ -2482,7 +2482,8 @@
       "densPow": 0.6,
       "densCap": 4,
       "jobGain": 0.2,
-      "jobRef": 8000
+      "jobRef": 8000,
+      "farGain": 1.5
     },
     "money": {
       "code": "JPY",

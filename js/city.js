@@ -926,6 +926,8 @@
     const P = new Float32Array(N);
     // 相对乘子（不含基准与物价指数）：拆迁计价要用 1990 年价，所以单独存一份
     const MUL = new Float32Array(N);
+    // 站点步行可达性乘子：供「容积率联动」派生开发强度（修地铁 → 允许加密）
+    const ACC = new Float32Array(N);
     // 按交通小区（1 km²）聚合，供片区详情展示：平均地价 + 三项分项指数
     const ZW = (W / CFG.ZONE) | 0, ZH = (H / CFG.ZONE) | 0, ZN = ZW * ZH;
     const zP = new Float64Array(ZN), zPoi = new Float64Array(ZN), zAcc = new Float64Array(ZN), zDen = new Float64Array(ZN), zN = new Uint16Array(ZN);
@@ -944,7 +946,7 @@
       if (gk !== 1) mul = 1 + (mul - 1) * gk;
       if (mul > L.maxMul) mul = L.maxMul;
       const v = L.base * ind * mul;
-      P[c] = v; MUL[c] = mul; sum += v; n++; if (v > mx) mx = v;
+      P[c] = v; MUL[c] = mul; ACC[c] = accMul; sum += v; n++; if (v > mx) mx = v;
       vals.push(v);
       const z = this.zoneOf(c);
       zP[z] += v; zPoi[z] += poiMul; zAcc[z] += accMul; zDen[z] += denMul; zN[z]++;
@@ -953,6 +955,7 @@
     vals.sort(function (a, b) { return a - b; });
     this.landPrice = P;
     this.landMul = MUL;
+    this.landAcc = ACC;
     this.landStat = {
       year: year, cells: n, mean: n ? sum / n : 0, max: mx,
       p10: n ? vals[Math.floor(n * 0.1)] : 0,
@@ -1045,7 +1048,19 @@
       const lf = this.landFrac[c] * (1 - this.taken[c]);
       if (lf <= 0.05) continue;
       const P = L === LU.RURAL ? this.plan[c] : L;
-      const cr = resCap(P) * eraMul * lf, cj = jobCap(P, this.regions[this.region[c]].plan) * eraMul * lf;
+      // 容积率联动（仅经营模式）：站点步行可达的区位允许更高强度的开发（现实中即 TOD 放宽容积率）。
+      // 没有地价系统（自由建造 / 经营挑战）时 landAcc 为空，farK 恒为 1，容量与既有模式完全一致。
+      const Ld = CFG.land;
+      let farK = 1;
+      if (this.landAcc && Ld && Ld.farGain > 0) {
+        const am = this.landAcc[c] || 1;
+        // 2% 门限：没有站点时 exp(−∞) 会留 0.002 量级的浮点残差，不能让它给全图普涨
+        if (am > 1.02) farK = 1 + Ld.farGain * Math.min(1, (am - 1) / (Ld.accessGain || 0.7));
+      }
+      let cr = resCap(P) * eraMul * lf * farK, cj = jobCap(P, this.regions[this.region[c]].plan) * eraMul * lf * farK;
+      // 既有数据的核心区人口本来就高于 resCap 口径（老城密度远超新区基准），这些格子会因剩余容量为负而
+      // 永远停止增长。TOD 加密的意义正是把它们重新松开，所以站点周边按现有人口兜底。
+      if (farK > 1) { if (cr < this.pop[c]) cr = this.pop[c]; if (cj < this.jobs[c]) cj = this.jobs[c]; }
       // 上盖带来的额外容量：住宅部分计入人口容量（会产生出行），商业部分计入岗位容量
       capR[c] = cr + (this.devPop ? this.devPop[c] : 0);
       capJ[c] = cj + (this.devJobs ? this.devJobs[c] : 0);
