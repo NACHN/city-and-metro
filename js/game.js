@@ -579,15 +579,17 @@
     const held = P.ramp[Math.min(P.ramp.length - 1, Math.max(0, Math.floor((now - at) / 12)))];
     // 商业租金来自实际到访客流（OD 的结果）；住宅部分仍按「售价 × 租售比」
     const v = this.mallVisits(s);
-    // 站内商业的顾客是「顺路进出站的乘客」，不是专程目的地——所以它的客流取
-    // 「站点日进站量 × 顺路转化率」与「设施吸引」的较大者。没有地铁客流时它就没生意，这也符合直觉。
-    if (lv === 1) {
+    // 三种形态是**逐级叠加**，不是互斥替换：
+    //   站内商业（站厅层）在每一级都存在 → 顾客是顺路进出站的乘客
+    //   附建商铺 / 综合体在此之上，再吸引周边居民与跨区客流（由 OD 的设施吸引给出）
+    // 顺路客流与总面积无关——经过的乘客就那么多，所以它是「额外加上去」的一份，不随升级消失。
+    if (lv >= 1) {
       const st = this.model && this.model.stDaily;
       const C = this.model && this.model.net ? this.model.net.C : null;
       const k = C && C.sIndex ? C.sIndex.get(s.id) : undefined;
       if (k !== undefined && st && st.inn && st.inn.length > k) {
-        const pass = (st.inn[k] || 0) * 365 * (P.levelPassBy || 0.08);
-        if (pass > v.visits) { v.visits = pass; v.passBy = true; }
+        v.passBy = (st.inn[k] || 0) * 365 * (P.levelPassBy || 0.08);
+        v.visits += v.passBy;
       }
     }
     // 客单价按商业形态缩放：站内是便利店式小额，综合体才是商场客单价
