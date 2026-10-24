@@ -9,6 +9,7 @@
   //   建设支出 construction · demolition · upgrade · relocation（其中 capexUse 为专项资金支付的部分）
   //   运营成本 ops · 利息 interest · 本金偿还 principal · 逾期费用 penalty
   function blankMonth(y, m, funds, capex) {
+    // 物业科目（property / propMaint）按需生成，不预置零值：旧模式的账本序列化保持不变
     return { y: y, m: m, start: funds, grant: 0, fare: 0, construction: 0, demolition: 0, upgrade: 0, relocation: 0, ops: 0, reward: 0,
       bond: 0, interest: 0, principal: 0, penalty: 0, capexUse: 0, capexStart: capex || 0, days: 0, wdDays: 0, weDays: 0, end: funds };
   }

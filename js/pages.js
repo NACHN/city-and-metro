@@ -122,6 +122,36 @@
       const moved = U.dist(official.x, official.y, s.x, s.y) * CFG.CELL_M;
       el.appendChild(h('div', { class: 'draft-diff' }, h('span', { class: 'dd-k' }, '已建'), h('span', null, official.name + ' · ' + desc(official)), h('span', { class: 'dd-arrow' }, '→'), h('span', { class: 'dd-k draft' }, '草案'), h('span', null, s.name + ' · ' + desc(s) + (moved > 1 ? ' · 移动 ' + Math.round(moved) + ' m' : ''))));
     }
+    // 上盖物业（经营模式）：建设成本与月租净额，开发通过草案确认（与升级车站同一路径）
+    if (g.econ.caps.land && official) {
+      const P = CFG.property, lv = official.dev | 0;
+      el.appendChild(this.sec('st-prop', '上盖物业', P.levelName[lv] || '未开发', function () {
+        const b = h('div');
+        const pr = official.prop;
+        if (!lv) b.appendChild(h('div', { class: 'note' }, '可以在车站上方开发物业：建成后按月收租，地价越高租得越贵；头两三年出租率爬坡，所以早建要先亏一阵。'));
+        else if (pr) b.appendChild(self.kv([
+          ['建筑面积', U.fmtInt(pr.area) + ' ㎡'],
+          ['估算售价', U.fmtMoney(pr.price / 1e4) + ' /㎡'],
+          ['出租率', U.fmtPct(pr.held, 0)],
+          ['月租金', '+ ' + U.fmtMoney(pr.rent)],
+          ['月维护', '− ' + U.fmtMoney(pr.maint)],
+          ['月净额', U.fmtMoney(pr.rent - pr.maint)],
+        ]));
+        const canDev = !g.draft;
+        if (canDev) {
+          const row = h('div', { class: 'row', style: { marginTop: '8px', flexWrap: 'wrap' } });
+          [1, 2].forEach(function (to) {
+            if (lv >= to) return;
+            const area = (P.areaBySize[official.size] || 0) * ((P.levels[to] || 0) - (P.levels[lv] || 0));
+            const cost = area * P.buildCost * g.econ.costIndex(g.clock.y);
+            row.appendChild(h('button', { class: 'btn sm', onclick: function () { self.devStation(id, to); } }, P.levelName[to] + ' · ' + U.fmtMoney(cost)));
+          });
+          if (row.children.length) b.appendChild(row);
+          b.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } }, '点选后进入草案，确认建设才扣款。'));
+        }
+        return b;
+      }, !!lv));
+    }
     const C = g.model.net ? g.model.net.C : null;
     const k = C && official ? C.sIndex.get(id) : undefined;
     const serviced = k !== undefined && !!C.serviced[k];
@@ -1039,10 +1069,10 @@
     const box = h('div');
     const group = function (title, rows, cls) { box.appendChild(h('div', { class: 'fl-g ' + (cls || '') }, h('div', { class: 'fl-h' }, title), this.kv(rows))); }.bind(this);
     if (!free) box.appendChild(this.kv([['期初一般资金', M(c.start)], ['期初建设专项资金', M(c.capexStart)]]));
-    group('财政收入', [['政府拨款', '+ ' + M(c.grant)], ['票款', '+ ' + M(c.fare)], ['任务奖励', '+ ' + M(c.reward)]], 'in');
+    group('财政收入', [['政府拨款', '+ ' + M(c.grant)], ['票款', '+ ' + M(c.fare)], (c.property || 0) > 0.01 ? ['物业租金', '+ ' + M(c.property)] : null, ['任务奖励', '+ ' + M(c.reward)]], 'in');
     if (!free) group('融资到账（不计入收入）', [['债券募集 → 建设专项资金', '+ ' + M(c.bond)]], 'fin');
     group('建设支出', [['建设与拆迁', '− ' + M(buildOf(c))], !free ? ['其中由专项资金支付', M(c.capexUse)] : null], 'out');
-    group('运营成本', [['列车运行与车站', '− ' + M(c.ops)]], 'out');
+    group('运营成本', [['列车运行与车站', '− ' + M(c.ops)], (c.propMaint || 0) > 0.01 ? ['物业维护', '− ' + M(c.propMaint)] : null], 'out');
     if (!free) group('偿债', [['利息', '− ' + M(c.interest)], ['本金偿还', '− ' + M(c.principal)], ['逾期费用', '− ' + M(c.penalty)]], 'debt');
     box.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } }, '每日运营成本约 ' + U.fmtMoney(((g.model.daily && g.model.daily.carKm) || 0) * CFG.ops.carKmCost * oi + st) + '（列车运行 + ' + g.compiled.stations.length + ' 座车站），票款与运营成本逐日结算；利息与本金在每月初拨款之后支付。'));
     if (E.ledger.length) {

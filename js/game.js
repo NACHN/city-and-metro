@@ -226,7 +226,10 @@
     yield* model.refreshCityGen(C);
     this.compiled = C;
     // 地价（经营模式）：线网与城市都更新完之后重算，供拆迁计价与物业收入使用
-    if (this.econ.caps.land) city.buildLandPrice(yr, model.net ? model.net.acc : null);
+    if (this.econ.caps.land) {
+      city.buildLandPrice(yr, model.net ? model.net.acc : null);
+      this.accrueProperty(yr);
+    }
     if (this.macro && CM.Macro) CM.Macro.sample(this);   // 本月的岗位与交通效率（年度 GDP 取全年平均）
     yield;
     // 经营与任务：上月已封账，先开新月账本，任务奖励记入新月，最后按本月任务结果发放拨款
@@ -496,6 +499,37 @@
     for (const s of D.stages || []) if (y < s[0]) return s[1];
     if (y <= CFG.growth.histEnd) return D.stageLast || '发展期';
     return D.fictional ? '持续发展' : '模拟未来';
+  };
+
+  // ---------------- 物业（经营模式） ----------------
+  // 车站上盖开发：租金 = 建筑面积 × 售价 × 租售比 ÷ 12 × 出租率；维护费按建安计提。
+  // 售价 ≈ 楼面地价（商住地价 ÷ 开发容积率）+ 建安，所以地价涨租金跟着涨，年代上涨由物价指数承担。
+  // 出租率按开发年份爬坡（第 0/1/2/3 年），所以"建早了"在头几年是亏的。
+  Game.prototype.accrueProperty = function (year) {
+    const P = CFG.property, city = this.city, econ = this.econ;
+    if (!P || !city.landPrice) return null;
+    const ci = econ.costIndex(year), buildCost = P.buildCost * ci;
+    const ymNow = U.ymIndex(this.clock.y, this.clock.m);
+    let sites = 0, areaSum = 0, rentSum = 0, maintSum = 0;
+    for (const id in this.net.stations) {
+      const s = this.net.stations[id];
+      const lv = s.dev | 0;
+      if (!lv || !P.levels[lv]) continue;
+      const c = city.cellAt(s.x, s.y);
+      if (c < 0 || !(city.landPrice[c] > 0)) continue;
+      const area = (P.areaBySize[s.size] || 0) * P.levels[lv];
+      const price = city.landPrice[c] / (P.far || 4) + buildCost;   // 元/㎡ 建筑面积
+      const at = s.devAt ? U.ymIndex(s.devAt[0], s.devAt[1]) : ymNow;
+      const held = P.ramp[Math.min(P.ramp.length - 1, Math.max(0, Math.floor((ymNow - at) / 12)))];
+      const rent = area * price * P.rentYield / 12 * held;          // 元/月
+      const maint = area * buildCost * P.maintain / 12;             // 元/月
+      s.prop = { area: area, price: price, held: held, rent: rent / 1e4, maint: maint / 1e4 };
+      sites++; areaSum += area; rentSum += rent / 1e4; maintSum += maint / 1e4;
+    }
+    this.propStat = { sites: sites, area: areaSum, rent: rentSum, maint: maintSum, net: rentSum - maintSum };
+    if (rentSum > 0.01) econ.income('property', rentSum);
+    if (maintSum > 0.01) econ.spend('propMaint', maintSum);
+    return this.propStat;
   };
 
   // ---------------- 存档 ----------------

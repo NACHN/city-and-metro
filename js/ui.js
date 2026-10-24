@@ -1127,6 +1127,22 @@
   UI.prototype.callout = function (kind, icon, content) { return h('div', { class: 'callout ' + kind }, ic(icon), h('div', { class: 'ct' }, content)); };
 
   // ======================== 选择 ========================
+  // 上盖开发：进入草案（与升级车站同一路径，费用在草案里核算，确认建设后才扣款）
+  UI.prototype.devStation = function (id, lv) {
+    const g = this.g();
+    if (!g || g.draft) return;
+    const y = g.clock.y, m = g.clock.m;
+    const r = g.edit(function (n) {
+      const s = n.stations[id];
+      if (!s) return { error: '车站不存在' };
+      s.dev = Math.max(s.dev | 0, lv);
+      s.devAt = [y, m];
+      return null;
+    });
+    if (r && r.error) { this.toast(r.error, 'bad'); return; }
+    this.rerenderPage();
+  };
+
   UI.prototype.select = function (sel, noPage) {
     this.selection = sel;
     if (!sel) { this.highlightLine = null; if (!noPage && this.stack.length && ['station', 'line', 'road', 'zone', 'facility'].indexOf(this.stack[this.stack.length - 1].kind) >= 0) this.back(); return; }
