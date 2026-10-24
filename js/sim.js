@@ -528,7 +528,7 @@
     for (let k = 0; k < F; k++) {
       const f = fn.list[k];
       if (f.T.hub) { hubs.push(k); continue; }
-      fL[k] = L2 * f.T.L;
+      fL[k] = L2 * (f.L || f.T.L);   // 上盖商场按规模覆盖吸引范围（社区型近、市级型远）
       const isMall = f.t === 'mall', s = Fac.share(f, y);
       const mShare = isMall ? mallShare(k) : 0;
       for (let p = 1; p < 5; p++) {

@@ -529,10 +529,15 @@
       const area = (P.areaBySize[s.size] || 0) * (P.levels[lv] || 0);
       const comArea = area * (1 - (P.resShare || 0));
       if (comArea < 200) continue;
+      const MK = P.market || {}, si = s.size === 'S' ? 0 : (s.size === 'L' ? 2 : 1);
       out.push({
         id: 'mall:' + id, name: s.name + ' 上盖商场', t: 'mall', T: Fac.TYPES.mall,
-        x: s.x, y: s.y, r: 0.5, lmK: -1, open: -1e9, close: null,
-        w: null, pax: null, p: { sh: 0.55, lz: 0.45 }, comArea: comArea, note: '', src: null,
+        x: s.x, y: s.y,
+        r: (MK.mallR || [0.5, 0.75, 1.05])[si],            // POI 半径：决定抬高周边地价的范围
+        L: (MK.mallL || [0.9, 1.7, 3.0])[si],              // 吸引范围：社区型只服务步行圈，市级型吸全市
+        lmK: -1, open: -1e9, close: null,
+        w: null, pax: null, p: { sh: 0.55, lz: 0.45 }, comArea: comArea,
+        we: (MK.mallWeekend || [1.05, 1.25, 1.5])[si], note: '', src: null,
       });
     }
     const key = out.map(function (o) { return o.id + ':' + Math.round(o.comArea); }).join(',');
