@@ -43,6 +43,7 @@
     this.satFactors = null;
     this.fisc = null;          // 财力系数 { y, f }（城市经济每年 1 月设定）
     this.quoteFn = null;       // 新发债券的利率报价（城市经济提供；不保存）
+    this.subsidyLevel = 'standard';   // 补贴力度（难度）：easy / standard / realistic
   }
   CM.Economy = Economy;
 
@@ -74,6 +75,13 @@
     }
     this.income('fare', fareWan);
     this.spend('ops', ops);
+    // 运营补贴（批次模式）：按「当日运营成本 × 补贴率 × 满意度系数」结算。
+    // 客均成本高的年代补贴自然多，成熟后自然回落——难度曲线是城市自己长出来的。
+    if (this.batchOn() && ops > 0) {
+      const sub = ops * this.subsidyRate() * (0.6 + 0.8 * this.sat / 100);
+      this.income('grant', sub);
+      this.cur.subsidy = (this.cur.subsidy || 0) + sub;
+    }
     this.cur.days++;
     if (dt === 'we') this.cur.weDays = (this.cur.weDays || 0) + 1; else if (dt === 'wd') this.cur.wdDays = (this.cur.wdDays || 0) + 1;
     this.lastDay = { fare: fareWan, ops: ops, dt: dt || null };
@@ -85,7 +93,7 @@
   // 基础额度：按城市与年代设定的地铁资金基数（不含财力、满意度与任务调整）
   Economy.prototype.grantQuota = function (y, m) {
     if (!this.batchOn()) return U.interp(CFG.economy.grantBase, y + ((m || 1) - 1) / 12);
-    return this.annualQuota(y) / 12;
+    return 0;   // 批次模式下没有「月度固定拨款」：运营补贴按客流逐日结算（见 Economy.day）
   };
   // ---------------- 建设批次（D1，仅经营模式） ----------------
   // 把钱从「月流」改成「批次流」：每 4 年一次性给一个建设盘子，其余月份只有运营补贴。
@@ -102,11 +110,16 @@
     for (let i = Math.max(0, L.length - 12); i < L.length; i++) { fare += L[i].fare || 0; ops += (L[i].ops || 0) + (L[i].facMaint || 0) + (L[i].busOps || 0); }
     return ops > 0.5 ? fare / ops : 0;
   };
-  Economy.prototype.perfFactor = function () {
+  // 补贴率（难度）：政府承担多少运营成本。轻松 70% / 标准 50% / 现实 35%。
+  // 补贴额 = 运营成本 × 补贴率 × 满意度系数，所以客均成本高时补得多、成熟后自然回落。
+  Economy.prototype.subsidyRate = function () {
     const B = this.batchCfg();
-    if (!B) return 1;
-    const s = U.clamp(this.selfSufficiency(), 0, B.perfCap || 1.5);
-    return (B.perfFrom || 0.9) + (B.perfGain || 0.3) * s;
+    if (!B) return 0;
+    return (B.subsidyRate && B.subsidyRate[this.subsidyLevel]) || (B.subsidyRate && B.subsidyRate.standard) || 0.5;
+  };
+  Economy.prototype.subsidyName = function () {
+    const B = this.batchCfg();
+    return (B && B.subsidyName && B.subsidyName[this.subsidyLevel]) || '标准';
   };
   // 年度资金盘子（万元/年）：有财政记录就用「上一年地方财政收入 × k」，没有就退回基数表
   Economy.prototype.annualQuota = function (y) {
@@ -114,7 +127,7 @@
     if (!B) return U.interp(CFG.economy.grantBase, y) * 12;
     const rev = this.revOf ? this.revOf(y - 1) : 0;
     if (!(rev > 0)) return U.interp(CFG.economy.grantBase, y) * 12;
-    return rev * U.interp(B.k, y) * (B.factor || 1) * this.perfFactor();
+    return rev * U.interp(B.k, y) * (B.factor || 1);
   };
   // 本批建设资金（万元）：批次年的 1 月一次性到账，直接进建设专项资金
   Economy.prototype.batchFor = function (y) {
@@ -122,24 +135,21 @@
     if (!B || !this.batchOn() || !this.isBatchYear(y)) return 0;
     const f = 0.6 + 0.8 * this.sat / 100, ym = U.ymIndex(y, 1);
     let mf = 1; for (const md of this.mods) if (md.kind === 'grant' && md.until >= ym) mf *= md.factor;
-    return this.annualQuota(y) * (B.years || 4) * (B.buildShare || 0.85) * f * Math.max(0.6, mf);
+    return this.annualQuota(y) * (B.years || 4) * (B.buildFactor || 1) * f * Math.max(0.6, mf);
   };
   Economy.prototype.grantFor = function (y, m) {
     const ym = U.ymIndex(y, m);
     let f = 0.6 + 0.8 * this.sat / 100, mf = 1;
     for (const md of this.mods) if (md.kind === 'grant' && md.until >= ym) mf *= md.factor;
-    // 批次模式下财政数据已经含经济波动，不再叠财力系数（会重复计入）
-    if (this.batchOn()) return this.grantQuota(y, m) * f * Math.max(0.6, mf);
+    // 批次模式：没有月度固定拨款，运营补贴按客流逐日结算
+    if (this.batchOn()) return 0;
     return this.grantQuota(y, m) * this.fiscalFactor() * f * Math.max(0.6, mf);
   };
   Economy.prototype.grantFactors = function (y, m) {
     const ym = U.ymIndex(y, m);
     const list = [];
     if (this.batchOn()) {
-      // 批次模式：额度 = 财政收入 × 配比 × 业绩，财力系数已经含在财政收入里，不再叠
-      const B = this.batchCfg();
-      list.push({ label: '配比（占财政收入 ' + U.fmtPct(U.interp(B.k, y), 1) + '）', f: 1, kind: 'ratio' });
-      list.push({ label: '业绩系数（票款自给率 ' + U.fmtPct(this.selfSufficiency(), 0) + '）', f: this.perfFactor(), kind: 'perf' });
+      list.push({ label: '运营补贴率（' + this.subsidyName() + '）', f: this.subsidyRate(), kind: 'sub' });
     } else if (this.fisc) list.push({ label: '财力系数（' + (this.fisc.y || y) + ' 年预算）', f: this.fiscalFactor(), kind: 'fisc' });
     list.push({ label: '满意度系数（' + Math.round(this.sat) + '）', f: 0.6 + 0.8 * this.sat / 100, kind: 'sat' });
     for (const md of this.mods) if (md.kind === 'grant' && md.until >= ym) list.push({ label: md.reason + '（至 ' + Math.floor(md.until / 12) + '年' + (md.until % 12 + 1) + '月）', f: md.factor, kind: 'task' });
@@ -149,17 +159,20 @@
   Economy.prototype.openMonth = function (y, m) { this.cur = blankMonth(y, m, this.funds, this.capex); };
   Economy.prototype.payGrant = function (y, m) {
     if (this.isFree()) { this.cur.grant = 0; return; }
+    // 批次模式：只有批次年的 1 月有建设资金；运营补贴在每日结算里按客流发（见 Economy.day）
+    if (this.batchOn()) {
+      const b = (m === 1) ? this.batchFor(y) : 0;
+      if (b > 0) {
+        this.income('grant', b);
+        this.funds -= b; this.capex += b;
+        this.cur.grantCapex = (this.cur.grantCapex || 0) + b;
+        this.log('grant', b, 'gen', '建设批次（转入专项资金）', { y: y, m: m, d: 1 });
+      }
+      return;
+    }
     const v = this.grantFor(y, m);
     this.income('grant', v);
-    // 批次年 1 月：建设盘子一次性到账，并立刻划进建设专项资金（只能建设、不能补运营或付息）
-    const b = (m === 1) ? this.batchFor(y) : 0;
-    if (b > 0) {
-      this.income('grant', b);
-      this.funds -= b; this.capex += b;
-      this.cur.grantCapex = (this.cur.grantCapex || 0) + b;
-    }
-    const note = b > 0 ? '政府拨款与建设批次（转入专项资金）' : (this.batchOn() ? '政府拨款（运营补贴）' : '政府拨款');
-    this.log('grant', v + b, 'gen', note, { y: y, m: m, d: 1 });
+    this.log('grant', v, 'gen', '政府拨款', { y: y, m: m, d: 1 });
   };
   Economy.prototype.startMonth = function (y, m) { this.openMonth(y, m); this.payGrant(y, m); };
   // 封账：记录期末并归档；之后的收支一律记入下一个月
@@ -276,8 +289,10 @@
     return { rate: r, parts: parts };
   };
   Economy.prototype.bondRate = function (kind, y, term) { return this.bondQuote(kind, y, term).rate; };
-  Economy.prototype.bondQuota = function (kind, y) { const B = this.bondCfg(); return B ? B[kind].quotaMonths * this.baseGrant(y) : 0; };
-  Economy.prototype.bondCap = function (kind, y) { const B = this.bondCfg(); return B ? B[kind].capMonths * this.baseGrant(y) : 0; };
+  Economy.prototype.bondQuota = function (kind, y) { const B = this.bondCfg(); return B ? B[kind].quotaMonths * this.baseGrant(y) * this.bondScale() : 0; };
+  Economy.prototype.bondCap = function (kind, y) { const B = this.bondCfg(); return B ? B[kind].capMonths * this.baseGrant(y) * this.bondScale() : 0; };
+  // 批次模式下债券只是「批次间周转」：额度与上限一起收紧，免得利息超过补贴能负担的水平
+  Economy.prototype.bondScale = function () { return this.batchOn() ? ((this.batchCfg().bondFactor) || 1) : 1; };
   Economy.prototype.issuedIn = function (kind, y) { const a = this.bondIssued[y]; return a ? (a[kind] || 0) : 0; };
   Economy.prototype.outstanding = function (kind) { let s = 0; for (const b of this.bonds) if (!b.done && (!kind || b.kind === kind)) s += b.amount; return s; };
   // 已到期但尚未偿还的本金仍占用债务上限，不能通过逾期腾出发行空间。
@@ -406,12 +421,12 @@
   Economy.prototype.serialize = function () {
     return { mode: this.mode, funds: this.funds, fare: this.fare, cur: this.cur, ledger: this.ledger, sat: this.sat, mods: this.mods, negMonths: this.negMonths, lowSatMonths: this.lowSatMonths, failed: this.failed, satFactors: this.satFactors, lastDay: this.lastDay,
       capex: this.capex, bonds: this.bonds, bondIssued: this.bondIssued, overdue: this.overdue, overdueParts: this.overdueParts || null, overdueMonths: this.overdueMonths, flow: this.flow, bondSeq: this.bondSeq, svc: this._svc == null ? null : this._svc,
-      fisc: this.fisc || null };
+      fisc: this.fisc || null, subsidy: this.batchOn() ? (this.subsidyLevel || 'standard') : undefined };
   };
   Economy.restore = function (s) {
     const e = new Economy(s.mode, s.cur.y, s.cur.m);
     Object.assign(e, { funds: s.funds, fare: Economy.normFare(s.fare), cur: s.cur, ledger: s.ledger || [], sat: s.sat, mods: s.mods || [], negMonths: s.negMonths || 0, lowSatMonths: s.lowSatMonths || 0, failed: s.failed || null, satFactors: s.satFactors || null, lastDay: s.lastDay || null,
-      capex: s.capex || 0, bonds: s.bonds || [], bondIssued: s.bondIssued || {}, overdue: s.overdue || 0, overdueParts: s.overdueParts || null, overdueMonths: s.overdueMonths || 0, flow: s.flow || [], bondSeq: s.bondSeq || 1 });
+      capex: s.capex || 0, bonds: s.bonds || [], bondIssued: s.bondIssued || {}, overdue: s.overdue || 0, overdueParts: s.overdueParts || null, overdueMonths: s.overdueMonths || 0, flow: s.flow || [], bondSeq: s.bondSeq || 1, subsidyLevel: s.subsidy || 'standard' });
     e._svc = s.svc == null ? null : s.svc;
     e.fisc = s.fisc && isFinite(s.fisc.f) ? { y: s.fisc.y, f: s.fisc.f } : null;   // 1.7 及更早的存档没有财力系数，按 1 处理
     // 1.6 及更早的正式存档没有债券，默认债务为零。早期 1.7 开发档可能只保存逾期总账，
@@ -835,6 +850,17 @@
     const c = cands[Math.floor(rng.next() * cands.length)];
     if (c.cityId) self.issued['dyn:' + c.cityId] = 1;
     const t = Object.assign({ id: 'd' + (this.seq++), kind: 'dyn', status: 'active', issuedAt: [y, m], deadline: dl(c.months), streak: 0 }, c);
+    // 建设批次模式下，要修东西的任务必须能等到下一批钱：批次年之外只有运营补贴，
+    // 12–30 个月的期限会变成「不可能任务」。这类任务的期限顺延到「下一批 + 7 个月」。
+    if (g.econ.batchOn && g.econ.batchOn()) {
+      const CONSTR = { connect: 1, coverage: 1, zoneCov: 1, facShare: 1, facBus: 1 };
+      if (CONSTR[c.type]) {
+        const B = g.econ.batchCfg(), yrs = B.years || 4, y0 = CFG.START.y;
+        const cyc = ((y - y0) % yrs + yrs) % yrs;
+        const need = U.ymIndex(y - cyc + yrs, 7);
+        if (U.ymIndex(t.deadline[0], t.deadline[1]) < need) t.deadline = [Math.floor(need / 12), need % 12 + 1];
+      }
+    }
     return t;
   };
 

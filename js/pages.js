@@ -1167,7 +1167,7 @@
     const box = h('div', { class: 'gchain' + (compact ? ' compact' : '') });
     const step = function (label, v, cls) { box.appendChild(h('div', { class: 'gc-step ' + (cls || '') }, h('small', null, label), h('b', { class: 'num' }, v))); };
     step('基础额度', U.fmtMoney(E.grantQuota(y, m)));
-    for (const f of E.grantFactors(y, m)) step(f.kind === 'fisc' ? '财力' : (f.kind === 'ratio' ? '配比' : (f.kind === 'perf' ? '业绩' : (f.kind === 'sat' ? '满意度' : '任务'))), f.kind === 'ratio' ? '—' : '×' + f.f.toFixed(2), f.f >= 1.005 ? 'up' : (f.f <= 0.995 ? 'down' : ''));
+    for (const f of E.grantFactors(y, m)) step(f.kind === 'fisc' ? '财力' : (f.kind === 'sub' ? '补贴率' : (f.kind === 'sat' ? '满意度' : '任务')), (f.kind === 'sub' ? U.fmtPct(f.f, 0) : '×' + f.f.toFixed(2)), f.f >= 1.005 ? 'up' : (f.f <= 0.995 ? 'down' : ''));
     return box;
   };
 
@@ -1287,38 +1287,51 @@
     }
     if (!free) {
       const ny = g.clock.m === 12 ? g.clock.y + 1 : g.clock.y, nm = g.clock.m % 12 + 1;
-      // 建设批次（经营模式）：建设资金不再按月发，每 N 年一次给盘子，中间月份只有运营补贴。
-      // 这就是「节奏」——攒钱太慢的问题由批次解决，而不是靠提高月补贴。
+      // 建设批次（经营模式）：建设资金每 4 年一个盘子，运营靠「运营成本 × 补贴率」逐日结算。
+      // 两笔钱各管各的：批次只看城市财政，补贴只看你有没有把客流做起来。
       if (E.batchOn && E.batchOn()) {
         const B = E.batchCfg(), yrs = B.years || 4, y0 = CFG.START.y;
         const cyc = ((g.clock.y - y0) % yrs + yrs) % yrs;
         const curBatch = g.clock.y - cyc, nextBatch = curBatch + yrs;
         const curAmt = E.isBatchYear(g.clock.y) ? E.batchFor(g.clock.y) : 0;
-        const nextAmt = E.annualQuota(nextBatch) * yrs * (B.buildShare || 0.85) * (0.6 + 0.8 * E.sat / 100);
-        const opsMonth = E.annualQuota(g.clock.y) / 12 * (1 - (B.buildShare || 0.85));
+        const nextAmt = E.annualQuota(nextBatch) * yrs * (B.buildFactor || 1) * (0.6 + 0.8 * E.sat / 100);
         const rev = (L && L.rev) || 0;
-        el.appendChild(this.sec('fi-batch', '建设批次', E.isBatchYear(g.clock.y) ? '本年发放 ' + U.fmtMoney(curAmt) : '下一批 ' + nextBatch + ' 年 · ' + U.fmtMoney(nextAmt), function () {
+        const c0 = E.cur, opsM = c0.ops || 0, fareM = c0.fare || 0, subM = c0.subsidy || 0;
+        const cover = opsM > 0.5 ? (fareM + subM) / opsM : 0;
+        const tuning = (g.ym() - U.ymIndex(CFG.START.y, CFG.START.m)) < (B.subsidySwitchMonths || 12);
+        el.appendChild(this.sec('fi-batch', '建设批次与补贴', E.isBatchYear(g.clock.y) ? '本年发放 ' + U.fmtMoney(curAmt) : '下一批 ' + nextBatch + ' 年 · ' + U.fmtMoney(nextAmt), function () {
           const b = h('div');
           b.appendChild(self.kv([
-            ['批次周期', '每 ' + yrs + ' 年一批（' + curBatch + '–' + (curBatch + yrs - 1) + ' 年）'],
-            ['本批建设资金', curAmt > 0 ? U.fmtMoney(curAmt) : '本年不是批次年'],
+            ['批次周期', '每 ' + yrs + ' 年一批（本批 ' + curBatch + '–' + (curBatch + yrs - 1) + ' 年）'],
+            ['本批建设资金', curAmt > 0 ? U.fmtMoney(curAmt) : (nextBatch + ' 年 1 月发放'),
+              curAmt > 0 ? 'good' : ''],
+            ['建设专项资金余额', U.fmtMoney(E.capex) + '（只能建设与拆迁，可跨批滚存）'],
+            ['补贴力度', E.subsidyName() + ' · 承担运营成本的 ' + U.fmtPct(E.subsidyRate(), 0)],
+            ['本月运营', '成本 ' + U.fmtMoney(opsM) + ' · 票款 ' + U.fmtMoney(fareM) + ' · 补贴 ' + U.fmtMoney(subM)],
+            ['本月覆盖', U.fmtPct(cover, 0), cover >= 1 ? 'good' : (cover >= 0.8 ? 'warn' : 'bad')],
             ['下一批预计', nextBatch + ' 年 1 月 · ' + U.fmtMoney(nextAmt)],
-            ['本月运营补贴', U.fmtMoney(opsMonth)],
-            ['配比（占财政收入）', rev > 0 ? U.fmtPct(E.annualQuota(g.clock.y) / rev, 1) : '—'],
-            ['票款自给率 → 业绩系数', U.fmtPct(E.selfSufficiency(), 0) + ' → ×' + E.perfFactor().toFixed(2)],
+            ['盘子占财政收入', rev > 0 ? U.fmtPct(E.annualQuota(g.clock.y) / rev, 1) : '—'],
           ]));
-          b.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } }, '建设资金一次给一个盘子，直接进建设专项资金：只能用于建设与拆迁，不能补运营、不能付利息。中间月份只有运营补贴，票款与补贴共同支撑日常运营——所以做得好的线网（自给率高）下一批盘子更大。'));
+          // 难度只在开局可选：补贴率是选择，不是随时能调的后门
+          if (tuning) {
+            const row = h('div', { class: 'row', style: { marginTop: '8px', flexWrap: 'wrap' } });
+            for (const k of ['easy', 'standard', 'realistic']) {
+              row.appendChild(h('button', { class: 'btn sm' + (E.subsidyLevel === k ? ' primary' : ''), onclick: function () { self.setSubsidy(k); } },
+                (B.subsidyName[k] || k) + ' ' + U.fmtPct(B.subsidyRate[k], 0)));
+            }
+            b.appendChild(row);
+          }
+          b.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } }, '建设资金一次给一个盘子，直接进建设专项资金：只能用于建设与拆迁，不能补运营、不能付息，跨批滚存。运营补贴按「当日运营成本 × 补贴率 × 满意度系数」逐日结算——客均成本高的年代补得多，城市成熟后自然回落，所以难度曲线是城市自己长出来的。' + (tuning ? '补贴力度只能在开局 ' + (B.subsidySwitchMonths || 12) + ' 个月内调整。' : '')));
           return b;
         }, true, 'bank'));
       }
-      el.appendChild(this.sec('fi-grant', '地铁拨款依据', '下月 ' + U.fmtMoney(E.grantFor(ny, nm)), function () {
+      // 批次模式没有「月度固定拨款」，拨款阶梯那一块不适用
+      if (!(E.batchOn && E.batchOn())) el.appendChild(this.sec('fi-grant', '地铁拨款依据', '下月 ' + U.fmtMoney(E.grantFor(ny, nm)), function () {
         const b = h('div');
         b.appendChild(self.grantChain(ny, nm, false));
         b.appendChild(h('div', { class: 'chg small', style: { marginTop: '6px' } }, h('b', null, '下月（' + ny + '年' + nm + '月）拨款'), h('b', { class: 'num' }, U.fmtMoney(E.grantFor(ny, nm)))));
         for (const f of E.grantFactors(ny, nm)) if (f.kind === 'task') b.appendChild(h('div', { class: 'tiny muted' }, '· ' + f.label + ' ×' + f.f.toFixed(2)));
-        b.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } }, (E.batchOn && E.batchOn())
-          ? '月拨款 = 年资金盘子 ÷ 12，年盘子 = 上一年地方财政收入 × 配比 × 业绩系数；其中 ' + Math.round((E.batchCfg().buildShare || 0.85) * 100) + '% 进建设批次（每 ' + E.batchCfg().years + ' 年一次），其余按月发作运营补贴。满意度系数 ×0.6–1.4；任务未完成时在 ' + CFG.economy.failGrantMonths + ' 个月内 ×' + CFG.economy.failGrantFactor + '。'
-          : '基础额度按城市与年代设定；财力系数来自城市经济（上一年地方财政收入）；满意度系数 ×0.6–1.4；任务未完成时在 ' + CFG.economy.failGrantMonths + ' 个月内 ×' + CFG.economy.failGrantFactor + '（多项叠加最低按 ×0.6）。拨款每月初发放一次，不会重复发放或补发。'));
+        b.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } }, '基础额度按城市与年代设定；财力系数来自城市经济（上一年地方财政收入）；满意度系数 ×0.6–1.4；任务未完成时在 ' + CFG.economy.failGrantMonths + ' 个月内 ×' + CFG.economy.failGrantFactor + '（多项叠加最低按 ×0.6）。拨款每月初发放一次，不会重复发放或补发。'));
         return b;
       }, true, 'bank'));
     }

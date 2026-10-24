@@ -1227,6 +1227,19 @@
     this.rerenderPage();
   };
 
+  // 补贴力度（难度）：只在开局若干个月内可改，之后锁定——难度是选择，不是随时能调的后门
+  UI.prototype.setSubsidy = function (level) {
+    const g = this.g(), B = CFG.batch;
+    if (!g || g.draft || !B || !B.subsidyRate || !B.subsidyRate[level]) return;
+    if (!g.econ.batchOn || !g.econ.batchOn()) return;
+    const elapsed = g.ym() - U.ymIndex(CFG.START.y, CFG.START.m);
+    if (elapsed >= (B.subsidySwitchMonths || 12)) { this.toast('补贴力度只能在开局 ' + (B.subsidySwitchMonths || 12) + ' 个月内调整', 'bad'); return; }
+    if (g.econ.subsidyLevel === level) return;
+    g.econ.subsidyLevel = level;
+    this.toast('补贴力度改为「' + (B.subsidyName[level] || level) + '」', 'info');
+    this.markUnsaved(); this.rerenderPage();
+  };
+
   // 车站周边的接驳盲区候选：直线 0.6–3 km 内、步行覆盖不到、人口或岗位较多的格子。
   // 按价值排序并做间距去重——玩家点一下就开通，不需要在地图上画线，也不需要自己算距离。
   UI.prototype.busCandidates = function (st) {
