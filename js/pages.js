@@ -150,14 +150,15 @@
           b.appendChild(h('div', { class: 'kv', style: { marginTop: '10px' } },
             h('div', { class: 'k' }, 'P+R 停车场'),
             h('div', { class: 'v' }, prLv ? SF.pr.name[prLv] : '无')));
-          b.appendChild(h('div', { class: 'note' }, '开车到站、再换乘地铁：站口 ' + SF.pr.reachM + ' m 内的步行段按 ' + Math.round(SF.pr.walkMul * 100) + '% 折算，相当于把服务范围往外推了一圈。只对外围、停车便宜的车站有意义。'));
+          b.appendChild(h('div', { class: 'note' }, '开车到站、再换乘地铁：站口 ' + SF.pr.reachM + ' m 内的步行段按 ' + Math.round(SF.pr.walkMul * 100) + '% 折算，相当于把服务范围往外推了一圈。它还要占地（' + (SF.pr.areaPerSpace || 30) + ' ㎡/位），用地按本站地价的 ' + Math.round(CM.Metro.stationUse() * 100) + '% 补——所以同样的停车场，建在核心区会比外围贵好几倍。'));
           const prRow = h('div', { class: 'row', style: { marginTop: '8px', flexWrap: 'wrap' } });
           for (let lv = 1; lv <= 3; lv++) {
             const done = lv <= prLv, add = (Met.prCost(lv) - Met.prCost(prLv)) * ci;
+            const land = Met.prLandCost(g.city, official, lv) - Met.prLandCost(g.city, official, prLv);
             prRow.appendChild(h('button', {
               class: 'btn sm' + (done ? ' ghost' : ''),
               onclick: function () { if (!done) self.stFacility(id, 'pr', lv); },
-            }, done ? '已建成' : (SF.pr.name[lv] + ' · ' + U.fmtMoney(add))));
+            }, done ? '已建成' : (SF.pr.name[lv] + ' · ' + U.fmtMoney(add) + (land > 1 ? ' + 用地 ' + U.fmtMoney(land) : ''))));
           }
           b.appendChild(prRow);
         } else {

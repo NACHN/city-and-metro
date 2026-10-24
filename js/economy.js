@@ -13,7 +13,9 @@
     return { y: y, m: m, start: funds, grant: 0, fare: 0, construction: 0, demolition: 0, upgrade: 0, relocation: 0, ops: 0, reward: 0,
       bond: 0, interest: 0, principal: 0, penalty: 0, capexUse: 0, capexStart: capex || 0, days: 0, wdDays: 0, weDays: 0, end: funds };
   }
-  const BUILD_KINDS = ['construction', 'demolition', 'upgrade', 'relocation'];
+  // land 是场站用地（D7）：与拆迁并列的第二笔土地账。它按需生成、不进 blankMonth，
+  // 所以没有用地支出的月份序列化保持不变（既有存档与指纹不受影响）。
+  const BUILD_KINDS = ['construction', 'demolition', 'upgrade', 'relocation', 'land'];
   const MONEY_EPS = 1e-7;   // 内部单位是万元；只忽略浮点误差，不能把不足 0.5 万的真实债务清零
   Economy.BUILD_KINDS = BUILD_KINDS;
   Economy.MONEY_EPS = MONEY_EPS;

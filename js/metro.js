@@ -342,6 +342,40 @@
     if (!F || !F.pr) return 0;
     return M.prSpaces(lv) * (F.pr.costPerSpace || 0);
   };
+  M.prLandM2 = function (lv) {          // ㎡：停车场用地面积（含通道与匝道）
+    const F = CFG.stationFacility;
+    if (!F || !F.pr) return 0;
+    return M.prSpaces(lv) * (F.pr.areaPerSpace || 30);
+  };
+
+  // ---------------- 场站用地（D7） ----------------
+  // 交通用地按划拨口径补地价：市价 × stationUse（0.4）。这是与拆迁并列的第二笔土地账——
+  // 拆迁赔的是地上的房子与住户，用地是取得场地本身，两者不能混。
+  // 关键在于**地价取哪一格**：P+R 取站址、地面/高架取轨道经过的每一格。
+  // 所以「停车场建在市中心」和「地面线穿过老城」会自动变贵，不需要额外的规则去禁止。
+  M.stationUse = function () { return (CFG.stationFacility && CFG.stationFacility.landUse) || 0; };
+  M.landCostOf = function (areaM2, price) { return (areaM2 || 0) * (price || 0) * M.stationUse() / 1e4; };
+  M.landPriceAt = function (city, x, y) {
+    if (!city || !city.landPrice) return 0;
+    const c = city.cellAt(x, y);
+    return c >= 0 ? (city.landPrice[c] || 0) : 0;
+  };
+  M.prLandCost = function (city, st, lv) {
+    if (!st || !city || !city.landPrice) return 0;
+    return M.landCostOf(M.prLandM2(lv), M.landPriceAt(city, st.x, st.y));
+  };
+  // 地面/高架轨道占用的路权：逐格按该格地价计，所以线位本身就是钱
+  M.trackLandCost = function (city, g, type) {
+    const w = (CFG.stationFacility && CFG.stationFacility.rowWidthM && CFG.stationFacility.rowWidthM[type]) || 0;
+    if (!w || !g || !g.cellLen || !city || !city.landPrice) return 0;
+    let v = 0;
+    // cellLen 是 Map<格子, 该格内的轨道长度>（见 geomFromControl），逐格按本格地价计
+    g.cellLen.forEach(function (len, c) {
+      const p = city.landPrice[c];
+      if (len > 0 && p > 0) v += len * CFG.CELL_M * w * p;   // len 以格为单位
+    });
+    return v * M.stationUse() / 1e4;
+  };
   // 一个车站的全部配套原值（万元，1990 年价）：出入口 + P+R + 接驳站。
   // 车辆的运营保养另算（按配车逐月摊销），不在这里重复计。
   M.facCapex = function (s) {
@@ -616,7 +650,7 @@
   };
 
   M.evaluate = function (draft, off, city, year) {
-    const res = { items: [], total: 0, byKind: { construction: 0, demolition: 0, upgrade: 0, relocation: 0 }, conflicts: [], warnings: [], demolitions: [], changes: { add: [], mod: [], del: [] }, affectedLines: new Set(), notes: [] };
+    const res = { items: [], total: 0, byKind: { construction: 0, demolition: 0, upgrade: 0, relocation: 0, land: 0 }, conflicts: [], warnings: [], demolitions: [], changes: { add: [], mod: [], del: [] }, affectedLines: new Set(), notes: [] };
     const C = CFG.cost, ci = costIndex(year);
     const item = function (kind, label, amount, ref) {
       if (amount <= 0.5) return;
@@ -717,6 +751,9 @@
           if (pN > pO) {
             res.changes.mod.push('车站「' + s.name + '」P+R 停车场 ' + SF.pr.name[pN]);
             item('upgrade', 'P+R 停车场 ' + s.name + '（' + SF.pr.name[pN] + '）', (M.prCost(pN) - M.prCost(pO)) * ci, id);
+            // 停车场要占地：这是它该不该建在市中心的唯一判断依据
+            const land = M.prLandCost(city, s, pN) - M.prLandCost(city, s, pO);
+            if (land > 1) item('land', 'P+R 场站用地 ' + s.name + '（' + U.fmtInt(M.prLandM2(pN) - M.prLandM2(pO)) + ' ㎡）', land, id);
           } else if (pN < pO) {
             res.changes.mod.push('车站「' + s.name + '」P+R 停车场缩减为' + SF.pr.name[pN] + '（不退款）');
           }
@@ -810,6 +847,9 @@
         if (bd.hill > 1) item('construction', '山体隧道附加 ' + lbl + '（' + U.fmtKm(g.hillM) + '）', bd.hill, id);
         if (bd.prot > 1) item('construction', '保护建筑下方加固 ' + lbl, bd.prot, id);
         if (bd.rail > 1) item('construction', (s.type === 'underground' ? '下穿' : '上跨') + '铁路 ' + rn + ' 处 ' + lbl, bd.rail, id);
+        // 场站用地（D7）：地面/高架轨道占路权，逐格按该格地价计；地下隧道不占地面用地
+        const tland = M.trackLandCost(city, g, s.type);
+        if (tland > 1) item('land', '轨道用地 ' + lbl + '（' + ((CFG.stationFacility.rowWidthM || {})[s.type] || 0) + ' m 路权）', tland, id);
         const dm = M.trackDemolition(city, g, s.type, year);
         item('demolition', '沿线拆迁 ' + lbl, dm.cost, id);
         res.demolitions.push.apply(res.demolitions, dm.cells);
