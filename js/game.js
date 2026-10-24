@@ -510,6 +510,7 @@
     if (!P || !city.landPrice) return null;
     const ci = econ.costIndex(year), buildCost = P.buildCost * ci;
     const ymNow = U.ymIndex(this.clock.y, this.clock.m);
+    const p50 = (city.landStat && city.landStat.p50) || 0;
     let sites = 0, areaSum = 0, rentSum = 0, maintSum = 0;
     for (const id in this.net.stations) {
       const s = this.net.stations[id];
@@ -519,11 +520,14 @@
       if (c < 0 || !(city.landPrice[c] > 0)) continue;
       const area = (P.areaBySize[s.size] || 0) * P.levels[lv];
       const price = city.landPrice[c] / (P.far || 4) + buildCost;   // 元/㎡ 建筑面积
+      // 商业溢价：地价越高的站，上盖越偏商业，租金相对住宅越高（吃满于中位的 1+span 倍）
+      const rel = p50 > 0 ? city.landPrice[c] / p50 : 1;
+      const prem = 1 + (P.premiumGain || 0) * Math.max(0, Math.min(1, (rel - 1) / (P.premiumSpan || 3)));
       const at = s.devAt ? U.ymIndex(s.devAt[0], s.devAt[1]) : ymNow;
       const held = P.ramp[Math.min(P.ramp.length - 1, Math.max(0, Math.floor((ymNow - at) / 12)))];
-      const rent = area * price * P.rentYield / 12 * held;          // 元/月
+      const rent = area * price * P.rentYield / 12 * prem * held;   // 元/月
       const maint = area * buildCost * P.maintain / 12;             // 元/月
-      s.prop = { area: area, price: price, held: held, rent: rent / 1e4, maint: maint / 1e4 };
+      s.prop = { area: area, price: price, prem: prem, held: held, rent: rent / 1e4, maint: maint / 1e4 };
       sites++; areaSum += area; rentSum += rent / 1e4; maintSum += maint / 1e4;
     }
     this.propStat = { sites: sites, area: areaSum, rent: rentSum, maint: maintSum, net: rentSum - maintSum };

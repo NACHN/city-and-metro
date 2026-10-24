@@ -610,7 +610,7 @@
           const area = (P.areaBySize[s.size] || 0) * ((P.levels[lvN] || 0) - (P.levels[lvO] || 0));
           if (area > 0) {
             res.changes.mod.push('车站「' + s.name + '」上盖开发：' + P.levelName[lvN]);
-            item('upgrade', '上盖开发 ' + s.name + '（' + P.levelName[lvN] + '，' + U.fmtInt(area) + ' ㎡）', area * P.buildCost * ci, id);
+            item('upgrade', '上盖开发 ' + s.name + '（' + P.levelName[lvN] + '，' + U.fmtInt(area) + ' ㎡）', area * P.buildCost * ci / 1e4, id);   // 元 → 万元
           }
         }
       }

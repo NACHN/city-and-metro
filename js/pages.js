@@ -132,6 +132,7 @@
         else if (pr) b.appendChild(self.kv([
           ['建筑面积', U.fmtInt(pr.area) + ' ㎡'],
           ['估算售价', U.fmtMoney(pr.price / 1e4) + ' /㎡'],
+          ['商业溢价', '×' + (pr.prem || 1).toFixed(2)],
           ['出租率', U.fmtPct(pr.held, 0)],
           ['月租金', '+ ' + U.fmtMoney(pr.rent)],
           ['月维护', '− ' + U.fmtMoney(pr.maint)],
@@ -143,7 +144,7 @@
           [1, 2].forEach(function (to) {
             if (lv >= to) return;
             const area = (P.areaBySize[official.size] || 0) * ((P.levels[to] || 0) - (P.levels[lv] || 0));
-            const cost = area * P.buildCost * g.econ.costIndex(g.clock.y);
+            const cost = area * P.buildCost * g.econ.costIndex(g.clock.y) / 1e4;   // 元 → 万元
             row.appendChild(h('button', { class: 'btn sm', onclick: function () { self.devStation(id, to); } }, P.levelName[to] + ' · ' + U.fmtMoney(cost)));
           });
           if (row.children.length) b.appendChild(row);
