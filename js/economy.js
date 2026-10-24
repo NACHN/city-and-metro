@@ -711,10 +711,21 @@
     };
     // 重要设施的地铁接驳（v1.9）：到访量较大、乘地铁比例很低的设施；口径按设施类型（见 Tasks.facBasis）
     if (model.facDaily && model.fn && model.net && g.compiled.stations.length) {
+      // 设施要能「提高地铁到访比例」，前提是线路能修到它附近。两种情况都算：
+      //   ① 1,125 m 内可设站 —— 步行接驳即可；
+      //   ② 只能靠接驳巴士（5 km 内可设站）—— 这时任务同时考线网规模与接驳，
+      //      但线网太小的时候「20%」在算术上不可能（日到访的 20% 会超过全网客流），
+      //      所以设一个规模门槛，避免发出必然失败的任务。
+      const metroScale = (model.daily && model.daily.metro) || 0;
+      const REACH_SCALE = 50000;   // 全网日地铁达到这个量级，"线网 + 接驳"才足以支撑 20%
       let best = null;
       for (const f of model.fn.list) {
         if (!free('fac:' + f.id, 'facShare')) continue;
-        if (!canStationNear(f, CFG.walk.maxAccessM)) continue;   // 步行圈内没有能设站的地块，走接驳任务
+        const near = canStationNear(f, CFG.walk.maxAccessM);
+        if (!near) {
+          const byBus = CFG.bus && canStationNear(f, CFG.bus.maxLenM);
+          if (!byBus || metroScale < REACH_SCALE) continue;
+        }
         const basis = Tasks.facBasis(f), r = Tasks.facShareOf(model, f, basis);
         if (!r || r.vol < 3000 || r.share > 0.12) continue;
         const score = r.vol * (1 - r.share);
