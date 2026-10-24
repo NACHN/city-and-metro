@@ -731,17 +731,21 @@
       // 这类设施（景区、保护区）不可能达到「地铁到访比例」目标，任务应该考的是
       // 「能不能想到用接驳巴士把它接进网络」，而不是让玩家去追一个模型上到不了的比例。
       if (CFG.bus) {
+        let pick = null;
         for (const f of model.fn.list) {
           if (!free('busfac:' + f.id, 'facBus')) continue;
           if (canStationNear(f, CFG.walk.maxAccessM)) continue;    // 能直接设站的走 facShare
           if (!canStationNear(f, CFG.bus.maxLenM)) continue;       // 连接驳都够不着，不发
           const r = Tasks.facShareOf(model, f, Tasks.facBasis(f));
           if (!r || r.vol < 3000) continue;
+          if (!pick || r.vol > pick.vol) pick = { f: f, r: r };     // 人流最大的先发
+        }
+        if (pick) {
+          const f = pick.f, r = pick.r;
           cands.push({ type: 'facBus', coolKey: 'busfac:' + f.id, fac: f.id,
             title: '为「' + f.name + '」开通接驳巴士',
             desc: f.name + '（' + f.T.name + '）周边 ' + Math.round(CFG.walk.maxAccessM) + ' m 内没有可以设站的地块——它在景区或保护区内，整片不能建设。在附近最近的合法地块修建车站，再从车站开通一条接驳巴士到它的入口。每天约有 ' + U.fmtPeople(r.vol) + ' 人次到访。',
             months: 36, reward: 40000 * ci });
-          break;   // 一次只发一个
         }
       }
     }
