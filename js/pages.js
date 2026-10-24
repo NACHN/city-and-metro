@@ -372,6 +372,46 @@
   };
 
   // ======================== 页面：线路 ========================
+  // 单条线路的经营总账（票款 / 运营 / 上盖 / 投资）。线路详情与财务概览共用同一份计算，
+  // 避免两处口径漂移。没有线网、没有客流统计或线路仍在草案中时返回 null。
+  UI.prototype.lineAccount = function (lid) {
+    const g = this.g(), mnet = g.model && g.model.net, line = g.net.lines[lid];
+    if (!mnet || !mnet.C || !line) return null;
+    const C = mnet.C, idx = [];
+    for (let i = 0; i < C.routes.length; i++) if (C.routes[i].lineId === lid) idx.push(i);
+    if (!idx.length) return null;
+    const daily = g.model.dailyStale ? null : g.model.stDaily;
+    if (!daily || !daily.routeBoard) return null;
+    let board = 0, allBoard = 0;
+    for (let i = 0; i < daily.routeBoard.length; i++) allBoard += daily.routeBoard[i];
+    for (const i of idx) board += daily.routeBoard[i];
+    const oi = g.econ.opsIndex(g.clock.y);
+    let ckm = 0, lenM = 0;
+    for (const i of idx) {
+      const rt = C.routes[i];
+      for (let p = 0; p < 4; p++) ckm += g.model.live.per[p].freq[i] * 2 * rt.lenM / 1000 * rt.cars * (p === 3 ? 5 : g.model.pHours[p]);
+      if (rt.lenM > lenM) lenM = rt.lenM;
+    }
+    const fareV = (g.model.fare && g.model.fare.flat) || CFG.fareDefault.flat || 2;
+    const yearFare = board * fareV * 365 / 1e4;                                   // 万元/年（按上车人次近似）
+    const yearOps = ckm * CFG.ops.carKmCost * oi * 365;                           // 万元/年（carKmCost 单位即万元/车厢公里）
+    const tp = M.lineTopo(g.net, lid);
+    let propYear = 0, sites = 0;
+    for (const sid of tp.stations) {
+      const st = g.net.stations[sid];
+      if (!st || !(st.dev | 0)) continue;
+      const pr = g.propertyOf(st);
+      if (!pr) continue;
+      propYear += pr.netFull * 12; sites++;
+    }
+    return {
+      lid: lid, name: line.name, color: line.color, board: board, allBoard: allBoard,
+      yearFare: yearFare, yearOps: yearOps, propYear: propYear, sites: sites,
+      cash: yearFare - yearOps + propYear, lenM: lenM, stations: tp.stations.length,
+      capex: lenM / 1000 * (CFG.cost.trackPerKm[line.type] || 30000),                // 万元（估，不含拆迁与车站差别）
+    };
+  };
+
   UI.prototype.page_line = function (key) {
     const g = this.g(), self = this;
     const parts = String(key).split('|'), lid = parts[0], segId = parts[1];
@@ -401,34 +441,18 @@
       grid.append(this.stat('日运营费用（' + (g.model.dayType === 'we' ? '周末' : '工作日') + '）', U.fmtMoney(ckm * CFG.ops.carKmCost * oi), '列车 ' + U.fmtInt(ckm) + ' 车厢公里'));
       el.appendChild(grid);
       // 线路总账（经营模式）：票款、运营与沿线上盖放在同一张表里，一眼看出这条线养不养得活
-      if (g.econ.caps.land && daily) {
-        let allBoard = 0;
-        for (let i = 0; i < daily.routeBoard.length; i++) allBoard += daily.routeBoard[i];
-        const fareV = (g.model.fare && g.model.fare.flat) || CFG.fareDefault || 2;
-        const yearFare = board * fareV * 365 / 1e4;                                  // 万元/年（上车人次近似）
-        // carKmCost 本身就是「万元/车厢公里」，所以 ckm × 单价 已经是万元，不能再除 1e4
-        const yearOps = ckm * CFG.ops.carKmCost * oi * 365;                           // 万元/年
-        let propYear = 0, sites = 0;
-        for (const sid of tp.stations) {
-          const st = g.net.stations[sid];
-          if (!st || !(st.dev | 0)) continue;
-          const pr = g.propertyOf(st);
-          if (!pr) continue;
-          propYear += pr.netFull * 12; sites++;
-        }
-        const netYear = yearFare - yearOps + propYear;
-        const kmCost = CFG.cost.trackPerKm[g.net.lines[lid].type] || 30000;
-        const capex = len / 1000 * kmCost;                                           // 万元（估，不含拆迁与车站差别）
-        el.appendChild(this.sec('ln-acct', '线路总账', netYear < 0 ? '需补贴' : '有盈余', function () {
+      const acc = g.econ.caps.land ? this.lineAccount(lid) : null;
+      if (acc) {
+        el.appendChild(this.sec('ln-acct', '线路总账', acc.cash < 0 ? '需补贴' : '有盈余', function () {
           const b = h('div');
           b.appendChild(self.kv([
-            ['日客运量', U.fmtPeople(board) + ' 人次' + (allBoard > 0 ? '（占全网 ' + U.fmtPct(board / allBoard, 0) + '）' : '')],
-            ['年票款', '+ ' + U.fmtMoney(yearFare)],
-            ['年运营成本', '− ' + U.fmtMoney(yearOps)],
-            ['沿线上盖年净', (propYear >= 0 ? '+ ' : '− ') + U.fmtMoney(Math.abs(propYear)) + (sites ? '（' + sites + ' 处）' : '（未开发）')],
-            ['年现金流', (netYear < 0 ? '− ' + U.fmtMoney(-netYear) : '+ ' + U.fmtMoney(netYear))],
-            ['建设投资', U.fmtMoney(capex) + '（估）'],
-            ['结论', netYear < 0 ? '每年需补贴 ' + U.fmtMoney(-netYear) : '按当前现金流，' + Math.max(1, Math.round(capex / netYear)) + ' 年收回投资'],
+            ['日客运量', U.fmtPeople(acc.board) + ' 人次' + (acc.allBoard > 0 ? '（占全网 ' + U.fmtPct(acc.board / acc.allBoard, 0) + '）' : '')],
+            ['年票款', '+ ' + U.fmtMoney(acc.yearFare)],
+            ['年运营成本', '− ' + U.fmtMoney(acc.yearOps)],
+            ['沿线上盖年净', (acc.propYear >= 0 ? '+ ' : '− ') + U.fmtMoney(Math.abs(acc.propYear)) + (acc.sites ? '（' + acc.sites + ' 处）' : '（未开发）')],
+            ['年现金流', (acc.cash < 0 ? '− ' + U.fmtMoney(-acc.cash) : '+ ' + U.fmtMoney(acc.cash))],
+            ['建设投资', U.fmtMoney(acc.capex) + '（估）'],
+            ['结论', acc.cash < 0 ? '每年需补贴 ' + U.fmtMoney(-acc.cash) : '按当前现金流，' + Math.max(1, Math.round(acc.capex / acc.cash)) + ' 年收回投资'],
           ]));
           b.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } }, '票款按上车人次估算；运营成本按车厢公里；上盖按满租口径的年净额计入。地铁投资通常要几十年才能靠自身现金流收回，上盖的作用是缩小缺口，而不是让它变成暴利生意。'));
           return b;
@@ -897,6 +921,53 @@
   };
   const goFin = function (self, t) { self.finTab = t; self.openPage('finance', t, { replaceTop: self.topIs(['finance']), root: !self.topIs(['finance']) }); };
 
+  // 线路经营（经营模式）：全网合计 + 分线路排名。数据来自 lineAccount，与线路详情页同源。
+  // 要回答的是「哪条线在亏」「上盖补了多少」——这是玩家每天都会问的两个问题。
+  UI.prototype.finLines = function (el) {
+    const g = this.g(), self = this;
+    if (!g.econ.caps.land) return;
+    if (!g.model || !g.model.net || !g.model.net.C) return;
+    const rows = [];
+    for (const id in g.net.lines) { const a = self.lineAccount(id); if (a && a.board > 0) rows.push(a); }
+    if (!rows.length) return;
+    const sum = { yearFare: 0, yearOps: 0, propYear: 0, cash: 0 };
+    for (const r of rows) { sum.yearFare += r.yearFare; sum.yearOps += r.yearOps; sum.propYear += r.propYear; sum.cash += r.cash; }
+    const cover = sum.yearOps > 0 ? sum.propYear / sum.yearOps : 0;
+    const bad = rows.filter(function (r) { return r.cash < 0; }).length;
+    rows.sort(function (a, b) { return a.cash - b.cash; });
+    el.appendChild(this.sec('fi-lines', '线路经营',
+      '物业覆盖 ' + U.fmtPct(cover, 0) + ' · ' + (bad ? bad + ' 条需补贴' : '全部有盈余'), function () {
+        const b = h('div');
+        b.appendChild(self.kv([
+          ['年票款', '+ ' + U.fmtMoney(sum.yearFare)],
+          ['年运营成本', '− ' + U.fmtMoney(sum.yearOps)],
+          ['沿线上盖年净', '+ ' + U.fmtMoney(sum.propYear)],
+          ['年现金流', (sum.cash < 0 ? '− ' + U.fmtMoney(-sum.cash) : '+ ' + U.fmtMoney(sum.cash)), sum.cash < 0 ? 'bad' : 'good'],
+          ['物业对运营的覆盖', U.fmtPct(cover, 0)],
+          ['近 12 个月实际', (function () {
+            // 用月度账本给已发生的覆盖率：瞬时的 lineAccount 是满租口径，账本口径才含爬坡与建设时点，
+            // 两者并排，玩家能看出「现在」与「过去一年」的差别
+            const led = (g.econ.ledger || []).slice(-12);
+            let lp = 0, lo = 0;
+            for (const r of led) { lp += r.property || 0; lo += r.ops || 0; }
+            if (led.length < 3 || lo <= 0) return '账本不足 3 个月';
+            return U.fmtMoney(lp) + ' / ' + U.fmtMoney(lo) + '（' + U.fmtPct(lp / lo, 0) + '）';
+          })()],
+        ]));
+        b.appendChild(h('div', { class: 'note', style: { margin: '8px 0 4px' } }, '分线路（按年现金流排序，最亏的在前）'));
+        const list = h('div', { class: 'kv' });
+        for (const r of rows) {
+          list.append(
+            h('div', { class: 'k' }, h('span', { class: 'swatch', style: { background: r.color } }), ' ' + r.name + (r.sites ? '（' + r.sites + ' 处上盖）' : '')),
+            h('div', { class: 'v' + (r.cash < 0 ? ' bad' : ' good') },
+              U.fmtMoney(r.yearFare) + ' − ' + U.fmtMoney(r.yearOps) + (r.propYear > 0.01 ? ' + ' + U.fmtMoney(r.propYear) : '') + ' = ' + (r.cash < 0 ? '−' : '+') + U.fmtMoney(Math.abs(r.cash))));
+        }
+        b.appendChild(list);
+        b.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } }, '票款按上车人次估算，运营按车厢公里，上盖按满租口径。物业覆盖 = 上盖年净 ÷ 年运营成本：1990 年前后地价低，这个比例会很低；随着城市地价上涨，同样面积的上盖会越来越养得起运营。'));
+        return b;
+      }, bad > 0, 'chart'));
+  };
+
   // ---------- 概览 ----------
   UI.prototype.finOverview = function (el, mv) {
     const g = this.g(), E = g.econ, self = this, free = E.isFree(), EPS = CM.Economy.MONEY_EPS;
@@ -944,6 +1015,7 @@
         h('div', { class: 'fg-h' }, CM.icon('bank', 16), h('b', null, '下月拨款预计'), h('span', { class: 'grow' }), h('b', { class: 'num' }, U.fmtMoney(E.grantFor(ny, nm))), CM.icon('chev', 14)),
         this.grantChain(ny, nm, true)));
     }
+    this.finLines(el);
     el.appendChild(this.sec('fi-fare', '票价', UI.fmtFare(E.fare.flat), function () { return self.fareEditor(); }, true, 'ticket'));
   };
   // 经济摘要卡：最近一年的 GDP 与增速、经济环境、交通对经济的影响
