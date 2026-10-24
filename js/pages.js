@@ -1298,6 +1298,8 @@
         const rev = (L && L.rev) || 0;
         const c0 = E.cur, opsM = c0.ops || 0, fareM = c0.fare || 0, subM = c0.subsidy || 0;
         const cover = opsM > 0.5 ? (fareM + subM) / opsM : 0;
+        const riders = (g.model.daily && g.model.daily.metro) || 0;
+        const perCost = riders > 0 ? opsM * 1e4 / (30 * riders) : 0;
         const tuning = (g.ym() - U.ymIndex(CFG.START.y, CFG.START.m)) < (B.subsidySwitchMonths || 12);
         el.appendChild(this.sec('fi-batch', '建设批次与补贴', E.isBatchYear(g.clock.y) ? '本年发放 ' + U.fmtMoney(curAmt) : '下一批 ' + nextBatch + ' 年 · ' + U.fmtMoney(nextAmt), function () {
           const b = h('div');
@@ -1308,6 +1310,8 @@
             ['建设专项资金余额', U.fmtMoney(E.capex) + '（只能建设与拆迁，可跨批滚存）'],
             ['补贴力度', E.subsidyName() + ' · 承担运营成本的 ' + U.fmtPct(E.subsidyRate(), 0)],
             ['本月运营', '成本 ' + U.fmtMoney(opsM) + ' · 票款 ' + U.fmtMoney(fareM) + ' · 补贴 ' + U.fmtMoney(subM)],
+            ['客均成本 / 客均票款', U.fmtMoney(perCost, 1) + ' / ' + U.fmtMoney(g.econ.fare.flat, 1),
+              cover >= 1 ? 'good' : (cover >= 0.8 ? 'warn' : 'bad')],
             ['本月覆盖', U.fmtPct(cover, 0), cover >= 1 ? 'good' : (cover >= 0.8 ? 'warn' : 'bad')],
             ['下一批预计', nextBatch + ' 年 1 月 · ' + U.fmtMoney(nextAmt)],
             ['盘子占财政收入', rev > 0 ? U.fmtPct(E.annualQuota(g.clock.y) / rev, 1) : '—'],
