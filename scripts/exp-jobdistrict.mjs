@@ -80,7 +80,7 @@ function availJobs(model, capMin, year) {
   return out;
 }
 
-function run(label, useDistrict, pull) {
+function run(label, useDistrict, pull, useSupply) {
   CM.GROWTH_ACCESS.from = 'walk';   // 站旁加成仍用步行距离；岗位只作为额外吸引
   CM.JOB_PULL = pull;
   const Y0 = CFG.START.y;
@@ -101,6 +101,7 @@ function run(label, useDistrict, pull) {
   };
   const C0 = center();
   const districts = [];
+  let supplyCells = 0;
   for (let m = 0; m < YEARS * 12; m++) {
     const yy = Y0 + Math.floor(m / 12);
     if (m % 12 === 0) openByYear(yy);
@@ -130,7 +131,49 @@ function run(label, useDistrict, pull) {
         }
       }
     }
-    const ja = pull > 0 ? availJobs(model, 12, yy) : null;   // 可用岗位（岗位 − 本地劳动力），12 分钟窗口
+    const ja = (pull > 0 || useSupply) ? availJobs(model, 12, yy) : null;   // 可用岗位（岗位 − 本地劳动力），12 分钟窗口
+    // 土地供给响应：可用岗位高的地方，开发商在周边把低效用地改成居住用地（受「必须已有街道」与配额约束）
+    if (useSupply && ja && m % 12 === 0) {
+      let mean = 0, nz = 0;
+      for (let z = 0; z < ja.length; z++) if (ja[z] > 0) { mean += ja[z]; nz++; }
+      mean = nz > 0 ? mean / nz : 1;
+      // 先找出「就业缺口显著」的片区（相对均值 1.2 倍以上）
+      const hot = [];
+      for (let z = 0; z < ja.length; z++) if (ja[z] > 1.2 * mean && model.zJobs[z] > 200) hot.push(z);
+      if (hot.length) {
+        const quota = 40;   // 每年最多转 40 格（约 2.5 km²），避免一夜之间全城改规划
+        let done = 0;
+        for (const z of hot) {
+          if (done >= quota) break;
+          const zc = model.zCx[z], zy = model.zCy[z];
+          const ci = Math.floor(zc), cj = Math.floor(zy);
+          for (let r = 1; r <= 16 && done < quota; r++) {   // 半径 16 格 ≈ 4 km
+            for (let dj = -r; dj <= r && done < quota; dj++) {
+              for (let di = -r; di <= r && done < quota; di++) {
+                if (Math.max(Math.abs(di), Math.abs(dj)) !== r) continue;
+                const ii = ci + di, jj = cj + dj;
+                if (ii < 1 || jj < 1 || ii >= city.W - 1 || jj >= city.H - 1) continue;
+                const c = jj * city.W + ii;
+                if (city.lu[c] !== 0 || city.landFrac[c] < 0.6 || !city.regionOpen[city.region[c]]) continue;
+                if (city.plan[c] === 3 || city.plan[c] === 2) continue;   // 已规划为工业/商业的不动
+                // 必须挨着已建成区或街道，否则开发商没理由去
+                let near = false;
+                for (let q = -1; q <= 1 && !near; q++) for (let w = -1; w <= 1; w++) {
+                  if (!q && !w) continue;
+                  const cc = (jj + q) * city.W + (ii + w);
+                  if (city.street[cc] || city.lu[cc] !== 0) { near = true; break; }
+                }
+                if (!near) continue;
+                city.plan[c] = 1;   // LU.RES
+                city.dirty.add(c);
+                done++;
+              }
+            }
+          }
+        }
+        if (done) { city.version++; supplyCells += done; }
+      }
+    }
     city.growMonth({ year: yy, monthIndex: m, zoneAccess: null, cellWalk: model.net && model.net.acc ? model.net.acc.cellWalk : null, coverage: 0, econ: null, jobAccess: ja });
   }
   const tot = city.totals();
@@ -144,17 +187,23 @@ function run(label, useDistrict, pull) {
     return { x: q.x, y: q.y, at: q.at, pop: p, jobs: j };
   });
   const C1 = center();
-  return { label: label, pop: tot.pop, jobs: tot.jobs, ratio: tot.jobs / Math.max(1, tot.pop * wrF), districts: near, shift: U.dist(C0.x, C0.y, C1.x, C1.y) * CFG.CELL_M / 1000 };
+  return { label: label, supply: supplyCells, pop: tot.pop, jobs: tot.jobs, ratio: tot.jobs / Math.max(1, tot.pop * wrF), districts: near, shift: U.dist(C0.x, C0.y, C1.x, C1.y) * CFG.CELL_M / 1000 };
 }
 
-const rows = [run('基线', false, 0), run('只生成产业区', true, 0), run('只加岗位吸引', false, 0.8), run('产业区 + 岗位吸引', true, 0.8)];
+const rows = [
+  run('基线', false, 0, false),
+  run('只播产业区', true, 0, false),
+  run('产业区 + 可用岗位吸引', true, 0.8, false),
+  run('产业区 + 供给响应', true, 0, true),
+  run('产业区 + 供给 + 吸引', true, 0.8, true),
+];
 console.log('');
-console.log('变体                 人口     岗位    岗位/劳动力  产业区  区内人口  区内岗位  人口重心位移');
+console.log('变体                  人口     岗位    岗位/劳动力  产业区  改居住格  区内人口  区内岗位  重心位移');
 for (const r of rows) {
   const d = r.districts;
   const dp = d.reduce(function (s, q) { return s + q.pop; }, 0), dj = d.reduce(function (s, q) { return s + q.jobs; }, 0);
-  console.log(r.label.padEnd(20) + (r.pop / 1e6).toFixed(2) + 'M  ' + (r.jobs / 1e6).toFixed(2) + 'M   ' + r.ratio.toFixed(2) +
-    '        ' + String(d.length).padStart(2) + '    ' + Math.round(dp).toLocaleString('en').padStart(9) + '  ' + Math.round(dj).toLocaleString('en').padStart(8) +
+  console.log(r.label.padEnd(22) + (r.pop / 1e6).toFixed(2) + 'M  ' + (r.jobs / 1e6).toFixed(2) + 'M   ' + r.ratio.toFixed(2) +
+    '        ' + String(d.length).padStart(2) + '    ' + String(r.supply).padStart(6) + '    ' + Math.round(dp).toLocaleString('en').padStart(9) + '  ' + Math.round(dj).toLocaleString('en').padStart(8) +
     '   ' + r.shift.toFixed(1) + ' km');
 }
 for (const r of rows) for (const q of r.districts) console.log('  ' + r.label + ' · 产业区 @' + q.x.toFixed(0) + ',' + q.y.toFixed(0) + '（' + q.at + ' 年）：3 km 内人口 ' + Math.round(q.pop).toLocaleString('en') + ' · 岗位 ' + Math.round(q.jobs).toLocaleString('en'));
