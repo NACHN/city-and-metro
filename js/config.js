@@ -2,7 +2,7 @@
 // 全局参数。PRD 中标注"待确认"的数值在此给出可调整的默认值（DEFAULT），评审确认后只需修改本文件。
 (function (CM) {
   CM.CFG = {
-    GAME_VERSION: '2.2.0',
+    GAME_VERSION: '2.3.0',
     TRAFFIC_MODEL: 2,      // 交通模型版本：2 = v1.9 起的出行目的、重要设施与工作日/周末模型（旧存档为 1，载入时升级）
     SAVE_FORMAT: 'city-metro-save',
     SAVE_VERSION: 2,
@@ -391,13 +391,26 @@
   // 不要再用 mode === 'challenge' 这类字符串比较——新增模式时漏改会静默降级成自由建造。
   // 未登记的模式按 challenge 处理（与加表之前的行为一致）。
   // land / fleet 是 tycoon 专属系统（地价与物业、车型与车辆购置），其余模式一律关闭。
+  // needs 决定「这张图能不能开这个模式」，作为能力判断写在这里，不再逐图往数据文件里抄一行清单。
+  // 真实城市才有城市经济（macro），所以带预算与拨款的模式只对它们开放；虚构地图（新手教程）只有自由建造。
+  // 个别地图要例外时在数据里写 noModes: ['tycoon']，仍然不需要复制整张清单。
   CM.MODES = {
-    free: { id: 'free', name: '自由建造', budget: false, grants: false, bonds: false, failure: false, rewards: false, opsTasks: false, land: false, fleet: false },
-    challenge: { id: 'challenge', name: '经营挑战', budget: true, grants: true, bonds: true, failure: true, rewards: true, opsTasks: true, land: false, fleet: false },
-    tycoon: { id: 'tycoon', name: '经营模式', budget: true, grants: true, bonds: true, failure: true, rewards: true, opsTasks: true, land: true, fleet: true },
+    free: { id: 'free', name: '自由建造', budget: false, grants: false, bonds: false, failure: false, rewards: false, opsTasks: false, land: false, fleet: false, needs: function () { return true; } },
+    challenge: { id: 'challenge', name: '经营挑战', budget: true, grants: true, bonds: true, failure: true, rewards: true, opsTasks: true, land: false, fleet: false, needs: function (m) { return !m.tutorial; } },
+    tycoon: { id: 'tycoon', name: '经营模式', budget: true, grants: true, bonds: true, failure: true, rewards: true, opsTasks: true, land: true, fleet: true, needs: function (m) { return !m.tutorial && !!m.cfg.macro; } },
   };
   CM.modeCaps = function (mode) { return CM.MODES[mode] || CM.MODES.challenge; };
   CM.modeName = function (mode) { return (CM.MODES[mode] || CM.MODES.challenge).name; };
+  // 开始界面里模式的先后（与难度无关，只是展示顺序）
+  CM.MODE_ORDER = ['challenge', 'tycoon', 'free'];
+  // 一张地图支持哪些模式：由能力表算出来。m 需要已经合并好 cfg（maps.js 在合并后调用）。
+  CM.modesForMap = function (m) {
+    const off = (m && m.noModes) || [];
+    return CM.MODE_ORDER.filter(function (id) {
+      const s = CM.MODES[id];
+      return !!s && off.indexOf(id) < 0 && (!s.needs || s.needs(m));
+    });
+  };
 
   // 随地图切换的配置键（maps.js 用它做切图，编辑器与校验器用它判断 cfg 是否合法）
   CM.MAP_CFG_KEYS = ['W', 'H', 'START', 'growth', 'land', 'money', 'econBase', 'cost', 'ops', 'fareDefault', 'fareRange', 'economy', 'macro', 'choice', 'road', 'workWeek'];

@@ -23,7 +23,8 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = path.resolve(HERE, '..');
 const SCHEMA = 'city-metro/map-source@1';
 
-const META_FIELDS = ['id', 'name', 'title', 'sub', 'desc', 'region', 'tagline', 'difficulty', 'tags', 'modes',
+// modes 不在这里：它由 config.js 的能力表（CM.MODES[*].needs）算出，是派生量，不再逐图存储
+const META_FIELDS = ['id', 'name', 'title', 'sub', 'desc', 'region', 'tagline', 'difficulty', 'tags',
   'kind', 'scenario', 'mapVersion', 'facts', 'intro', 'features', 'highlights', 'cam'];
 const EXTRA_META = ['tutorial'];   // 少数地图特有的布尔标记
 

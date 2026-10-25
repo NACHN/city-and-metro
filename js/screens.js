@@ -149,7 +149,9 @@
           h('div', { class: 'msel-tagline' }, mp.tagline || mp.sub),
           h('div', { class: 'msel-chips' }, levelEl(mp.difficulty || 2), (mp.tags || []).map(function (t) { return h('span', { class: 'tag glass-tag' }, t); }))));
       // 要点：范围、起始、人口、货币等；真实城市另列开局时地图范围的经济规模（城市经济模拟的起点，估算）
+      // 「模式」这一行从能力表推导（mp.modes），数据文件里不再逐图维护
       const fl = (mp.facts || []).filter(function (f) { return f[0] !== '模式'; }).slice();
+      if (mp.modes && mp.modes.length) fl.push(['模式', mp.modes.map(function (id) { return CM.modeName(id); }).join(' / ') + (mp.tutorial ? '（不限资金）' : '')]);
       const mc = mp.cfg.macro && mp.cfg.macro !== 'auto' ? mp.cfg.macro : null;
       if (mc && mc.gdp0) { const mo = mp.cfg.money, v = mc.gdp0; fl.push(['开局 GDP', '约 ' + (v >= 1e8 ? (v / 1e8).toFixed(2) + ' 万' + mo.yi : U.fmtMoney(v, 0, mo))]); }
       const facts = h('div', { class: 'msel-facts' }, fl.map(function (f) { return h('div', null, h('span', null, f[0]), h('b', { title: f[1] }, f[1])); }));
@@ -165,8 +167,8 @@
       if (mp.tutorial) acts.appendChild(modeBtn('free', 'play', 'b-teal', '开始教程', '从头开始 12 个引导任务（不限资金）', true));
       else {
         acts.appendChild(modeBtn('challenge', 'trophy', 'b-gold', '经营挑战', '新游戏 · 初始资金 ' + U.fmtMoney(mp.cfg.economy.startFunds, undefined, mp.cfg.money) + '，拨款随城市经济变化', true));
-        // 经营模式：只在地图声明支持时出现。目前只是地价的观察入口，玩法仍在开发中
-        if ((mp.modes || []).indexOf('tycoon') >= 0) acts.appendChild(modeBtn('tycoon', 'coin', 'b-violet', '经营模式（试验）', '新游戏 · 地价每月重算，可开「地价」图层查看；经济与车辆系统仍在开发', false));
+        // 经营模式：支持哪些模式由能力表算出（config.js 的 CM.MODES[*].needs），数据文件里不再逐图声明
+        if ((mp.modes || []).indexOf('tycoon') >= 0) acts.appendChild(modeBtn('tycoon', 'coin', 'b-violet', '经营模式', '新游戏 · 地价与物业、四年一批的建设资金、按运营成本补贴；票价与 TOD 决定线网能不能自己站住', false));
         acts.appendChild(modeBtn('free', 'sparkle', 'b-teal', '自由建造', '新游戏 · 资金不限，任务仅供参考', false));
       }
       acts.appendChild(h('button', { class: 'map-mode sub', disabled: latest ? null : true, 'data-tip': latest ? latest.name + ' · ' + fmtDate(latest) : null, onclick: function () { if (latest) self.loadSlot(latest.slotId); } },

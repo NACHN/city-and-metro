@@ -30,6 +30,9 @@
     // 城市经济：真实城市启用；没有专门参数的真实地图使用通用参数（'auto'），虚构地图（教程等）不启用
     cfg.macro = m.kind === 'real' ? (cfg.macro || 'auto') : null;
     m.cfg = cfg;
+    // 支持哪些模式由能力算出来（见 config.js 的 CM.MODES[*].needs）：新增地图不用再往 source.json 里抄一份
+    // 模式清单。数据文件里历史遗留的 modes 字段被忽略，要例外就写 noModes。
+    m.modes = CM.modesForMap(m);
     MAPS[m.id] = m;
   }
   // 清单里声明但未注册的地图（资源缺失、script 标签遗漏或顺序错误）明确告警，避免出现「图在列表里、进去是空的」
