@@ -72,7 +72,20 @@ function run(id) {
   }
   if (failed) console.log('  [注意] 资金失败线在 ' + failed + ' 触发，曲线到此为止');
   if (process.env.DBG) console.log('  [dbg] 结束时钟 ' + g.clock.y + '-' + g.clock.m + '-' + g.clock.d + ' · 账页 ' + (g.econ.ledger || []).length + ' · guard ' + guard);
-  return { id: id, Y0: Y0, by: by, yearly: yearly, metro: g.model.daily ? g.model.daily.metro : 0, sat: g.econ.sat, funds: g.econ.funds, debt: g.econ.debtTotal ? g.econ.debtTotal() : 0, stations: n + 1 };
+  // 月度现金流（供外部画图）：按封账的每个月导出
+  const months = [];
+  for (const r of uniq.values()) {
+    months.push({
+      y: r.y, m: r.m,
+      fare: r.fare || 0, ops: r.ops || 0, prop: r.property || 0, propMaint: r.propMaint || 0,
+      subsidy: r.subsidy || 0, grant: r.grantCapex || 0, reward: r.reward || 0,
+      interest: r.interest || 0, principal: r.principal || 0,
+      construction: r.construction || 0, demolition: r.demolition || 0, upgrade: r.upgrade || 0,
+      end: r.end,
+    });
+  }
+  months.sort(function (a, b) { return a.y * 12 + a.m - (b.y * 12 + b.m); });
+  return { id: id, Y0: Y0, by: by, yearly: yearly, months: months, metro: g.model.daily ? g.model.daily.metro : 0, sat: g.econ.sat, funds: g.econ.funds, debt: g.econ.debtTotal ? g.econ.debtTotal() : 0, stations: n + 1 };
 }
 
 for (const id of MAPS) {
@@ -93,6 +106,29 @@ for (const id of MAPS) {
       Math.round(o.capexGrant).toLocaleString('en').padStart(9) + Math.round(o.interest).toLocaleString('en').padStart(7) +
       Math.round(net).toLocaleString('en').padStart(10) + Math.round(o.end).toLocaleString('en').padStart(10) +
       Math.round(yr.metro).toLocaleString('en').padStart(9) + yr.sat.toFixed(0).padStart(8));
+  }
+  // 现金流统计
+  const mrec = r.months;
+  let minF = Infinity, minAt = null, neg = 0, rewardSum = 0, rewardMax = 0, grantSum = 0, fareSum = 0, propSum = 0, opsSum = 0;
+  for (const x of mrec) {
+    if (x.end < minF) { minF = x.end; minAt = x.y + '-' + x.m; }
+    if (x.end < 0) neg++;
+    rewardSum += x.reward; if (x.reward > rewardMax) rewardMax = x.reward;
+    grantSum += x.grant; fareSum += x.fare; propSum += x.prop - x.propMaint; opsSum += x.ops;
+  }
+  console.log('现金流：资金最低 ' + U.fmtMoney(minF) + '（' + minAt + '）· 负余额月数 ' + neg +
+    ' · 任务奖励合计 ' + U.fmtMoney(rewardSum) + '（单笔最大 ' + U.fmtMoney(rewardMax) + '）');
+  console.log('       票款合计 ' + U.fmtMoney(fareSum) + ' · 物业净 ' + U.fmtMoney(propSum) + ' · 运营合计 ' + U.fmtMoney(opsSum) + ' · 建设批次合计 ' + U.fmtMoney(grantSum));
+  if (r.months.length) {
+    const f = process.env.CASH_CSV;
+    if (f) {
+      const head = 'y,m,fare,ops,prop,propMaint,subsidy,grant,reward,interest,principal,construction,demolition,upgrade,end\n';
+      const body = r.months.map(function (x) {
+        return [x.y, x.m, x.fare, x.ops, x.prop, x.propMaint, x.subsidy, x.grant, x.reward, x.interest, x.principal, x.construction, x.demolition, x.upgrade, x.end].join(',');
+      }).join('\n');
+      fs.writeFileSync(f, head + body + '\n');
+      console.log('       月度明细已写入 ' + f + '（' + r.months.length + ' 个月）');
+    }
   }
   console.log('末期：资金 ' + Math.round(r.funds).toLocaleString('en') + ' · 债务 ' + Math.round(r.debt).toLocaleString('en') + ' · 地铁/日 ' + Math.round(r.metro).toLocaleString('en') + ' · 满意度 ' + r.sat.toFixed(0));
 }
