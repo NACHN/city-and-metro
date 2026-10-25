@@ -804,6 +804,7 @@
     const g = new Game();
     const m = s.meta;
     g.id = m.gameId; g.name = m.name; g.mode = m.mode; g.seed = m.seed; g.createdAt = m.createdAt;
+    applyImpedance(g);   // 同样要在 new CM.Model / buildDemand 之前
     g.mapId = m.map || 'gz';   // 调用前 CM.useMap 已切换到该地图
     if (s.tutorial) g.tutorial = s.tutorial;
     g.clock = Object.assign({}, s.clock);
@@ -826,7 +827,6 @@
     g.compiled = M.compile(g.net, g.city);
     g.model.setNetwork(g.compiled);
     g.econ = CM.Economy.restore(s.econ);
-    applyImpedance(g);
     g.econ.revOf = function (yy) { return g.fiscalRev(yy); };
     g.model.fare = g.econ.fare;
     g.tasks = CM.Tasks.restore(s.tasks);
@@ -835,6 +835,7 @@
     g.mapInit = s.mapInit || null;
     g.milestones = s.milestones || null;
     g.model.solveNow(2);
+    if (CFG.choice.impedance === 'time') { g.model.buildDemand(); g.model.solveNow(2); }
     if (CM.Milestones) CM.Milestones.backfill(g);
     // 城市经济：有数据则恢复；1.7 及更早的存档（或数据不完整）从当前状态接入，不补造过去的记录，不改变已有资金与债务。
     // 接入失败时本局不启用经济模拟，原存档不受影响
