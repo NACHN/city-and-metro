@@ -16,9 +16,7 @@ globalThis.localStorage = { getItem() { return null; }, setItem() {}, removeItem
 const FILES = ['js/util.js','js/config.js','js/manifest.js','js/news.js','js/geo_gz.js','js/geo.js','js/data_gz.js','js/data_tutorial.js',
  'js/geo_hz.js','js/data_hz.js','js/geo_hk.js','js/data_hk.js','js/geo_tk.js','js/data_tk.js','js/geo_tp.js','js/data_tp.js',
  'js/maps.js','js/facility.js','js/city.js','js/metro.js','js/sim.js','js/economy.js','js/macro.js','js/game.js','js/milestones.js','js/save.js'];
-for (const f of FILES) if (f !== 'js/city.js') vm.runInThisContext(fs.readFileSync(path.join(root, f), 'utf8'), { filename: f });
-
-// 补丁：让居住增长读「可达岗位」，权重 = 1 + JOB_PULL × (相对全市均值超出 0.6 的部分，封顶 2.5)
+// 补丁：让居住增长读「可达岗位」、让容积率可以读通勤可达性
 let citySrc = fs.readFileSync(path.join(root, 'js/city.js'), 'utf8');
 const a1 = '    const ja = jaOn ? ctx.jobAccess : null;';
 if (citySrc.indexOf(a1) < 0) throw new Error('补丁锚点 1 缺失');
@@ -33,7 +31,15 @@ citySrc = citySrc.replace(a3, '      if (remR > 0) {\n' +
   '        if (ja && CM.JOB_PULL > 0) { const r = ja[this.zoneOf(c)] / jaMean; jp = 1 + CM.JOB_PULL * Math.min(2.5, Math.max(0, r - 0.6)); }\n' +
   '        wR[c] = remR * (0.25 + acc) * (1 + 1.6 * st) * (0.3 + nb) * rnd * seed * jp; sR += wR[c];\n' +
   '      }');
-vm.runInThisContext(citySrc, { filename: 'js/city.js' });
+const a4 = '      const Ld = CFG.land;\n      let farK = 1;\n      if (this.landAcc && Ld && Ld.farGain > 0) {\n        const am = this.landAcc[c] || 1;';
+if (citySrc.indexOf(a4) < 0) throw new Error('补丁锚点 4 缺失');
+citySrc = citySrc.replace(a4,
+  '      const Ld = CFG.land;\n      let farK = 1;\n      const __am = ctx.accFar ? ctx.accFar[c] : (this.landAcc ? this.landAcc[c] : 0);\n      if (__am && Ld && Ld.farGain > 0) {\n        const am = __am || 1;');
+// 加载：city.js 用打过补丁的源码，并且必须在 metro.js 之前（metro.js 会捕获 CM.LU）
+for (const f of FILES) {
+  if (f === 'js/city.js') vm.runInThisContext(citySrc, { filename: f });
+  else vm.runInThisContext(fs.readFileSync(path.join(root, f), 'utf8'), { filename: f });
+}
 const CM = globalThis.CM, M = CM.Metro, U = CM.U, CFG = CM.CFG;
 CM.useMap('gz');
 const YEARS = Number(process.argv[2] || 25);
@@ -80,7 +86,7 @@ function availJobs(model, capMin, year) {
   return out;
 }
 
-function run(label, useDistrict, pull, useSupply) {
+function run(label, useDistrict, pull, useSupply, useFar, useLine) {
   CM.GROWTH_ACCESS.from = 'walk';   // 站旁加成仍用步行距离；岗位只作为额外吸引
   CM.JOB_PULL = pull;
   const Y0 = CFG.START.y;
@@ -90,7 +96,22 @@ function run(label, useDistrict, pull, useSupply) {
   };
   openByYear(Y0);
   // 线网：先不建地铁，只看城市自身怎么长（避免地铁把结果带偏）
-  const net = M.empty();
+  let net = M.empty();
+  const lineIds = [];
+  // 从初始中心修一条 160 km/h 级快线到指定坐标（站距约 4 km）
+  const buildLine = function (tx, ty) {
+    const lid = M.newLine(net, '快线');
+    const dx = tx - C0.x, dy = ty - C0.y, len = Math.hypot(dx, dy);
+    const n = Math.max(2, Math.round(len / 16));
+    let prev = null;
+    for (let k = 0; k <= n; k++) {
+      const x = C0.x + dx * k / n, y = C0.y + dy * k / n;
+      const st = M.addStation(net, Math.round(x) + 0.5, Math.round(y) + 0.5, { size: 'M', type: 'elevated' }, city);
+      if (prev) M.addSegment(net, lid, prev, st, [], 'elevated');
+      prev = st;
+    }
+    lineIds.push(lid);
+  };
   const model = new CM.Model(city);
   model.setNetwork(M.compile(net, city));
   // 初始就业中心（人口×岗位重心）
@@ -127,11 +148,22 @@ function run(label, useDistrict, pull, useSupply) {
             if (city.landFrac[c] >= 0.7 && city.lu[c] === 0) city.plan[c] = 3;   // LU.IND = 3
           }
           districts.push({ x: bi + 0.5, y: bj + 0.5, at: yy });
+          if (useLine) buildLine(bi + 0.5, bj + 0.5);
           city.version++;
         }
       }
     }
     const ja = (pull > 0 || useSupply) ? availJobs(model, 12, yy) : null;   // 可用岗位（岗位 − 本地劳动力），12 分钟窗口
+    // 容积率读通勤可达性：30 分钟内可达岗位 → 归一化乘子（1 … 1+accessGain），住宅与岗位容量共用同一个乘子
+    let accFar = null;
+    if (useFar) {
+      const j30 = accessSum(model, 30, model.zJobs);
+      let mx = 0;
+      for (let z = 0; z < j30.length; z++) if (j30[z] > mx) mx = j30[z];
+      const gain = (CFG.land && CFG.land.accessGain) || 0.7;
+      accFar = new Float32Array(city.N);
+      for (let c = 0; c < city.N; c++) accFar[c] = 1 + gain * (mx > 0 ? Math.sqrt(j30[city.zoneOf(c)] / mx) : 0);
+    }
     // 土地供给响应：可用岗位高的地方，开发商在周边把低效用地改成居住用地（受「必须已有街道」与配额约束）
     if (useSupply && ja && m % 12 === 0) {
       let mean = 0, nz = 0;
@@ -174,7 +206,7 @@ function run(label, useDistrict, pull, useSupply) {
         if (done) { city.version++; supplyCells += done; }
       }
     }
-    city.growMonth({ year: yy, monthIndex: m, zoneAccess: null, cellWalk: model.net && model.net.acc ? model.net.acc.cellWalk : null, coverage: 0, econ: null, jobAccess: ja });
+    city.growMonth({ year: yy, monthIndex: m, zoneAccess: null, cellWalk: model.net && model.net.acc ? model.net.acc.cellWalk : null, coverage: 0, econ: null, jobAccess: ja, accFar: accFar });
   }
   const tot = city.totals();
   const wrF = U.interp(CFG.choice.workerRate, Y0 + YEARS);
@@ -191,11 +223,12 @@ function run(label, useDistrict, pull, useSupply) {
 }
 
 const rows = [
-  run('基线', false, 0, false),
-  run('只播产业区', true, 0, false),
-  run('产业区 + 可用岗位吸引', true, 0.8, false),
-  run('产业区 + 供给响应', true, 0, true),
-  run('产业区 + 供给 + 吸引', true, 0.8, true),
+  run('基线', false, 0, false, false),
+  run('容积率读通勤可达', false, 0, false, true),
+  run('播产业区 + 容积率', true, 0, false, true),
+  run('产业区 + 快线 + 容积率', true, 0, false, true, true),
+  run('产业区 + 容积率 + 供给', true, 0, true, true),
+  run('产业区 + 容积率 + 供给 + 吸引', true, 0.8, true, true),
 ];
 console.log('');
 console.log('变体                  人口     岗位    岗位/劳动力  产业区  改居住格  区内人口  区内岗位  重心位移');
