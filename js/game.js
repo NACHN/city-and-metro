@@ -19,12 +19,20 @@
   CM.Game = Game;
   Game.prototype.touch = function () { this.rev++; };
 
+  // 阻抗口径：由模式能力表决定（CM.MODES[*].timeCommute）。CFG.choice 是随地图切换的共享对象，
+  // 所以每次开局都显式设一次，避免上一次开局的设置残留到这一局。
+  function applyImpedance(g) {
+    const caps = g.econ && g.econ.caps ? g.econ.caps : CM.modeCaps(g.mode);
+    CFG.choice.impedance = caps.timeCommute ? 'time' : 'distance';
+  }
+
   Game.create = function (opts) {
     const g = new Game();
     g.id = U.uid('g');
     g.mapId = CM.mapId || 'gz';   // 当前地图（CM.useMap 已切换好数据）
     g.name = opts.name || ((D.city || '广州') + ' ' + CFG.START.y);
     g.mode = opts.mode;
+    applyImpedance(g);   // 必须在 new CM.Model 之前：Model 构造时就会建一次需求表
     g.seed = opts.seed || (CFG.START.y * 10000 + 101);
     if (opts.tutorial) g.tutorial = { step: 0, done: [], started: Date.now() };
     g.createdAt = Date.now();
@@ -44,6 +52,8 @@
     g.model.fare = g.econ.fare;
     g.tasks = new CM.Tasks();
     g.model.solveNow(2);
+    // 时间口径要先有一次求解把 skim 填满，重建需求才拿得到真实时间；否则会落到自由流兜底上
+    if (CFG.choice.impedance === 'time') { g.model.buildDemand(); g.model.solveNow(2); }
     // 地价是经营模式的派生量：开局先算一次，之后每月随城市与线网更新（见 monthGen）
     if (g.econ.caps.land) {
       g.city.buildLandPrice(g.clock.y, g.model.net ? g.model.net.acc : null);
@@ -816,6 +826,7 @@
     g.compiled = M.compile(g.net, g.city);
     g.model.setNetwork(g.compiled);
     g.econ = CM.Economy.restore(s.econ);
+    applyImpedance(g);
     g.econ.revOf = function (yy) { return g.fiscalRev(yy); };
     g.model.fare = g.econ.fare;
     g.tasks = CM.Tasks.restore(s.tasks);

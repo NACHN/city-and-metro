@@ -407,7 +407,9 @@
   CM.MODES = {
     free: { id: 'free', name: '自由建造', budget: false, grants: false, bonds: false, failure: false, rewards: false, opsTasks: false, land: false, fleet: false, needs: function () { return true; } },
     challenge: { id: 'challenge', name: '经营挑战', budget: true, grants: true, bonds: true, failure: true, rewards: true, opsTasks: true, land: false, fleet: false, needs: function (m) { return !m.tutorial; } },
-    tycoon: { id: 'tycoon', name: '经营模式', budget: true, grants: true, bonds: true, failure: true, rewards: true, opsTasks: true, land: true, fleet: true, needs: function (m) { return !m.tutorial && !!m.cfg.macro; } },
+    // timeCommute：出行分布按「广义时间」而不是直线距离衰减（见 CFG.choice.impedance）。
+    // 只在经营模式打开：挑战模式与自由建造保持原口径，数值与指纹不变。
+    tycoon: { id: 'tycoon', name: '经营模式', budget: true, grants: true, bonds: true, failure: true, rewards: true, opsTasks: true, land: true, fleet: true, timeCommute: true, needs: function (m) { return !m.tutorial && !!m.cfg.macro; } },
   };
   CM.modeCaps = function (mode) { return CM.MODES[mode] || CM.MODES.challenge; };
   CM.modeName = function (mode) { return (CM.MODES[mode] || CM.MODES.challenge).name; };
