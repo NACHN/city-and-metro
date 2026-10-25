@@ -152,6 +152,11 @@
   .seg2 { display: flex; background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; padding: 2px; flex: 1; }
   .seg2 button { flex: 1; border: 0; background: transparent; color: var(--text2); font-size: 10.5px; padding: 4px 0; border-radius: 5px; cursor: pointer; }
   .seg2 button.on { background: #ffffff14; color: var(--text); font-weight: 600; }
+  .cnt { display: flex; align-items: center; gap: 6px; flex: 1; font-size: 11px; color: var(--text2); }
+  .cnt button { width: 20px; height: 20px; border: 1px solid var(--line); background: var(--panel2); color: var(--text); border-radius: 6px; cursor: pointer; font-size: 12px; line-height: 1; }
+  .cnt button:hover { background: #ffffff10; }
+  .cnt b { min-width: 18px; text-align: center; font-size: 12px; color: var(--text); font-variant-numeric: tabular-nums; }
+  .opt .val2 { width: 62px; text-align: right; font-size: 10.5px; color: var(--text2); font-variant-numeric: tabular-nums; }
   .stepper { display: flex; align-items: center; gap: 7px; }
   .stepper .lbl { width: 46px; font-size: 10.5px; color: var(--text3); flex: none; }
   .stepper .dots { display: flex; gap: 3px; flex: 1; }
@@ -208,7 +213,7 @@
   <span>演示布局：</span>
   <button id="btnWide" class="on">宽屏（两栏）</button>
   <button id="btnNarrow">窄屏（切页）</button>
-  <span style="opacity:.7">🔨 在左 · 经济 / 乘客 整块可收起</span>
+  <span style="opacity:.7">🔨 在左 · 接驳配车会实时改变经济块</span>
 </div>
 
 <div class="wrap">
@@ -270,6 +275,16 @@
           </div>
         </div>
         <div class="bsec">
+          <h4>接驳巴士</h4>
+          <div class="opt">
+            <span class="lbl">配车</span>
+            <span class="cnt">
+              <button id="busMinus">−</button><b id="busNum">12</b><span>辆</span><button id="busPlus">+</button>
+            </span>
+            <span class="val2" id="busCost">21 万/月</span>
+          </div>
+        </div>
+        <div class="bsec">
           <h4>上盖开发</h4>
           <div class="cards4">
             <div class="card on" data-dev="0"><b>不开发</b><small>—</small></div>
@@ -302,19 +317,19 @@
     <div class="col info">
       <!-- 经济 -->
       <div class="panel econ">
-        <div class="phead" data-panel><i class="dotmark" style="background:var(--accent)"></i><span class="t">经济</span><span class="s">本月净 +140 万</span><span class="cv">▾</span></div>
+        <div class="phead" data-panel><i class="dotmark" style="background:var(--accent)"></i><span class="t">经济</span><span class="s" id="netSummary">本月净 +119 万</span><span class="cv">▾</span></div>
         <div class="pbody">
           <div class="econ-grid">
             <!-- 左：运营收支 -->
             <div>
               <h4 class="sub-h">运营收支</h4>
               <div class="money">
-                <div class="net good">+140<i>万/月</i></div>
+                <div class="net good" id="netVal">+119<i>万/月</i></div>
                 <div class="side"><b>回收率 50%</b>票款覆盖一半成本</div>
               </div>
               <div class="clegend">
                 <span><i style="background:#1D9E75"></i>收 <b>1,426</b></span>
-                <span><i style="background:#D4537E"></i>支 <b>1,286</b></span>
+                <span><i style="background:#D4537E"></i>支 <b id="expTotal">1,307</b></span>
                 <span class="muted">近 12 月</span>
               </div>
               <div class="linechart" id="moneyChart"></div>
@@ -327,7 +342,7 @@
                 <div class="out"><h5>支出</h5>
                   <div class="li"><span>运营</span><b>1,240</b></div>
                   <div class="li"><span>维护</span><b>46</b></div>
-                  <div class="li"><span>接驳</span><b>0</b></div>
+                  <div class="li"><span>接驳</span><b id="busExpense">21</b></div>
                 </div>
               </div>
             </div>
@@ -419,6 +434,7 @@
     <li><b>经济内部左右排</b>：运营收支（左，含折线）与物业地价（右）并排，省下一半高度。</li>
     <li><b>换乘信息压成一行</b>：<span class="tg l1">1 号线</span> <span class="tg l2">2 号线</span> <span class="tg walk">300 m 西门口</span>，颜色即含义（蓝/橙是线路，琥珀是站外步行）。</li>
     <li><b>附近设施压成一行</b>：<span class="tg shop">400 m 北京路步行街</span> <span class="tg park">250 m 人民公园</span>，蓝=商业、绿=公园。</li>
+    <li><b>接驳巴士补回建设面板</b>：配车 −/+ 会实时改动右下「支出 · 接驳」与净额——操作与结果隔着两栏也能对上。</li>
   </ol>
 </div>
 
@@ -611,6 +627,26 @@
     };
   });
   recalc();
+
+  /* 接驳巴士：配车 → 月成本 → 经济块实时联动 */
+  let busN = 12;
+  const BUS_UNIT = 21 / 12;            // 万元/月/辆
+  const INC = 1426, OPS = 1240, MAINT = 46;
+  function busRecalc() {
+    const cost = busN * BUS_UNIT;
+    document.getElementById('busNum').textContent = busN;
+    document.getElementById('busCost').textContent = Math.round(cost) + ' 万/月';
+    document.getElementById('busExpense').textContent = Math.round(cost);
+    const exp = OPS + MAINT + cost, net = INC - exp;
+    document.getElementById('expTotal').textContent = Math.round(exp).toLocaleString('en');
+    document.getElementById('netVal').innerHTML = (net >= 0 ? '+' : '') + Math.round(net) + '<i>万/月</i>';
+    document.getElementById('netVal').className = 'net ' + (net >= 0 ? 'good' : 'bad');
+    document.getElementById('netSummary').textContent = '本月净 ' + (net >= 0 ? '+' : '') + Math.round(net) + ' 万';
+  }
+  document.getElementById('busPlus').onclick = function () { busN = Math.min(40, busN + 2); busRecalc(); };
+  document.getElementById('busMinus').onclick = function () { busN = Math.max(0, busN - 2); busRecalc(); };
+  busRecalc();
+
   window.addEventListener('resize', function () { drawMoneyChart(); });
 </script>
 </body>
