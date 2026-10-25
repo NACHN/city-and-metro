@@ -39,7 +39,15 @@
       console.log('  求解一轮：' + fmt(one) + ' · 连跑两轮：' + fmt(two));
       console.log('  求解后帧率：' + fps2.toFixed(1) + ' fps（最长一帧 ' + fmt(worst2) + '）');
       console.log('  内存：' + mem);
-      console.log('  判读：① <45 fps 或最长帧 >50 ms → 渲染/月刷新有问题；② 求解 >800 ms → 求解太慢');
+      // ④ 拆开看：渲染一帧 vs 模拟一步各占多少（各跑 20 次取平均）
+      const timeIt = function (fn, n) { const t0 = T(); for (let i = 0; i < n; i++) fn(); return (T() - t0) / n; };
+      let renderMs = -1, simMs = -1;
+      try { if (CM.R && CM.R.render) renderMs = timeIt(function () { CM.R.render(0.016, CM.ui); }, 20); } catch (e) { }
+      try { if (model.step) simMs = timeIt(function () { model.step(1); }, 20); } catch (e) { }
+      console.log('  渲染一帧：' + (renderMs >= 0 ? fmt(renderMs) : '—') +
+        ' · 模拟一步：' + (simMs >= 0 ? fmt(simMs) : '—') +
+        ' · 二者之和占一帧的比例：' + (renderMs >= 0 && simMs >= 0 && fps > 0 ? Math.round((renderMs + simMs) / (1000 / fps) * 100) + '%' : '—'));
+      console.log('  判读：① <45 fps 或最长帧 >50 ms → 看「渲染一帧」占比；② 求解 >800 ms → 求解太慢');
     });
   });
 })();
