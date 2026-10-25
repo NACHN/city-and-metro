@@ -957,7 +957,8 @@
   // 「可到达的工作机会」：小区 i 在 capMin 分钟内（取小汽车与地铁中较优）能到达的岗位数。
   // 这是「人往通勤方便的地方去」需要的量——比「离最近车站多远」更接近真实区位价值。
   // 每月算一次（城市增长用），O(Z²) 但不进求解循环；小汽车时间已经 ≤ capMin 时不必再看地铁。
-  Model.prototype.computeJobAccess = function (capMin) {
+  // only: 'both'（默认，小汽车与地铁取较优）| 'transit'（只算地铁 + 接驳，不算开车）
+  Model.prototype.computeJobAccess = function (capMin, only) {
     const Z = this.Z, out = new Float32Array(Z);
     const acc = this.net && this.net.acc;
     const P = this.ctxs && this.ctxs.wd && this.ctxs.wd.per ? this.ctxs.wd.per[1] : null;
@@ -973,7 +974,7 @@
       for (let j = 0; j < Z; j++) {
         if (i === j || this.zJobs[j] <= 0) continue;
         let t = Infinity;
-        if (car) { const v = car[i * Z + j]; if (v > 0 && v < 1e8) t = v; }
+        if (car && only !== 'transit') { const v = car[i * Z + j]; if (v > 0 && v < 1e8) t = v; }
         if (t > capMin && lo && gt && zl && zl[j] && N > 0) {
           // 只有在小汽车已经超时的情况下才试地铁，省掉绝大多数的 4×4 组合
           const ld = zl[j];
