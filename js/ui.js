@@ -1163,6 +1163,91 @@
     if (r && r.error) { this.toast(r.error, 'bad'); return; }
     this.rerenderPage();
   };
+  // 接驳线终点评估：距离、配车、等效步行，以及「这里到底是不是盲区」——
+  // 端点步行圈里有多少人现在没有地铁覆盖，这才是玩家要的那个判断。
+  UI.prototype.busPointInfo = function (st, x, y) {
+    const g = this.g(), city = g.city, B = CFG.bus, Met = CM.Metro;
+    if (!st || !city || !B) return null;
+    const lenM = U.dist(st.x, st.y, x, y) * CFG.CELL_M;
+    const cars = Met.busFleet(lenM);
+    const eqM = Met.busEqM({ lenM: lenM, cars: cars });
+    const hw = Met.busCycleMin(lenM) / Math.max(1, cars);
+    const cost = Met.busCost(cars) * g.econ.costIndex(g.clock.y);
+    const acc = g.model && g.model.net ? g.model.net.acc : null;
+    const R = (B.walkReachM || 400) / CFG.CELL_M, r2 = R * R;
+    const cc = city.cellAt(x, y);
+    let pop = 0, jobs = 0, blindPop = 0, blindJobs = 0;
+    if (cc >= 0) {
+      const ci = cc % city.W, cj = (cc / city.W) | 0;
+      const i0 = Math.max(0, Math.floor(ci - R)), i1 = Math.min(city.W - 1, Math.ceil(ci + R));
+      const j0 = Math.max(0, Math.floor(cj - R)), j1 = Math.min(city.H - 1, Math.ceil(cj + R));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+        const dx = i - ci, dy = j - cj; if (dx * dx + dy * dy > r2) continue;
+        const c = j * city.W + i, p0 = city.pop[c], jb0 = city.jobs[c];
+        pop += p0; jobs += jb0;
+        const cov = acc && acc.cellWalk && acc.cellWalk[c] <= (acc.cellLim ? acc.cellLim[c] : CFG.walk.maxAccessM);
+        if (!cov) { blindPop += p0; blindJobs += jb0; }
+      }
+    }
+    let near = null, nd = Infinity;
+    for (const sid in g.net.stations) {
+      const s2 = g.net.stations[sid];
+      const d2 = U.dist(s2.x, s2.y, x, y) * CFG.CELL_M;
+      if (d2 < nd) { nd = d2; near = s2; }
+    }
+    let fac = null;
+    const fn = g.model && g.model.fn;
+    if (fn) for (const f of fn.list) if (isFinite(f.x) && isFinite(f.y) && U.dist(f.x, f.y, x, y) * CFG.CELL_M <= 350) { fac = f.name; break; }
+    return { lenM: lenM, cars: cars, eqM: eqM, hw: hw, cost: cost, pop: pop, jobs: jobs, blindPop: blindPop, blindJobs: blindJobs, near: near, nearD: nd, fac: fac };
+  };
+  // 选点时的悬停提示（地图上同时画出「站 → 光标」虚线与终点步行圈）
+  UI.prototype.busPickTip = function (id, x, y) {
+    const g = this.g(), B = CFG.bus;
+    const st = (g.draft ? g.draft.net : g.net).stations[id];
+    const info = this.busPointInfo(st, x, y);
+    if (!info) return null;
+    let bad = false;
+    const lines = [];
+    if (info.lenM > (B.maxLenM || 5000)) { bad = true; lines.push('超出单条最长 ' + (B.maxLenM / 1000) + ' km'); }
+    else if (info.lenM < 300) { bad = true; lines.push('不到 300 m：步行就到，不必开线'); }
+    lines.push('直线 ' + U.fmtKm(info.lenM) + ' · 配车 ' + info.cars + ' 辆 · 间隔 ' + info.hw.toFixed(1) + ' 分 · 等效步行 ' + Math.round(info.eqM) + ' m');
+    if (info.blindPop + info.blindJobs > 0) lines.push('★ 盲区：圈内 ' + U.fmtPeople(info.blindPop) + ' 人 / ' + U.fmtPeople(info.blindJobs) + ' 岗位现在没有地铁');
+    else lines.push('已在「' + (info.near ? info.near.name : '车站') + '」步行范围内，开通不新增覆盖');
+    if (info.fac) lines.push('接驳目标：「' + info.fac + '」');
+    if (!bad) lines.push('左键：在此开通（进入草案，确认前不扣款）');
+    return { title: bad ? '这里不合适' : '接驳终点', lines: lines, bad: bad };
+  };
+  // 进入地图选点：先看提示再点，点完给一张确认卡（开着草案还可撤销）
+  UI.prototype.busPick = function (id) {
+    const g = this.g();
+    if (!g || g.draft || !CFG.bus || !this.tools) return;
+    const s = g.net.stations[id];
+    if (!s) return;
+    if (!(s.busHub | 0)) { this.toast('先建接驳站才能开线路', 'bad'); return; }
+    const self = this;
+    this.tools.startPick({ kind: 'bus', station: id, cb: function (x, y) { self.busPicked(id, x, y); } });
+    this.toast('在地图上点击接驳终点（右键取消）', 'info');
+  };
+  UI.prototype.busPicked = function (id, x, y) {
+    const g = this.g(), B = CFG.bus, self = this;
+    const s = (g.draft ? g.draft.net : g.net).stations[id];
+    const info = this.busPointInfo(s, x, y);
+    if (!info) return;
+    if (info.lenM > (B.maxLenM || 5000)) { this.toast('接驳线最长 ' + (B.maxLenM / 1000) + ' km', 'bad'); return; }
+    if (info.lenM < 300) { this.toast('这个距离步行即可，不需要接驳', 'bad'); return; }
+    const txt = [
+      '直线 ' + U.fmtKm(info.lenM) + '，配车 ' + info.cars + ' 辆，间隔 ' + info.hw.toFixed(1) + ' 分钟，等效步行 ' + Math.round(info.eqM) + ' m。',
+      (info.blindPop + info.blindJobs > 0
+        ? '终点 ' + B.walkReachM + ' m 内新增覆盖：' + U.fmtPeople(info.blindPop) + ' 人 · ' + U.fmtPeople(info.blindJobs) + ' 岗位（现在没有地铁）。'
+        : '注意：这里已经在「' + (info.near ? info.near.name : '车站') + '」的步行范围内，开通不会新增覆盖。'),
+      info.fac ? '接驳目标：「' + info.fac + '」。' : '',
+      '购车 ' + U.fmtMoney(info.cost) + '（一次性），运营保养 ' + U.fmtMoney(info.cars * (B.opsPerVehicleYear || 0)) + '/年。',
+    ].filter(Boolean).join('');
+    this.confirm('在这里开通接驳线？', txt, '开通', function () {
+      self.busOpen(id, { x: x, y: y, lenM: info.lenM, cars: info.cars, cost: info.cost });
+    }, false, 'bus');
+  };
+
   // 建接驳站：一次性小额投入（候车亭、站牌、首末站车位），之后这个站才能开接驳线
   UI.prototype.busHub = function (id) {
     const g = this.g();

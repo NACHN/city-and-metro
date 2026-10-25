@@ -10,6 +10,7 @@
     this.buildType = 'underground'; this.stationSize = 'M';
     this.lineChoice = 'new';
     this.chain = null; this.bends = [];
+    this.pick = null;
     this.cursor = null; this.hover = null; this.hint = null;
     this.ptr = null; this.drag = null;
     this.keys = new Set();
@@ -23,7 +24,7 @@
     this.cancelDrag();
     if (this.ui.closeLinePicker) this.ui.closeLinePicker();
     this.tool = t;
-    this.chain = null; this.bends = []; this.drag = null; this.hint = null; this.hover = null; this.lineLock = false;
+    this.chain = null; this.bends = []; this.drag = null; this.hint = null; this.hover = null; this.lineLock = false; this.pick = null;
     this.ui.setTooltip(null);
     this.ui.onToolChange(t);
   };
@@ -133,12 +134,37 @@
     if (p.button === 0 && !p.moved) this.onClick(e.clientX, e.clientY, e.shiftKey || e.altKey, e.ctrlKey || e.metaKey || e.shiftKey);
   };
 
+  // ---------------- 地图选点（接驳线终点等） ----------------
+  // 有些东西没法用「候选清单」表达：接驳线该接到哪儿，取决于玩家看到的盲区。
+  // 进入拾取状态后，下一次左键点击即回调地图坐标；右键、Esc 或换工具都会取消。
+  Tools.prototype.startPick = function (opt) {
+    this.cancelDrag();
+    this.pick = { kind: (opt && opt.kind) || 'point', station: (opt && opt.station) || null, cb: opt && opt.cb };
+    this.chain = null; this.bends = [];
+    this.ui.onToolChange(this.tool);
+    this.hint = null;
+    this.ui.setTooltip(null);   // 提示等鼠标移到地图上再显示（需要坐标定位）
+  };
+  Tools.prototype.cancelPick = function () {
+    if (!this.pick) return false;
+    this.pick = null; this.hint = null; this.hover = null; this.ui.setTooltip(null);
+    return true;
+  };
+
   // ---------------- 悬停与提示 ----------------
   Tools.prototype.world = function (sx, sy) { return this.R.unproject(sx, sy); };
   Tools.prototype.updateHover = function (sx, sy, mod) {
     const g = this.game(), R = this.R;
     const w = this.world(sx, sy);
     this.cursor = { sx: sx, sy: sy, x: w.x, y: w.y, mod: mod };
+    if (this.pick) {
+      this.hover = null;
+      const tip = this.pick.kind === 'bus' && this.ui.busPickTip ? this.ui.busPickTip(this.pick.station, w.x, w.y) : null;
+      this.hint = tip;
+      this.ui.setTooltip(tip, sx, sy);
+      R.cv.style.cursor = 'crosshair';
+      return;
+    }
     const ext = this.ptr ? null : this.pickExtend(sx, sy);
     if (ext) {
       const net0 = this.net();
@@ -311,6 +337,12 @@
     const g = this.game(), R = this.R;
     if (g.jumping) return;
     const w = this.world(sx, sy);
+    if (this.pick) {
+      const pk = this.pick;
+      this.cancelPick();
+      if (pk.cb) pk.cb(w.x, w.y);
+      return;
+    }
     const st = R.pickStation(sx, sy);
     const seg = st ? null : R.pickSegment(sx, sy);
     const ui = this.ui;
@@ -458,6 +490,7 @@
     return true;
   };
   Tools.prototype.onRight = function () {
+    if (this.cancelPick()) return;
     if (this.tool === 'line') this.endChain();
   };
   Tools.prototype.onDbl = function (e) {
@@ -519,6 +552,7 @@
       t.blur();
       if (textual) return;
     }
+    if (this.pick && e.key === 'Escape') { e.preventDefault(); this.cancelPick(); return; }
     if (!g || this.ui.blocking()) { if (e.key === 'Escape') this.ui.escape(); return; }
     const k = e.key.toLowerCase();
     // 线路选择框打开时：数字键选择对应线路，Esc 关闭（保留当前选择）
@@ -583,6 +617,24 @@
     const g = this.game(); if (!g) return;
     const net = this.net();
     const cur = this.cursor;
+    // 选点预览：站 → 光标 的虚线，加上终点步行圈（半径＝接驳端点步行覆盖）
+    if (this.pick && cur && this.pick.station && net.stations[this.pick.station]) {
+      const s0 = net.stations[this.pick.station];
+      const bad = this.hint && this.hint.bad;
+      const col = bad ? '#d63031' : '#e8590c';
+      const a = R.P(s0.x, s0.y, 0), b = R.P(cur.x, cur.y, 0);
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.setLineDash([7, 5]); ctx.lineDashOffset = -R.time * 18;
+      ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
+      const rr = (CFG.bus ? CFG.bus.walkReachM : 400) / CFG.CELL_M;
+      ctx.strokeStyle = bad ? 'rgba(214,48,49,0.5)' : 'rgba(232,89,12,0.55)'; ctx.lineWidth = 1.4; ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      for (let k = 0; k <= 40; k++) { const ang = k / 40 * Math.PI * 2; const p = R.P(cur.x + Math.cos(ang) * rr, cur.y + Math.sin(ang) * rr, 0); if (k) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); }
+      ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(b.x, b.y, 5, 0, Math.PI * 2); ctx.fill();
+    }
     // 绘线预览
     if (this.tool === 'line' && this.chain && net.stations[this.chain] && cur) {
       const st = this.hover && this.hover.kind === 'station' ? net.stations[this.hover.id] : null;

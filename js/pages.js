@@ -206,12 +206,16 @@
           b.appendChild(h('div', { class: 'note', style: { marginTop: '4px' } },
             '运营保养 ' + U.fmtMoney(cars * B.opsPerVehicleYear) + '/年（' + U.fmtMoney(cars * B.opsPerVehicleYear / 12) + '/月），与客流无关。加车能缩短间隔、提升吸引力，也同时抬高固定支出。'));
         }
+        // 手动选点：接驳接哪儿取决于玩家看到的盲区，清单只能给个参考
+        b.appendChild(h('div', { class: 'row', style: { marginTop: '10px', flexWrap: 'wrap' } },
+          h('button', { class: 'btn sm primary', onclick: function () { self.busPick(id); } }, '在地图上选终点'),
+          h('span', { class: 'tiny muted' }, '悬停会显示距离、配车，以及端点范围内有多少人现在还没有地铁')));
         const cands = self.busCandidates(official);
         if (!cands.length) {
           b.appendChild(h('div', { class: 'note', style: { marginTop: busList.length ? '8px' : '0' } },
             busList.length ? '这一站周边没有新的步行盲区了。' : '这一站步行范围内已经覆盖了周边人口，没有找到值得开通接驳的盲区。'));
         } else {
-          b.appendChild(h('div', { class: 'note', style: { margin: '8px 0 4px' } }, '周边步行到不了的地方（设施与人流密集处）：'));
+          b.appendChild(h('div', { class: 'note', style: { margin: '10px 0 4px' } }, '或者从系统找出的盲区里挑一个（按人流排序）：'));
           const rows = h('div', { class: 'kv' });
           for (const c of cands) {
             rows.append(
