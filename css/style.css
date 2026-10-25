@@ -124,7 +124,7 @@ kbd { font-family: inherit; font-size: 10px; padding: 0 5px; border-radius: 5px;
 
 /* ---------- 顶部 HUD ---------- */
 /* 界面大小：HUD 各部件按 --uiz 缩放，涉及视口尺寸的值除以 --uiz 抵消 */
-#hudTop, #dock, #legendCard, #zoomCtl, #rightPanel, #toolbar, #buildStack, #feed { zoom: var(--uiz, 1); }
+#hudTop, #dock, #legendCard, #zoomCtl, #rightPanel, #buildPanel, #toolbar, #buildStack, #feed { zoom: var(--uiz, 1); }
 #hudTop { top: 12px; left: 12px; right: 12px; display: flex; gap: 10px; align-items: flex-start; pointer-events: none; }
 #hudTop > * { pointer-events: auto; }
 #hudTop.hidden { transform: translateY(-14px); }
@@ -228,6 +228,19 @@ kbd { font-family: inherit; font-size: 10px; padding: 0 5px; border-radius: 5px;
 .panel { display: flex; flex-direction: column; overflow: hidden; }
 #rightPanel { top: 76px; right: 12px; width: 368px; max-height: calc((100vh - 168px) / var(--uiz, 1)); }
 #rightPanel.closed { transform: translateX(calc(100% + 24px)); opacity: 0; pointer-events: none; }
+/* 左侧建设面板：只装操作，与右侧只读信息分开。右侧面板关掉时它自动贴到右边 */
+#buildPanel {
+  top: 76px; right: calc(12px + 368px + 10px); width: 304px;
+  max-height: calc((100vh - 168px) / var(--uiz, 1));
+  transition: transform .28s var(--ease), opacity .22s var(--ease), right .26s var(--ease);
+}
+#buildPanel.closed { transform: translateX(20px); opacity: 0; pointer-events: none; }
+body.info-closed #buildPanel { right: 12px; }
+/* 窄屏：同一时间只显示一个面板（信息 / 建设 互斥），与移动端的「两页签」同义 */
+@media (max-width: 900px) {
+  #buildPanel { left: 12px; right: 12px; width: auto; max-width: none; }
+  body.building #rightPanel { opacity: 0; pointer-events: none; transform: translateX(calc(100% + 24px)); }
+}
 .p-head { display: flex; align-items: center; gap: 8px; padding: 12px 10px 10px 12px; flex: none; min-height: 56px; border-bottom: 1px solid var(--line); }
 .p-head .badge { width: 34px; height: 34px; border-radius: 11px; }
 .p-title { font-weight: 700; font-size: 15px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -888,7 +901,7 @@ body.has-coach #legendCard { top: calc(84px + var(--coach-h, 0px) * var(--uiz, 1
 #followCard .fc-acts { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 #followCard .fc-acts kbd { margin-left: 4px; }
 body.following #toolbar, body.following #buildStack { opacity: 0; pointer-events: none; transform: translateX(-50%) translateY(20px); }
-body.cinema #hudTop, body.cinema #dock, body.cinema #legendCard, body.cinema #zoomCtl, body.cinema #rightPanel, body.cinema #toolbar, body.cinema #buildStack, body.cinema #feed, body.cinema #coach { opacity: 0 !important; pointer-events: none !important; }
+body.cinema #hudTop, body.cinema #dock, body.cinema #legendCard, body.cinema #zoomCtl, body.cinema #rightPanel, body.cinema #buildPanel, body.cinema #toolbar, body.cinema #buildStack, body.cinema #feed, body.cinema #coach { opacity: 0 !important; pointer-events: none !important; }
 #hudTop, #dock, #legendCard, #zoomCtl, #feed, #coach { transition: opacity .35s var(--ease); }
 body.cinema #followCard { width: max-content; max-width: calc(100vw - 24px); min-width: 300px; padding: 9px 16px; background: rgba(12, 20, 32, 0.55); border-color: transparent; color: #fff; backdrop-filter: blur(6px); }
 body.cinema #followCard .fc-grid, body.cinema #followCard .fc-acts { display: none; }
@@ -1620,7 +1633,6 @@ td .tag { margin-left: 4px; padding: 0 6px; font-size: 10px; }
 }
 .st-icon:hover { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
 .st-icon.on { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
-.st-name { font-size: 17px; font-weight: 650; letter-spacing: .01em; color: var(--text); }
 .st-chips { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
 .st-head .fav-btn, .st-head > :last-child { margin-left: auto; }
 

@@ -131,7 +131,22 @@
     this.rTitle = h('div', { class: 'p-title' }, '');
     this.rBadge = h('span', { class: 'badge b-blue' }, ic('info'));
     this.rBack = h('button', { class: 'iconbtn', 'data-tip': '返回', onclick: function () { self.back(); } }, ic('back'));
+    // 定位：把面板对应的对象在地图上居中。页面要不要这个按钮由 page.locate 决定
+    this.rLocate = h('button', { class: 'iconbtn hidden', 'data-tip': '在地图上定位', onclick: function () {
+      const p = self.stack[self.stack.length - 1], pt = p && p.locate;
+      if (pt) self.flyTo(pt[0], pt[1], pt[2] || 28);
+    } }, ic('locate'));
     this.rBody = h('div', { class: 'p-body' });
+    // 左侧建设面板：只放「会改变城市」的操作，与右侧只读信息分开。
+    // 宽屏与右侧面板并排；窄屏互斥（打开它就把信息面板让出来）。
+    this.buildPanel = h('aside', { id: 'buildPanel', class: 'hud glass panel closed', inert: true, 'aria-hidden': 'true' });
+    this.bBadge = h('span', { class: 'badge b-gold' }, ic('hammer'));
+    this.bTitle = h('div', { class: 'p-title' }, '建设');
+    this.bBody = h('div', { class: 'p-body' });
+    this.buildPanel.append(
+      h('div', { class: 'p-head' }, this.bBadge, this.bTitle,
+        h('button', { class: 'iconbtn', 'data-tip': '收起建设面板', onclick: function () { self.toggleBuild(false); } }, ic('close'))),
+      this.bBody);
     // 输入期间推迟的页面刷新：离开输入框后补上（稍后执行，避免吞掉随后的按钮点击）
     this.rBody.addEventListener('focusout', function () {
       if (!self._pendingRefresh) return;
@@ -141,7 +156,7 @@
         self._pendingRefresh = false; self.rerenderPage();
       }, 300);
     });
-    this.right.append(h('div', { class: 'p-head' }, this.rBack, this.rBadge, this.rTitle, h('button', { class: 'iconbtn', 'data-tip': '收起', 'data-key': 'Esc', onclick: function () { self.closePanel(); } }, ic('close'))), this.rBody);
+    this.right.append(h('div', { class: 'p-head' }, this.rBack, this.rBadge, this.rTitle, this.rLocate, h('button', { class: 'iconbtn', 'data-tip': '收起', 'data-key': 'Esc', onclick: function () { self.closePanel(); } }, ic('close'))), this.rBody);
     // 底部：建设工具
     const tb = function (id, icon, label, key, onclick, cls) {
       const b = h('button', { class: 'tbtn ' + (cls || ''), 'data-tip': label, 'data-key': key, onclick: onclick }, ic(icon), h('span', { class: 'lb' }, label));
@@ -171,7 +186,7 @@
     this.screen = h('div', { id: 'screen', class: 'hidden' });
     this.statsEl = h('div', { id: 'stats', class: 'hidden' });
     this.fxLayer = h('div', { id: 'fxLayer' });
-    app.append(this.top, this.dock, this.legendCard, this.zoomCtl, this.right, this.toolbar, this.bstack, this.feed, this.tip, this.uitip, this.fxLayer, this.statsEl, this.screen);
+    app.append(this.top, this.dock, this.legendCard, this.zoomCtl, this.buildPanel, this.right, this.toolbar, this.bstack, this.feed, this.tip, this.uitip, this.fxLayer, this.statsEl, this.screen);
     this.initTips();
     this.initPress();
     this.renderDock();
@@ -187,7 +202,10 @@
     else {
       const z = CM.Settings.get('uiScale') || 1;
       const open = this.right && !this.right.classList.contains('closed') && !this.right.classList.contains('hidden');
-      const rw = open ? this.right.getBoundingClientRect().width + 24 : 0;
+      let rw = open ? this.right.getBoundingClientRect().width + 24 : 0;
+      // 建设面板开在信息面板左边时，一起让开
+      const bopen = this.buildPanel && !this.buildPanel.classList.contains('closed') && !this.buildPanel.classList.contains('hidden');
+      if (bopen) rw += this.buildPanel.getBoundingClientRect().width + 10;
       // 左侧让开图层栏；教程时让开引导卡片
       const dock = document.body.classList.contains('has-coach') ? 420 * z + 40 : 76 * z, avail = window.innerWidth - rw - dock;
       f.style.left = ((dock + avail / 2) / z) + 'px';
@@ -1016,6 +1034,7 @@
     else if (opts.root) this.stack = [{ kind: kind, id: id }];
     else { this.stack.push({ kind: kind, id: id }); if (this.stack.length > 8) this.stack.shift(); }
     snd('open');
+    this.buildWant = undefined;          // 换页时回到「默认展开」
     this.renderPage(true);
   };
   UI.prototype.back = function () {
@@ -1030,9 +1049,27 @@
     this.right.inert = true;
     this.right.setAttribute('aria-hidden', 'true');
     this.right.classList.add('closed');
+    document.body.classList.add('info-closed');
+    this.setBuild(false);
     if (!silent && this.selection && this.selection.kind !== 'station') this.select(null, true);
     this.highlightLine = null;
     this.placeFeed();
+  };
+  // 建设面板的显隐。宽窄屏的排布差异交给 CSS（.building / .info-closed 两个 body 类）
+  UI.prototype.setBuild = function (open) {
+    if (!this.buildPanel) return;
+    open = !!open;
+    this.building = open;
+    document.body.classList.toggle('building', open);
+    this.buildPanel.classList.toggle('closed', !open);
+    this.buildPanel.classList.toggle('hidden', !open);
+    this.buildPanel.inert = !open;
+    this.buildPanel.setAttribute('aria-hidden', open ? 'false' : 'true');
+  };
+  UI.prototype.toggleBuild = function (want) {
+    const next = want === undefined ? !this.building : !!want;
+    this.buildWant = next;
+    this.setBuild(next);
   };
   UI.prototype.rerenderPage = function () { this.busHi = null; if (this.stack.length) this.renderPage(false); };
   UI.prototype.refreshBuild = function () {
@@ -1063,6 +1100,18 @@
     if (top.kind === 'line' && page.highlightLine) { const ln = (this.g().draft ? this.g().draft.net : this.g().net).lines[page.highlightLine]; if (ln) { this.rBadge.className = 'badge'; this.rBadge.style.background = ln.color; } }
     else this.rBadge.style.background = '';
     this.rBack.style.visibility = this.stack.length > 1 ? 'visible' : 'hidden';
+    const loc = page.locate || null;
+    this.rLocate.classList.toggle('hidden', !loc);
+    // 左侧建设面板：页面自带 side 才有内容，否则整块收走（避免残留上一个对象的面板）
+    if (page.side) {
+      this.bTitle.textContent = page.side.title || '建设';
+      this.bBadge.className = 'badge ' + (page.side.cls || 'b-gold');
+      this.bBadge.innerHTML = ''; this.bBadge.appendChild(ic(page.side.icon || 'hammer'));
+      this.bBody.innerHTML = '';
+      this.bBody.appendChild(page.side.el);
+      if (this.buildWant === undefined) this.buildWant = page.side.open !== false;
+      this.setBuild(!!this.buildWant);
+    } else { this.buildWant = undefined; this.setBuild(false); }
     this.rBody.innerHTML = '';
     if (anim) page.el.classList.add('page-enter');
     this.rBody.appendChild(page.el);
@@ -1071,6 +1120,7 @@
     this.right.inert = false;
     this.right.setAttribute('aria-hidden', 'false');
     this.right.classList.remove('closed');
+    document.body.classList.remove('info-closed');
     if (wasClosed) this.placeFeed();
     this.highlightLine = page.highlightLine || null;
   };

@@ -4,7 +4,6 @@
   const U = CM.U, CFG = CM.CFG, D = CM.DATA, M = CM.Metro;
   const h = U.h, ic = CM.icon;
   const UI = CM.UI;
-  const ICON = { chev: CM.ICON.chev, loc: CM.ICON.locate };
   UI.sgnPeople = function (d) { return Math.abs(d) < 0.5 ? '±0' : (d > 0 ? '+' : '−') + U.fmtPeople(Math.abs(d)); };
   UI.prototype.predictionBlock = function () {
     const g = this.g(), self = this, d = g.draft;
@@ -170,14 +169,13 @@
     const lines = M.stationLines(net, id).map(function (l) { return net.lines[l]; }).filter(Boolean);
     const el = h('div');
 
-    /* ---------------- 头部：改建入口在左（与草案面板同向），收藏在右 ---------------- */
+    /* ---------------- 头部：左侧是建设面板的开关，站名已由页面标题承担，不重复 ---------------- */
     const head = h('div', { class: 'st-head' });
     head.appendChild(h('button', {
-      class: 'st-icon' + (this.open['st-edit'] ? ' on' : ''),
-      title: this.open['st-edit'] ? '收起改建' : '改建：规模、形式、配套、上盖、接驳站',
-      onclick: function () { self.open['st-edit'] = !self.open['st-edit']; self.rerenderPage(); },
+      class: 'st-icon' + (this.building ? ' on' : ''),
+      title: this.building ? '收起建设面板' : '打开建设面板：规模、形式、配套、上盖、接驳站',
+      onclick: function () { self.toggleBuild(); this.classList.toggle('on', !!self.building); this.title = self.building ? '收起建设面板' : '打开建设面板：规模、形式、配套、上盖、接驳站'; },
     }, '🔨'));
-    head.appendChild(h('span', { class: 'st-name' }, s.name));
     const chips = h('div', { class: 'st-chips' });
     if (lines.length) {
       for (const l of lines) chips.appendChild(h('span', { class: 'tag', style: { background: l.color + '22', color: l.color } }, '● ' + l.name));
@@ -407,8 +405,8 @@
       el.appendChild(h('div', { class: 'callout info' }, '这是草案中的新车站，确认建设后立即投入运营并产生客流数据。'));
     }
 
-    /* ================= 改建：所有会改变城市的操作 ================= */
-    const buildSec = this.sec('st-edit', '改建', !official ? '草案中' : '', function () {
+    /* ================= 改建：所有会改变城市的操作（左侧面板） ================= */
+    const buildBody = function () {
       const b = h('div');
       // —— 车站本身 ——
       b.appendChild(h('div', { class: 'st-sub' }, '车站本身'));
@@ -536,11 +534,15 @@
       if (imp && imp.lines.length) b.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } }, '拆除影响：' + imp.lines.join('；')));
       b.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } }, '所有修改先进入建设草案，确认后生效。'));
       return b;
-    }, !official || !!g.draft, 'hammer');
-    el.appendChild(buildSec);
+    };
 
-    el.appendChild(h('div', { class: 'row', style: { marginTop: '8px' } }, h('button', { class: 'btn sm ghost', onclick: function () { self.flyTo(s.x, s.y, 30); } }, h('span', { html: ICON.loc.replace('<svg', '<svg width="14" height="14"') }), '定位')));
-    return { title: s.name + ' 站', el: el, highlightLine: null };
+    return {
+      // 标题：站名已经带「站」字时不重复（广州东站 ≠ 广州东站站）
+      title: /站$/.test(s.name) ? s.name : s.name + '站', el: el, highlightLine: null,
+      // 定位按钮进标题栏，不再占正文一行
+      locate: [s.x, s.y, 28],
+      side: { title: s.name + ' · 改建', icon: 'hammer', cls: 'b-gold', el: buildBody() },
+    };
   };
   // 步行覆盖（沿实际道路）；potential：未通车站接入线路后的潜在覆盖
   UI.prototype.coverBlock = function (s, k, potential) {

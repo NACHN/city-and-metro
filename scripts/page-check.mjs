@@ -60,6 +60,24 @@ for (const sid of ids) {
   }
 }
 console.log('渲染 ' + ok + '/' + ids.length + ' 个车站面板 · 用时 ' + (Date.now() - t0) + ' ms');
+
+// 契约检查：标题不重复站名、有两个面板的内容、定位坐标在
+try {
+  const p = ui.page_station(ids[0]);
+  const name = g.net.stations[ids[0]].name;
+  const txt = function (n) {
+    if (!n) return '';
+    let out = typeof n.textContent === 'string' ? n.textContent : '';
+    for (const c of (n.children || [])) out += ' ' + txt(c);
+    return out;
+  };
+  const body = txt(p.el);
+  const hit = body.split(name).length - 1;
+  console.log(hit === 0 ? '✓ 正文里没有重复站名' : ('✗ 正文仍出现 ' + hit + ' 次站名'));
+  console.log(p.side && p.side.el && (p.side.el.children || []).length ? '✓ 建设面板有内容' : '✗ 建设面板为空');
+  console.log(Array.isArray(p.locate) ? '✓ 定位坐标 ' + p.locate.map(function (v) { return Math.round(v); }).join(', ') : '✗ 缺定位坐标');
+  console.log(/站$/.test(p.title) ? '✓ 标题 ' + p.title : '✗ 标题异常 ' + p.title);
+} catch (e) { console.log('✗ 契约检查：' + e.message); }
 // 上盖 + 接驳站 + 接驳线 的分支
 try {
   const st = g.net.stations[ids[1]];
