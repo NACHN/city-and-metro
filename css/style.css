@@ -226,11 +226,11 @@ kbd { font-family: inherit; font-size: 10px; padding: 0 5px; border-radius: 5px;
 
 /* ---------- 右侧面板 ---------- */
 .panel { display: flex; flex-direction: column; overflow: hidden; }
-#rightPanel { top: 76px; right: 12px; width: 368px; max-height: calc((100vh - 168px) / var(--uiz, 1)); }
+#rightPanel { top: 76px; right: 12px; width: 392px; max-height: calc((100vh - 168px) / var(--uiz, 1)); }
 #rightPanel.closed { transform: translateX(calc(100% + 24px)); opacity: 0; pointer-events: none; }
 /* 左侧建设面板：只装操作，与右侧只读信息分开。右侧面板关掉时它自动贴到右边 */
 #buildPanel {
-  top: 76px; right: calc(12px + 368px + 10px); width: 304px;
+  top: 76px; right: calc(12px + 392px + 10px); width: 316px;
   max-height: calc((100vh - 168px) / var(--uiz, 1));
   transition: transform .28s var(--ease), opacity .22s var(--ease), right .26s var(--ease);
 }
@@ -243,7 +243,21 @@ body.info-closed #buildPanel { right: 12px; }
 }
 .p-head { display: flex; align-items: center; gap: 8px; padding: 12px 10px 10px 12px; flex: none; min-height: 56px; border-bottom: 1px solid var(--line); }
 .p-head .badge { width: 34px; height: 34px; border-radius: 11px; }
-.p-title { font-weight: 700; font-size: 15px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.p-title { font-weight: 700; font-size: 15.5px; letter-spacing: .01em; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 页面级动作：收藏、改建这类操作放标题栏，正文只留只读信息 */
+.p-acts { display: flex; align-items: center; gap: 4px; flex: none; }
+.pact {
+  display: flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px;
+  border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--muted);
+  border-radius: 9px; font-size: 11.5px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  transition: background .15s var(--ease), color .15s var(--ease), border-color .15s var(--ease);
+}
+.pact .ico { width: 13px; height: 13px; }
+.pact:hover { background: var(--hover); color: var(--text); }
+.pact.on { color: var(--warn); background: var(--warn-soft); border-color: transparent; }
+.pact.icon-only { width: 30px; padding: 0; justify-content: center; border-color: transparent; background: transparent; }
+.pact.icon-only .ico { width: 16px; height: 16px; }
+.pact.icon-only.on { background: var(--gold-soft, var(--warn-soft)); color: var(--gold, var(--warn)); }
 .p-body { overflow-y: auto; padding: 12px 14px 16px; flex: 1; overscroll-behavior: contain; }
 .p-body::-webkit-scrollbar, #legendCard .lc-body::-webkit-scrollbar, .stats-body::-webkit-scrollbar { width: 8px; }
 .p-body::-webkit-scrollbar-thumb, #legendCard .lc-body::-webkit-scrollbar-thumb, .stats-body::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 4px; }
@@ -1625,15 +1639,7 @@ td .tag { margin-left: 4px; padding: 0 6px; font-size: 10px; }
 .tbl td small { font-size: 11px; }
 
 /* ================= 车站面板（v13 结构：头部 / 经济 / 乘客 / 改建） ================= */
-.st-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 2px 2px 10px; }
-.st-icon {
-  width: 28px; height: 28px; display: grid; place-items: center; flex: none;
-  border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--muted);
-  border-radius: 9px; cursor: pointer; font-size: 13px; transition: background .15s var(--ease), color .15s var(--ease), border-color .15s var(--ease);
-}
-.st-icon .ico { width: 15px; height: 15px; }
-.st-icon:hover { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
-.st-icon.on { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+.st-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 0 2px 9px; }
 .st-chips { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
 .st-head .fav-btn, .st-head > :last-child { margin-left: auto; }
 
@@ -1654,7 +1660,7 @@ td .tag { margin-left: 4px; padding: 0 6px; font-size: 10px; }
 /* 客流柱 */
 .st-flowwrap { display: flex; gap: 12px; align-items: flex-start; }
 .st-flowwrap > .l { flex: 1; min-width: 0; }
-.st-flowwrap > .r { width: 132px; flex: none; display: flex; gap: 8px; align-items: center; }
+.st-flowwrap > .r { width: 140px; flex: none; display: flex; gap: 9px; align-items: center; }
 .st-bars { display: flex; align-items: flex-end; gap: 2px; height: 74px; }
 .st-bars i { flex: 1; min-height: 2px; border-radius: 2px 2px 0 0; background: linear-gradient(180deg, rgba(42,157,143,.85), rgba(42,157,143,.18)); }
 .st-bars i.pk { background: linear-gradient(180deg, rgba(201,130,0,.85), rgba(201,130,0,.16)); }
@@ -1674,6 +1680,16 @@ td .tag { margin-left: 4px; padding: 0 6px; font-size: 10px; }
 .st-glegend span { display: flex; align-items: center; gap: 4px; }
 .st-glegend i { width: 6px; height: 6px; border-radius: 50%; flex: none; display: inline-block; }
 .st-glegend b { margin-left: auto; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* 物业与地价：3 列小格，值一律单行 */
+.st-land {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px 10px;
+  margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line);
+}
+.st-land .cell { min-width: 0; }
+.st-land .k { font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-land .v { font-size: 12.5px; font-weight: 650; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+.st-land .v.good { color: var(--good); }
 
 /* 进出站流向 */
 .st-flowrow {
@@ -1733,6 +1749,15 @@ td .tag { margin-left: 4px; padding: 0 6px; font-size: 10px; }
   border-radius: 10px; padding: 5px 0; font-size: 11px; cursor: pointer; width: 100%;
 }
 .st-busadd:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+/* 建设面板：316 px 窄栏，值一律单行（硬塞会挤成两行） */
+#buildPanel .kv { gap: 4px 10px; }
+#buildPanel .kv .k { font-size: 11.5px; }
+#buildPanel .kv .v { font-size: 12.5px; white-space: nowrap; }
+#buildPanel .note { font-size: 11px; line-height: 1.55; }
+#buildPanel .st-sub { margin-top: 12px; }
+#buildPanel .seg-ctl { width: 100%; justify-content: space-between; }
+#buildPanel .seg-ctl button { padding: 5px 0; flex: 1 1 0; justify-content: center; font-size: 12px; }
 
 /* 窄屏 */
 @media (max-width: 420px) {

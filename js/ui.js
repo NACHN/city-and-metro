@@ -132,7 +132,8 @@
     this.rBadge = h('span', { class: 'badge b-blue' }, ic('info'));
     this.rBack = h('button', { class: 'iconbtn', 'data-tip': '返回', onclick: function () { self.back(); } }, ic('back'));
     // 定位：把面板对应的对象在地图上居中。页面要不要这个按钮由 page.locate 决定
-    this.rLocate = h('button', { class: 'iconbtn hidden', 'data-tip': '在地图上定位', onclick: function () {
+    this.rActions = h('div', { class: 'p-acts' });
+    this.rLocate = h('button', { class: 'iconbtn', 'data-tip': '在地图上定位', onclick: function () {
       const p = self.stack[self.stack.length - 1], pt = p && p.locate;
       if (pt) self.flyTo(pt[0], pt[1], pt[2] || 28);
     } }, ic('locate'));
@@ -156,7 +157,7 @@
         self._pendingRefresh = false; self.rerenderPage();
       }, 300);
     });
-    this.right.append(h('div', { class: 'p-head' }, this.rBack, this.rBadge, this.rTitle, this.rLocate, h('button', { class: 'iconbtn', 'data-tip': '收起', 'data-key': 'Esc', onclick: function () { self.closePanel(); } }, ic('close'))), this.rBody);
+    this.right.append(h('div', { class: 'p-head' }, this.rBack, this.rBadge, this.rTitle, this.rActions, this.rLocate, h('button', { class: 'iconbtn', 'data-tip': '收起', 'data-key': 'Esc', onclick: function () { self.closePanel(); } }, ic('close'))), this.rBody);
     // 底部：建设工具
     const tb = function (id, icon, label, key, onclick, cls) {
       const b = h('button', { class: 'tbtn ' + (cls || ''), 'data-tip': label, 'data-key': key, onclick: onclick }, ic(icon), h('span', { class: 'lb' }, label));
@@ -1104,6 +1105,23 @@
     this.rBack.style.display = this.stack.length > 1 ? '' : 'none';
     const loc = page.locate || null;
     this.rLocate.style.display = loc ? '' : 'none';
+    // 页面级动作（收藏、改建…）：统一放标题栏，正文只留只读信息
+    this.rActions.innerHTML = '';
+    for (const a of (page.actions || [])) {
+      const btn = h('button', { class: 'pact' + (a.label ? '' : ' icon-only') });
+      const paint = function () {
+        btn.innerHTML = '';
+        const icn = a.iconOf ? a.iconOf() : a.icon;
+        if (icn) btn.appendChild(ic(icn));
+        if (a.label) btn.appendChild(h('span', { class: 'lb' }, a.label));
+        btn.classList.toggle('on', !!(a.state && a.state()));
+        btn.setAttribute('data-tip', a.tipOf ? a.tipOf() : (a.tip || a.label || ''));
+      };
+      paint();
+      btn.addEventListener('click', function () { a.act(); paint(); });
+      this.rActions.appendChild(btn);
+    }
+    this.rActions.style.display = (page.actions && page.actions.length) ? '' : 'none';
     // 左侧建设面板：页面自带 side 才有内容，否则整块收走（避免残留上一个对象的面板）
     if (page.side) {
       this.bTitle.textContent = page.side.title || '建设';

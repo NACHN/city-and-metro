@@ -87,6 +87,11 @@ try {
   };
   walk(p.el); walk(p.side && p.side.el);
   console.log(native === 0 ? '✓ 无原生 title（内部提示 ' + tipped + ' 处）' : '✗ 仍有 ' + native + ' 处原生 title');
+  // 标题栏动作：收藏 + 改建，图标必须在图标表里
+  const acts = p.actions || [];
+  const badIcon = acts.filter(function (a) { const n = a.iconOf ? a.iconOf() : a.icon; return n && !CM.ICON[n]; });
+  console.log(acts.length === 2 && !badIcon.length ? '✓ 标题栏动作 ' + acts.map(function (a) { return a.label || '收藏'; }).join(' / ')
+    : '✗ 动作异常（' + acts.length + ' 个，缺图标 ' + badIcon.length + '）');
 } catch (e) { console.log('✗ 契约检查：' + e.message); }
 // 上盖 + 接驳站 + 接驳线 的分支
 try {
