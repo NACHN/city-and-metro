@@ -38,6 +38,48 @@ const CM = globalThis.CM, M = CM.Metro, U = CM.U, CFG = CM.CFG;
 CM.useMap('gz');
 const YEARS = Number(process.argv[2] || 25);
 
+// capMin 分钟内可达的「权重场之和」：weights[j] 可以是岗位数，也可以是劳动力（人口 × 参与率）。
+// 与 Model.computeJobAccess 同一套口径（小汽车与地铁取较优），只是被求和的量可换。
+function accessSum(model, capMin, weights) {
+  const Z = model.Z, acc = model.net && model.net.acc;
+  const P0 = model.ctxs && model.ctxs.wd && model.ctxs.wd.per ? model.ctxs.wd.per[1] : null;
+  const car = P0 ? P0.skimT : null;
+  const gt = model.liveBuf && model.liveBuf.skim ? model.liveBuf.skim.gt : null;
+  const N = model.net && model.net.C ? model.net.C.stations.length : 0;
+  const walkW = (CFG.choice && CFG.choice.walkW) || 1;
+  const zl = acc ? acc.zl : null;
+  const out = new Float32Array(Z);
+  for (let i = 0; i < Z; i++) {
+    let s = weights[i];
+    const lo = zl ? zl[i] : null;
+    for (let j = 0; j < Z; j++) {
+      if (i === j || !(weights[j] > 0)) continue;
+      let t = Infinity;
+      if (car) { const v = car[i * Z + j]; if (v > 0 && v < 1e8) t = v; }
+      if (t > capMin && lo && gt && zl && zl[j] && N > 0) {
+        const ld = zl[j];
+        for (let a = 0; a < lo.length; a++) {
+          const A = lo[a], row = A.s * N;
+          for (let b = 0; b < ld.length; b++) { const B = ld[b]; if (A.s === B.s) continue; const g = gt[row + B.s]; if (!(g < 1e8)) continue; const v = walkW * (A.w + B.w) + g; if (v < t) t = v; }
+        }
+      }
+      if (t <= capMin) s += weights[j];
+    }
+    out[i] = s;
+  }
+  return out;
+}
+// 可用岗位：12 分钟可达岗位 − 12 分钟可达劳动力（本地求职者已占掉的部分），不小于 0。
+// 市中心岗位多、劳动力也多，缺口可能只有几千；郊区新区岗位多、劳动力少，缺口能有几万。
+function availJobs(model, capMin, year) {
+  const Z = model.Z, wr = U.interp(CFG.choice.workerRate, year);
+  const J = accessSum(model, capMin, model.zJobs);
+  const W = accessSum(model, capMin, Float32Array.from(model.zPop, function (p) { return p * wr; }));
+  const out = new Float32Array(Z);
+  for (let z = 0; z < Z; z++) out[z] = Math.max(0, J[z] - W[z]);
+  return out;
+}
+
 function run(label, useDistrict, pull) {
   CM.GROWTH_ACCESS.from = 'walk';   // 站旁加成仍用步行距离；岗位只作为额外吸引
   CM.JOB_PULL = pull;
@@ -88,7 +130,7 @@ function run(label, useDistrict, pull) {
         }
       }
     }
-    const ja = pull > 0 ? model.computeJobAccess(15, 'both') : null;   // 15 分钟：衡量「家门口的工作机会」
+    const ja = pull > 0 ? availJobs(model, 12, yy) : null;   // 可用岗位（岗位 − 本地劳动力），12 分钟窗口
     city.growMonth({ year: yy, monthIndex: m, zoneAccess: null, cellWalk: model.net && model.net.acc ? model.net.acc.cellWalk : null, coverage: 0, econ: null, jobAccess: ja });
   }
   const tot = city.totals();
