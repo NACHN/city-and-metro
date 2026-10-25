@@ -47,6 +47,25 @@
       console.log('  渲染一帧：' + (renderMs >= 0 ? fmt(renderMs) : '—') +
         ' · 模拟一步：' + (simMs >= 0 ? fmt(simMs) : '—') +
         ' · 二者之和占一帧的比例：' + (renderMs >= 0 && simMs >= 0 && fps > 0 ? Math.round((renderMs + simMs) / (1000 / fps) * 100) + '%' : '—'));
+      // ⑤ 逐项拆解主循环（dt=0 调用，不推进时间；只测耗时）
+      const cost = {};
+      const tryCost = function (name, fn) {
+        try { cost[name] = timeIt(fn, 20); } catch (e) { cost[name] = -1; }
+      };
+      tryCost('g.update', function () { g.update(0); });
+      tryCost('agents', function () { CM.agents && CM.agents.update(0, g, CM.R); });
+      tryCost('follow', function () { CM.Follow && CM.Follow.tick(0); });
+      tryCost('tutorial', function () { CM.Tutorial && CM.Tutorial.tick(0); });
+      tryCost('tools.tick', function () { CM.tools && CM.tools.tick(0); });
+      tryCost('R.render', function () { CM.R.render(0, CM.ui); });
+      tryCost('sound', function () { CM.Soundscape && CM.Soundscape.tick(0); });
+      tryCost('ui.tick', function () { CM.ui && CM.ui.tick(0); });
+      const rows = Object.keys(cost).filter(function (k) { return cost[k] >= 0; });
+      rows.sort(function (a, b) { return cost[b] - cost[a]; });
+      console.log('  逐项（各 20 次平均）：' + rows.map(function (k) { return k + ' ' + fmt(cost[k]); }).join(' · '));
+      const sum = rows.reduce(function (a, k) { return a + cost[k]; }, 0);
+      console.log('  合计 ' + fmt(sum) + ' · 一帧预算 ' + fmt(1000 / Math.max(1, fps)) +
+        ' · 未计入 ' + fmt(Math.max(0, 1000 / Math.max(1, fps) - sum)) + '（合成/GC/浏览器自身）');
       console.log('  判读：① <45 fps 或最长帧 >50 ms → 看「渲染一帧」占比；② 求解 >800 ms → 求解太慢');
     });
   });
