@@ -35,6 +35,10 @@ const a4 = '      const Ld = CFG.land;\n      let farK = 1;\n      if (this.land
 if (citySrc.indexOf(a4) < 0) throw new Error('补丁锚点 4 缺失');
 citySrc = citySrc.replace(a4,
   '      const Ld = CFG.land;\n      let farK = 1;\n      const __am = ctx.accFar ? ctx.accFar[c] : (this.landAcc ? this.landAcc[c] : 0);\n      if (__am && Ld && Ld.farGain > 0) {\n        const am = __am || 1;');
+// 地价惩罚：同样可达性下，越贵越盖不动（拆迁、审批、地租）
+const a5 = '        if (am > 1.02) farK = 1 + Ld.farGain * Math.min(1, (am - 1) / (Ld.accessGain || 0.7));';
+if (citySrc.indexOf(a5) < 0) throw new Error('补丁锚点 5 缺失');
+citySrc = citySrc.replace(a5, a5 + '\n        if (ctx.priceK) farK *= ctx.priceK[c];');
 // 加载：city.js 用打过补丁的源码，并且必须在 metro.js 之前（metro.js 会捕获 CM.LU）
 for (const f of FILES) {
   if (f === 'js/city.js') vm.runInThisContext(citySrc, { filename: f });
@@ -86,7 +90,7 @@ function availJobs(model, capMin, year) {
   return out;
 }
 
-function run(label, useDistrict, pull, useSupply, useFar, useLine) {
+function run(label, useDistrict, pull, useSupply, useFar, useLine, priceK) {
   CM.GROWTH_ACCESS.from = 'walk';   // 站旁加成仍用步行距离；岗位只作为额外吸引
   CM.JOB_PULL = pull;
   const Y0 = CFG.START.y;
@@ -154,7 +158,20 @@ function run(label, useDistrict, pull, useSupply, useFar, useLine) {
       }
     }
     const ja = (pull > 0 || useSupply) ? availJobs(model, 12, yy) : null;   // 可用岗位（岗位 − 本地劳动力），12 分钟窗口
-    // 容积率读通勤可达性：30 分钟内可达岗位 → 归一化乘子（1 … 1+accessGain），住宅与岗位容量共用同一个乘子
+    // 地价惩罚：地价相对中位数越高，容积率越难加（拆迁贵、审批难、地租高）
+    let priceArr = null;
+    if (priceK > 0) {
+      city.buildLandPrice(yy, model.net && model.net.acc ? model.net.acc : null);
+      const p50 = city.landStat ? city.landStat.p50 : 0;
+      if (p50 > 0 && city.landPrice) {
+        priceArr = new Float32Array(city.N);
+        for (let c = 0; c < city.N; c++) {
+          const rel = (city.landPrice[c] || 0) / p50;
+          priceArr[c] = 1 / (1 + priceK * Math.max(0, rel - 1));
+        }
+      }
+    }
+    // 容积率读通勤可达性：30 分钟内可达岗位 → 归一化乘子（1 … 1+accessGain），住宅与岗位容量共用
     let accFar = null;
     if (useFar) {
       const j30 = accessSum(model, 30, model.zJobs);
@@ -206,7 +223,7 @@ function run(label, useDistrict, pull, useSupply, useFar, useLine) {
         if (done) { city.version++; supplyCells += done; }
       }
     }
-    city.growMonth({ year: yy, monthIndex: m, zoneAccess: null, cellWalk: model.net && model.net.acc ? model.net.acc.cellWalk : null, coverage: 0, econ: null, jobAccess: ja, accFar: accFar });
+    city.growMonth({ year: yy, monthIndex: m, zoneAccess: null, cellWalk: model.net && model.net.acc ? model.net.acc.cellWalk : null, coverage: 0, econ: null, jobAccess: ja, accFar: accFar, priceK: priceArr });
   }
   const tot = city.totals();
   const wrF = U.interp(CFG.choice.workerRate, Y0 + YEARS);
@@ -226,7 +243,10 @@ const rows = [
   run('基线', false, 0, false, false),
   run('容积率读通勤可达', false, 0, false, true),
   run('播产业区 + 容积率', true, 0, false, true),
-  run('产业区 + 快线 + 容积率', true, 0, false, true, true),
+  run('容积率 × 地价惩罚', false, 0, false, true, false, 1.0),
+  run('产业区 + 容积率 × 地价惩罚', true, 0, false, true, false, 1.0),
+  run('产业区 + 地价惩罚 + 供给', true, 0, true, true, false, 1.0),
+  run('产业区 + 快线 + 地价惩罚', true, 0, false, true, true, 1.0),
   run('产业区 + 容积率 + 供给', true, 0, true, true),
   run('产业区 + 容积率 + 供给 + 吸引', true, 0.8, true, true),
 ];
