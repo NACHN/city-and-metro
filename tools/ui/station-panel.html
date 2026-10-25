@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>车站面板 · 重设计原型 v2</title>
+<title>车站面板 · 重设计原型 v3</title>
 <style>
   :root {
-    --bg: #0d141c; --panel: #151f2b; --panel2: #1b2634; --line: #26323f;
+    --panel: #151f2b; --panel2: #1b2634; --line: #26323f;
     --text: #e8eef6; --text2: #9fb0c3; --text3: #6b7f95;
     --accent: #1D9E75; --accent-bg: #1D9E7522;
     --warn: #BA7517; --warn-bg: #BA751722; --bad: #D4537E; --bad-bg: #D4537E22;
-    --info: #3c7dd9; --info-bg: #3c7dd922;
+    --info: #4fb3ff; --info-bg: #4fb3ff18;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
@@ -25,22 +25,17 @@
 
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
 
-  /* 头部 */
-  .head { padding: 14px 14px 12px; border-bottom: 1px solid var(--line); }
+  /* 头部：只有身份，不再放指标条 */
+  .head { padding: 13px 14px 12px; border-bottom: 1px solid var(--line); }
   .head .top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .stname { font-size: 17px; font-weight: 650; letter-spacing: .01em; }
   .fav { margin-left: auto; color: var(--text3); cursor: pointer; font-size: 15px; line-height: 1; }
   .fav:hover { color: var(--warn); }
   .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
   .chip { font-size: 11px; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--text2); white-space: nowrap; }
-  .chip.l1 { color: #4fb3ff; border-color: #4fb3ff44; background: #4fb3ff14; }
+  .chip.l1 { color: var(--info); border-color: #4fb3ff44; background: #4fb3ff14; }
   .chip.l2 { color: #ffb454; border-color: #ffb45444; background: #ffb45414; }
   .chip.xfer { color: var(--accent); border-color: #1D9E7555; background: var(--accent-bg); }
-  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); margin-top: 12px; border-radius: 9px; overflow: hidden; }
-  .kpi { background: var(--panel2); padding: 8px 6px 7px; text-align: center; }
-  .kpi b { display: block; font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
-  .kpi small { display: block; font-size: 10px; color: var(--text3); margin-top: 2px; }
-  .kpi.warn b { color: var(--warn); }
 
   /* 折叠组 */
   .grp { border-top: 1px solid var(--line); }
@@ -53,51 +48,78 @@
   .gb { display: none; padding: 2px 14px 14px; }
   .grp.open .gb { display: block; }
 
-  /* ===== 客流：左柱状 + 右半圆多层环 ===== */
+  /* ===== 运营收支（最重要的块，默认展开） ===== */
+  .money { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; padding-top: 2px; }
+  .money .net { font-size: 26px; font-weight: 720; letter-spacing: -.03em; line-height: 1; }
+  .money .net i { font-size: 11px; font-style: normal; font-weight: 500; color: var(--text3); margin-left: 3px; }
+  .money .net.good { color: var(--accent); }
+  .money .net.bad { color: var(--bad); }
+  .money .side { text-align: right; font-size: 10.5px; color: var(--text3); line-height: 1.5; }
+  .money .side b { display: block; font-size: 12px; color: var(--text2); font-weight: 600; }
+
+  .duo { margin-top: 12px; }
+  .duo .rowb { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  .duo .lbl { width: 34px; font-size: 10.5px; color: var(--text3); flex: none; }
+  .duo .track { flex: 1; height: 9px; background: #ffffff0a; border-radius: 5px; overflow: hidden; }
+  .duo .fill { height: 100%; border-radius: 5px; }
+  .duo .fill.in { background: linear-gradient(90deg, #1D9E75aa, #1D9E75); }
+  .duo .fill.out { background: linear-gradient(90deg, #D4537E99, #D4537E); }
+  .duo .amt { width: 62px; text-align: right; font-size: 11px; color: var(--text2); font-variant-numeric: tabular-nums; flex: none; }
+
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+  .split .col { font-size: 11px; }
+  .split .col h4 { margin: 0 0 3px; font-size: 10.5px; color: var(--text3); font-weight: 500; }
+  .split .li { display: flex; justify-content: space-between; padding: 2px 0; color: var(--text2); }
+  .split .li b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .split .col.in .li b { color: #6fd3ae; }
+  .split .col.out .li b { color: #e79bb4; }
+
+  /* ===== 客流：柱状 + 左弧半圆 + 进出站三块 ===== */
   .flowtop { display: flex; gap: 12px; align-items: flex-start; }
   .flowleft { flex: 1; min-width: 0; }
-  .flowright { width: 132px; flex: none; position: relative; }
+  .flowright { width: 128px; flex: none; display: flex; gap: 8px; align-items: center; }
 
-  .bars { display: flex; align-items: flex-end; gap: 2px; height: 88px; margin-top: 4px; }
+  .bars { display: flex; align-items: flex-end; gap: 2px; height: 86px; margin-top: 2px; }
   .bars .b { flex: 1; background: linear-gradient(180deg, #1D9E75cc, #1D9E7522); border-radius: 2px 2px 0 0; min-height: 2px; }
   .bars .b.pk { background: linear-gradient(180deg, #BA7517dd, #BA751722); }
   .barlab { display: flex; justify-content: space-between; font-size: 10px; color: var(--text3); margin-top: 2px; }
 
-  .gauge { width: 132px; height: 74px; display: block; }
-  .gauge .track { fill: none; stroke: #ffffff10; stroke-width: 7; stroke-linecap: round; }
-  .gauge .val { fill: none; stroke-width: 7; stroke-linecap: round; transition: stroke-dasharray .45s ease; }
+  /* 半圆：圆弧在左、开口朝右 */
+  .gauge { width: 48px; height: 82px; flex: none; display: block; }
+  .gauge .track { fill: none; stroke: #ffffff10; stroke-width: 6; stroke-linecap: round; }
+  .gauge .val { fill: none; stroke-width: 6; stroke-linecap: round; transition: stroke-dasharray .45s ease; }
   .gauge .r1 { stroke: #1D9E75; }
   .gauge .r2 { stroke: #BA7517; }
   .gauge .r3 { stroke: #4fb3ff; }
-  .gcenter { position: absolute; left: 0; right: 0; top: 22px; text-align: center; pointer-events: none; }
-  .gcenter .big { font-size: 16px; font-weight: 700; letter-spacing: -.02em; line-height: 1.1; }
-  .gcenter .big i { font-size: 10px; font-style: normal; color: var(--text3); font-weight: 500; }
-  .gcenter .cap { font-size: 9.5px; color: var(--text3); margin-top: 1px; }
-  .gtags { position: absolute; left: 0; right: 0; bottom: -1px; display: flex; justify-content: center; gap: 4px; }
-  .gtag { font-size: 9.5px; padding: 1px 5px; border-radius: 999px; border: 1px solid var(--line); color: var(--text3); }
-  .gtag.on { color: var(--accent); border-color: #1D9E7555; background: var(--accent-bg); }
-  .gtag.off { opacity: .5; }
-  .glegend { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; font-size: 10px; color: var(--text3); }
-  .glegend span { display: flex; align-items: center; gap: 5px; }
-  .glegend i { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex: none; }
-  .glegend b { margin-left: auto; color: var(--text2); font-weight: 600; font-variant-numeric: tabular-nums; }
 
-  /* 进站 / 换乘 / 出站 三块 */
+  .gdata { flex: 1; min-width: 0; }
+  .gdata .big { font-size: 19px; font-weight: 720; letter-spacing: -.03em; line-height: 1.05; }
+  .gdata .big i { font-size: 10px; font-style: normal; color: var(--text3); font-weight: 500; }
+  .gdata .cap { font-size: 9.5px; color: var(--text3); margin: 1px 0 6px; }
+  .glegend { display: flex; flex-direction: column; gap: 2px; font-size: 10px; color: var(--text3); }
+  .glegend span { display: flex; align-items: center; gap: 4px; }
+  .glegend i { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+  .glegend b { margin-left: auto; color: var(--text2); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .gtags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
+  .gtag { font-size: 9px; padding: 1px 5px; border-radius: 999px; border: 1px solid var(--line); color: var(--text3); }
+  .gtag.on { color: var(--accent); border-color: #1D9E7555; background: var(--accent-bg); }
+  .gtag.off { opacity: .45; }
+
+  /* 进站 / 换乘 / 出站 */
   .trio { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; background: var(--line); border-radius: 10px; overflow: hidden; margin-top: 12px; }
-  .trio .c { background: var(--panel2); padding: 9px 6px 8px; text-align: center; }
-  .trio .c .ar { font-size: 11px; color: var(--text3); line-height: 1; }
+  .trio .c { background: var(--panel2); padding: 8px 6px 7px; text-align: center; }
+  .trio .c .ar { font-size: 10px; color: var(--text3); line-height: 1; }
   .trio .c b { display: block; font-size: 16px; font-weight: 700; letter-spacing: -.02em; margin-top: 2px; }
   .trio .c b i { font-size: 10px; font-style: normal; color: var(--text3); font-weight: 500; }
   .trio .c small { display: block; font-size: 10px; color: var(--text3); margin-top: 1px; }
-  .trio .c.mid { background: #182430; }
-  .trio .c.mid b { color: #4fb3ff; }
+  .trio .c.mid { background: #16222f; }
+  .trio .c.mid b { color: var(--info); }
 
-  /* 分目的 */
-  .mix { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 12px 0 6px; }
+  .mix { display: flex; height: 7px; border-radius: 4px; overflow: hidden; margin: 12px 0 5px; }
   .mix i { display: block; height: 100%; }
-  .mixlegend { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 10.5px; color: var(--text3); }
+  .mixlegend { display: flex; flex-wrap: wrap; gap: 3px 9px; font-size: 10px; color: var(--text3); }
   .mixlegend span { display: inline-flex; align-items: center; gap: 4px; }
-  .mixlegend i { width: 7px; height: 7px; border-radius: 2px; display: inline-block; }
+  .mixlegend i { width: 6px; height: 6px; border-radius: 2px; display: inline-block; }
 
   /* 键值 / 提示 / 设施 / 按钮 */
   .kv { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 12px; }
@@ -115,7 +137,7 @@
   .btn { border: 1px solid var(--line); background: var(--panel2); color: var(--text); font-size: 12px; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
   .btn:hover { background: #ffffff0c; }
   .btn.primary { background: var(--accent); border-color: var(--accent); color: #04120c; font-weight: 600; }
-  .seg { display: inline-flex; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 2px; margin-bottom: 10px; }
+  .seg { display: inline-flex; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 2px; margin-bottom: 9px; }
   .seg button { border: 0; background: transparent; color: var(--text2); font-size: 11.5px; padding: 4px 10px; border-radius: 6px; cursor: pointer; }
   .seg button.on { background: #ffffff12; color: var(--text); }
 
@@ -126,7 +148,7 @@
 </head>
 <body>
 <div class="page">
-  <div class="pagehead"><h1>车站面板 · 重设计原型 v2</h1><span>覆盖做半圆环 · 进出站三块</span></div>
+  <div class="pagehead"><h1>车站面板 · 重设计原型 v3</h1><span>运营收支上首位 · 半圆开口朝右</span></div>
 
   <div class="panel">
     <div class="head">
@@ -141,15 +163,40 @@
         <span class="chip l2">● 2 号线</span>
         <span class="chip">1995 年启用</span>
       </div>
-      <div class="kpis">
-        <div class="kpi"><b>8.6<span style="font-size:10px;color:var(--text3)">万</span></b><small>日均进出站</small></div>
-        <div class="kpi"><b>1.23<span style="font-size:10px;color:var(--text3)">万</span></b><small>高峰小时</small></div>
-        <div class="kpi"><b>38<span style="font-size:10px;color:var(--text3)">%</span></b><small>换乘占比</small></div>
-        <div class="kpi warn"><b>0.92</b><small>站台饱和度</small></div>
+    </div>
+
+    <!-- ① 运营收支：玩家最关心的「这个站赚不赚钱」，默认展开置顶 -->
+    <div class="grp open" data-grp>
+      <div class="gh"><span class="cv">▶</span><span class="t">运营收支</span><span class="s">本月 +140 万</span></div>
+      <div class="gb">
+        <div class="money">
+          <div class="net good">+140<i>万元 / 月</i></div>
+          <div class="side"><b>票款回收率 50%</b>票款只覆盖一半运营成本</div>
+        </div>
+
+        <div class="duo">
+          <div class="rowb"><span class="lbl">收入</span><span class="track"><span class="fill in" style="width:100%"></span></span><span class="amt">1,426 万</span></div>
+          <div class="rowb"><span class="lbl">支出</span><span class="track"><span class="fill out" style="width:90%"></span></span><span class="amt">1,286 万</span></div>
+        </div>
+
+        <div class="split">
+          <div class="col in">
+            <h4>收入构成</h4>
+            <div class="li"><span>票款</span><b>620</b></div>
+            <div class="li"><span>运营补贴</span><b>620</b></div>
+            <div class="li"><span>物业租金</span><b>186</b></div>
+          </div>
+          <div class="col out">
+            <h4>支出构成</h4>
+            <div class="li"><span>运营成本</span><b>1,240</b></div>
+            <div class="li"><span>设施维护</span><b>46</b></div>
+            <div class="li"><span>接驳巴士</span><b>0</b></div>
+          </div>
+        </div>
       </div>
     </div>
 
-    <!-- 客流：柱状 + 半圆多层环 + 进出站三块 -->
+    <!-- ② 客流：柱状 + 左弧半圆 + 三块 -->
     <div class="grp open" data-grp>
       <div class="gh"><span class="cv">▶</span><span class="t">客流</span><span class="s">工作日 8.6 万 · 周末 6.1 万</span></div>
       <div class="gb">
@@ -165,32 +212,32 @@
           </div>
 
           <div class="flowright">
-            <svg class="gauge" viewBox="0 0 132 74" aria-label="步行覆盖、站台饱和度、换乘占比的三层半圆环">
-              <path class="track" d="M 12 62 A 54 54 0 0 1 120 62" pathLength="100"></path>
-              <path class="val r1" id="arc1" d="M 12 62 A 54 54 0 0 1 120 62" pathLength="100" stroke-dasharray="0 100"></path>
-              <path class="track" d="M 26 62 A 40 40 0 0 1 106 62" pathLength="100"></path>
-              <path class="val r3" id="arc3" d="M 26 62 A 40 40 0 0 1 106 62" pathLength="100" stroke-dasharray="0 100"></path>
-              <path class="track" d="M 40 62 A 26 26 0 0 1 92 62" pathLength="100"></path>
-              <path class="val r2" id="arc2" d="M 40 62 A 26 26 0 0 1 92 62" pathLength="100" stroke-dasharray="0 100"></path>
+            <!-- 半圆：圆弧在左、开口朝右；三层半径 33 / 25 / 17 -->
+            <svg class="gauge" viewBox="0 0 48 82" aria-label="步行覆盖、换乘占比、站台饱和度的三层半圆环">
+              <path class="track" d="M 36 8 A 33 33 0 0 0 36 74" pathLength="100"></path>
+              <path class="val r1" id="arc1" d="M 36 8 A 33 33 0 0 0 36 74" pathLength="100" stroke-dasharray="0 100"></path>
+              <path class="track" d="M 36 16 A 25 25 0 0 0 36 66" pathLength="100"></path>
+              <path class="val r3" id="arc3" d="M 36 16 A 25 25 0 0 0 36 66" pathLength="100" stroke-dasharray="0 100"></path>
+              <path class="track" d="M 36 24 A 17 17 0 0 0 36 58" pathLength="100"></path>
+              <path class="val r2" id="arc2" d="M 36 24 A 17 17 0 0 0 36 58" pathLength="100" stroke-dasharray="0 100"></path>
             </svg>
-            <div class="gcenter">
+
+            <div class="gdata">
               <div class="big">4.2<i>万</i></div>
               <div class="cap">15 分钟步行覆盖</div>
-            </div>
-            <div class="gtags">
-              <span class="gtag on">出入口 3 级</span>
-              <span class="gtag on">P+R</span>
+              <div class="glegend">
+                <span><i style="background:#1D9E75"></i>覆盖 <b>52%</b></span>
+                <span><i style="background:#4fb3ff"></i>换乘 <b>38%</b></span>
+                <span><i style="background:#BA7517"></i>饱和度 <b>0.92</b></span>
+              </div>
+              <div class="gtags">
+                <span class="gtag on">出入口 3 级</span>
+                <span class="gtag on">P+R 480</span>
+              </div>
             </div>
           </div>
         </div>
 
-        <div class="glegend">
-          <span><i style="background:#1D9E75"></i>步行覆盖 <b>4.2 / 8.0 万</b></span>
-          <span><i style="background:#BA7517"></i>站台饱和度 <b>0.92</b></span>
-          <span><i style="background:#4fb3ff"></i>换乘占比 <b>38%</b></span>
-        </div>
-
-        <!-- 三块：左进站 · 中换乘 · 右出站 -->
         <div class="trio">
           <div class="c"><div class="ar">↑</div><b>4.2<i>万</i></b><small>进站</small></div>
           <div class="c mid"><div class="ar">⇄</div><b>3.3<i>万</i></b><small>换乘</small></div>
@@ -202,12 +249,10 @@
       </div>
     </div>
 
-    <!-- 车站与换乘：覆盖/P+R/出入口已上提到客流块，这里只剩换乘关系 -->
     <div class="grp" data-grp>
       <div class="gh"><span class="cv">▶</span><span class="t">换乘关系</span><span class="s">站内换乘 1 ⇄ 2 号线</span></div>
       <div class="gb">
-        <div class="kv"><span class="k">站内换乘</span><span class="v">1 号线 ⇄ 2 号线</span></div>
-        <div class="kv"><span class="k">换乘步行</span><span class="v">约 2 分钟</span></div>
+        <div class="kv"><span class="k">站内换乘</span><span class="v">1 号线 ⇄ 2 号线 · 约 2 分钟</span></div>
         <div class="kv"><span class="k">站外换乘</span><span class="v">步行 300 m 至 西门口</span></div>
         <div class="note warn"><b>站台接近饱和（0.92）。</b>再加密班次收益有限，考虑扩为大型站或新线分流。</div>
       </div>
@@ -222,17 +267,6 @@
         <div class="kv"><span class="k">站内地价</span><span class="v">8,420 元/㎡</span></div>
         <div class="kv"><span class="k">周边 500 m 均值</span><span class="v muted">6,930 元/㎡</span></div>
         <div class="kv"><span class="k">站点溢价</span><span class="v good">1.21×</span></div>
-      </div>
-    </div>
-
-    <div class="grp" data-grp>
-      <div class="gh"><span class="cv">▶</span><span class="t">运营与费用</span><span class="s">月净 −620 万</span></div>
-      <div class="gb">
-        <div class="kv"><span class="k">月运营成本</span><span class="v">1,240 万元</span></div>
-        <div class="kv"><span class="k">月票款分摊</span><span class="v">620 万元</span></div>
-        <div class="kv"><span class="k">票款回收率</span><span class="v bad">50%</span></div>
-        <div class="kv"><span class="k">设施维护</span><span class="v">46 万元/月</span></div>
-        <div class="kv"><span class="k">接驳巴士</span><span class="v">3 条 · 21 万元/月</span></div>
       </div>
     </div>
 
@@ -259,13 +293,13 @@
   </div>
 
   <div class="spec">
-    <b>v2 改了什么</b>
+    <b>v3 改了什么</b>
     <ol>
-      <li><b>覆盖人口做成半圆环</b>，放在小时柱状右边；中间是覆盖人数，其余两层是饱和度与换乘占比。</li>
-      <li><b>三层可叠</b>：外圈覆盖、中圈换乘占比、内圈饱和度，同一骨架还能再叠（地价溢价、物业回收）。</li>
-      <li><b>P+R 与出入口做成中心标签</b>：亮=有、灰=没有——原来要展开「车站配套」才看得到。</li>
-      <li><b>进站 / 换乘 / 出站三块并列</b>，中间换乘用蓝色区分，一眼看出这是「通过型」还是「目的地型」车站。</li>
-      <li>因此「车站与换乘」从 6 行缩成 2 行，覆盖与配套不再各占一个展开框。</li>
+      <li><b>砍掉顶部指标条</b>：四个数已经被下面的半圆环与进出站三块覆盖，重复了。</li>
+      <li><b>运营收支提到第一位、默认展开</b>：这是玩家在经营模式下真正关心的——这个站赚不赚钱、差多少。</li>
+      <li><b>半圆开口朝右、圆弧在左</b>：读数顺序更自然（从左到右），且为右侧留出竖向空间放覆盖人数、三层图例与两个标签。</li>
+      <li>净额用 26px 大字＋颜色（正绿负粉），收入/支出两条横条按同一标尺，一眼看出落差。</li>
+      <li>收入与支出各自拆成三项，放在净额下面——不用再展开「运营与费用」。</li>
     </ol>
   </div>
 </div>
@@ -307,7 +341,7 @@
     });
   });
 
-  // 三层半圆环：pathLength=100，直接用百分比当 dasharray
+  // 三层半圆环（pathLength=100，dasharray 直接写百分比）
   const RING = { arc1: 4.2 / 8.0, arc3: 0.38, arc2: 0.92 };
   requestAnimationFrame(function () {
     Object.keys(RING).forEach(function (id) {
