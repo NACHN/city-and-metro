@@ -1348,9 +1348,10 @@
   // 调整配车：加车缩短间隔、提升吸引力，同时抬高每月运营保养费
   UI.prototype.busCars = function (id, busId, delta) {
     const g = this.g();
-    if (!g || g.draft || !CFG.bus) return;
+    if (!g || !CFG.bus) return;
     const B = CFG.bus;
-    const r = g.edit(function (n) {
+    // 配车是运营决定，不是建设：直接落到正式线网并立即重编译（走草案要确认一次才生效）
+    const r = g.tune(function (n) {
       const s = n.stations[id];
       if (!s || !s.bus) return { error: '接驳线不存在' };
       const b = s.bus.filter(function (x) { return x.id === busId; })[0];
@@ -1360,21 +1361,23 @@
       b.cars = nv;
       return null;
     });
-    if (r && r.error) { this.toast(r.error, 'bad'); return; }
+    if (r && r.error) { this.toast(r.error, 'bad'); this.rerenderPage(); return r; }
     this.rerenderPage();
+    return { ok: true };
   };
 
   UI.prototype.busClose = function (id, busId) {
     const g = this.g();
-    if (!g || g.draft) return;
-    const r = g.edit(function (n) {
+    if (!g) return;
+    const r = g.tune(function (n) {
       const s = n.stations[id];
       if (!s || !s.bus) return { error: '这条接驳线已不存在' };
       s.bus = s.bus.filter(function (b) { return b.id !== busId; });
       return null;
     });
-    if (r && r.error) { this.toast(r.error, 'bad'); return; }
+    if (r && r.error) { this.toast(r.error, 'bad'); this.rerenderPage(); return r; }
     this.rerenderPage();
+    return { ok: true };
   };
 
   // 车站配套（出入口 / P+R）：与接驳站同一条路径——先进草案，确认建设才扣款。

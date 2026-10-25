@@ -1726,12 +1726,22 @@ td .tag { margin-left: 4px; padding: 0 6px; font-size: 10px; }
 /* 接驳卡片 */
 .st-buslist { display: flex; flex-direction: column; gap: 5px; margin-top: 4px; }
 .st-buscard {
-  display: flex; align-items: center; gap: 7px; padding: 6px 8px;
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
   border: 1px solid var(--line); background: var(--surface-2); border-radius: 10px; font-size: 11px;
 }
+/* 两行：上排「线路名 + 月成本」，下排「间隔 + 实载/运力」——配车一改，下排两个数立刻变 */
+.st-buscard .bc { flex: 1; min-width: 0; }
+.st-buscard .bc1 { display: flex; align-items: baseline; gap: 6px; }
+.st-buscard .bc1 .cost { margin-left: auto; }
+.st-buscard .bc2 { display: flex; align-items: baseline; gap: 4px; margin-top: 2px; font-size: 10px; color: var(--muted); white-space: nowrap; }
+.st-buscard .bc2 .sep { color: var(--faint); }
+.st-buscard .bc2 .load { color: var(--text); font-weight: 650; font-variant-numeric: tabular-nums; cursor: help; }
+.st-buscard .bc2 .load.hot { color: var(--warn); }
+.st-buscard .bc2 .load.idle { color: var(--faint); font-weight: 500; }
+.st-buscard .bc2 .u { color: var(--faint); }
 .st-buscard.hi { border-color: var(--accent); }
 .st-buscard .no { width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; font-size: 9.5px; font-weight: 700; color: #fff; flex: none; }
-.st-buscard .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.st-buscard .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: 600; }
 .st-buscard .meta { color: var(--muted); font-size: 10px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .st-buscard .cost { color: var(--bad); font-size: 10px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .st-buscard .step { display: flex; align-items: center; gap: 3px; flex: none; }

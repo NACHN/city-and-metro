@@ -162,6 +162,30 @@
     return { p15: p15, p3: p3 };
   };
 
+  // 一条接驳线为车站「新增」的覆盖人口：端点步行圈内、且不在车站自己步行圈里的居住人口。
+  // 面板上的估算（欧氏距离）；模型里接驳的影响走 M.busEqM（车程 + 候车），不是这个数。
+  UI.prototype.busCover = function (st, b) {
+    const B = CFG.bus;
+    if (!B) return 0;
+    const city = this.g().city, reach = B.walkReachM || 400;
+    const lim = M.exitAccessM(st.exitLv | 0);
+    const rw = Math.ceil(reach / CFG.CELL_M) + 1;
+    const ci = Math.floor(b.x), cj = Math.floor(b.y);
+    let p = 0;
+    for (let j = Math.max(0, cj - rw); j <= Math.min(city.H - 1, cj + rw); j++) {
+      for (let i = Math.max(0, ci - rw); i <= Math.min(city.W - 1, ci + rw); i++) {
+        const pop = city.pop[j * city.W + i];
+        if (!(pop > 0)) continue;
+        const dx = b.x - (i + 0.5), dy = b.y - (j + 0.5);
+        if (Math.sqrt(dx * dx + dy * dy) * CFG.CELL_M > reach) continue;
+        const ex = st.x - (i + 0.5), ey = st.y - (j + 0.5);
+        if (Math.sqrt(ex * ex + ey * ey) * CFG.CELL_M <= lim) continue;
+        p += pop;
+      }
+    }
+    return p;
+  };
+
   UI.prototype.page_station = function (id) {
     const g = this.g(), self = this;
     const net = g.draft ? g.draft.net : g.net;
@@ -370,29 +394,47 @@
         } else {
           const list = h('div', { class: 'st-buslist' });
           const sorted = busList.slice().sort(function (a, c2) { return (M.busNo(a) || 99) - (M.busNo(c2) || 99); });
+          const perCar = B.capacityPerVehicle || 2700;
+          const walkPop = Math.max(0, cov.p15);       // 车站自己步行圈内的人口（接驳覆盖不含这部分）
           sorted.forEach(function (x, idx) {
             const n = M.busNo(x) || (idx + 1), col = M.busColor(n), nv = Math.max(1, x.cars | 0);
             const hw = M.busCycleMin(x.lenM) / nv;
             const costM = nv * B.opsPerVehicleYear / 12;
             const nm = x.name || self.busTermName(x.x, x.y) || '接驳端点';
+            // 实载：这条线带来的覆盖人口，按「本站人均进站率」折成人次/日
+            const cover = self.busCover(official, x);
+            const pool = cover + walkPop;
+            const riders = pool > 0 ? (sd.inn[k] || 0) * cover / pool : 0;
+            const capT = nv * perCar;
+            const util = capT > 0 ? riders / capT : 0;
+            const lcls = util >= 0.9 ? ' hot' : (util < 0.35 ? ' idle' : '');
+            const ltip = '估算接驳客流 ' + U.fmtInt(riders) + ' / 运力 ' + U.fmtInt(capT) + ' 人次/日（' +
+              Math.round(util * 100) + '%）\n覆盖 ' + U.fmtInt(cover) + ' 人（端点 ' + Math.round(B.walkReachM) +
+              ' m 内、车站步行圈外）· 每辆 ' + U.fmtInt(perCar) + ' 人次/日';
             const card = h('div', {
               class: 'st-buscard',
               onmouseenter: function () { self.busHi = { st: id, line: x.id }; this.classList.add('hi'); },
               onmouseleave: function () { self.busHi = null; this.classList.remove('hi'); },
             },
               h('span', { class: 'no', style: { background: col } }, String(n)),
-              h('span', { class: 'nm', 'data-tip': nm }, nm),
-              h('span', { class: 'meta' }, U.fmtKm(x.lenM) + ' · 间隔 ' + hw.toFixed(1) + ' 分'),
-              h('span', { class: 'cost' }, '−' + U.fmtMoney(costM) + '/月'),
+              h('div', { class: 'bc' },
+                h('div', { class: 'bc1' },
+                  h('span', { class: 'nm', 'data-tip': nm }, nm),
+                  h('span', { class: 'cost' }, '−' + U.fmtMoney(costM) + '/月')),
+                h('div', { class: 'bc2' },
+                  h('span', null, '间隔 ' + hw.toFixed(1) + ' 分'),
+                  h('span', { class: 'sep' }, '·'),
+                  h('span', { class: 'load' + lcls, 'data-tip': ltip }, U.fmtInt(riders) + ' / ' + U.fmtInt(capT)),
+                  h('span', { class: 'u' }, '人次'))),
               h('span', { class: 'step' },
-                h('button', { 'data-tip': '减一辆', onclick: function () { self.busCars(id, x.id, -1); } }, '−'),
+                h('button', { 'data-tip': '减一辆（间隔变长）', onclick: function () { self.busCars(id, x.id, -1); } }, '−'),
                 h('b', null, nv),
-                h('button', { 'data-tip': '加一辆', onclick: function () { self.busCars(id, x.id, 1); } }, '+')),
+                h('button', { 'data-tip': '加一辆（间隔变短）', onclick: function () { self.busCars(id, x.id, 1); } }, '+')),
               h('button', { class: 'x', 'data-tip': '停运这条线', onclick: function () { self.busClose(id, x.id); } }, '✕'));
             list.appendChild(card);
           });
           bw.appendChild(list);
-          bw.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } }, '合计 ' + U.fmtMoney(busList.reduce(function (a, c2) { return a + (c2.cars | 0); }, 0) * B.opsPerVehicleYear / 12) + '/月，与客流无关。'));
+          bw.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } }, '合计 ' + U.fmtMoney(busList.reduce(function (a, c2) { return a + (c2.cars | 0); }, 0) * B.opsPerVehicleYear / 12) + '/月 · 实载为估算值，按本站人均进站率折算'));
         }
         if (official && (official.busHub | 0) && busList.length < (B.maxPerStation || 4)) {
           bw.appendChild(h('button', { class: 'st-busadd', style: { marginTop: '6px' }, onclick: function () { self.busPick(id); } }, '+ 接驳线'));

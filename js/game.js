@@ -390,6 +390,24 @@
     this.emit('draft');
     return r || {};
   };
+  // 运营调整：不改线路几何、不产生造价的网络参数（目前是接驳配车）。
+  // 这类改动直接落到正式线网并立刻重编译，不走草案——它没有「建设」这一步，
+  // 走草案会让玩家点了加车却看不到任何变化（草案里的改动要确认才生效）。
+  // 有未确认的草案时拒绝执行：草案是正式线网的快照，两边同时改会互相覆盖。
+  Game.prototype.tune = function (fn) {
+    if (this.draft) return { error: '先确认或放弃当前建设草案，再调整运营' };
+    let r;
+    try { r = fn(this.net); } catch (e) { console.error(e); r = { error: '调整失败：' + e.message }; }
+    if (r && r.error) return r;
+    this.netVersion++;
+    this.compiled = M.compile(this.net, this.city);
+    this.model.cancelPredict();
+    this.model.setNetwork(this.compiled);
+    this.emit('network');
+    this.emit('autosave', 'tune');
+    return {};
+  };
+
   // 拖动等连续编辑：开始时记一次撤销点
   Game.prototype.beginLive = function () { const d = this.ensureDraft(); d.liveSnap = JSON.stringify(d.net); };
   Game.prototype.liveEdit = function (fn) { const d = this.ensureDraft(); fn(d.net); d.ver++; this.invalidatePrediction(); this.emit('draftLive'); };

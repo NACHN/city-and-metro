@@ -45,7 +45,7 @@ let prev = null, ids = [];
 for (let k = 0; k < 6; k++) { const sid = M.addStation(net, 40 + k * 4 + 0.5, row + 0.5, { size: 'M', type: 'underground' }, city); if (prev) M.addSegment(net, lid, prev, sid, [], 'underground'); prev = sid; ids.push(sid); }
 g.net = net; g.compiled = M.compile(net, city); g.model.setNetwork(g.compiled); g.model.solveNow(2);
 const ui = Object.create(CM.UI.prototype);
-ui.open = {}; ui.live = []; ui.multi = null;
+ui.open = {}; ui.live = []; ui.multi = null; ui.stack = []; ui.toast = function () {};
 const t0 = Date.now();
 let ok = 0;
 for (const sid of ids) {
@@ -108,6 +108,28 @@ try {
   g.cancelDraft();
   console.log('✓ 草案态分支正常');
 } catch (e) { console.log('✗ 扩展分支：' + e.message + '\n' + String(e.stack).split('\n').slice(1, 3).join('\n')); }
+// 配车必须「立即生效」：不经过草案，直接改正式线网并重编译
+try {
+  const sid = ids[1], st = g.net.stations[sid];
+  if (!st.busHub) st.busHub = 1;
+  if (!st.bus || !st.bus.length) st.bus = [{ id: 'bchk', x: st.x + 5, y: st.y + 4, lenM: 1600, cars: 3, name: '测试接驳' }];
+  g.compiled = M.compile(g.net, g.city); g.model.setNetwork(g.compiled);
+  const busId = st.bus[0].id, before = st.bus[0].cars;
+  ui.busCars(sid, busId, 1);
+  const after = g.net.stations[sid].bus[0].cars;
+  console.log(after === before + 1 && !g.draft
+    ? '✓ 加车立即生效（' + before + ' → ' + after + ' 辆，未产生草案）'
+    : '✗ 加车没生效（' + before + ' → ' + after + '，草案 ' + !!g.draft + '）');
+  // 有草案时必须拒绝，而不是默默改到草案里
+  g.edit(function (n) { n.stations[sid].name = st.name; });
+  const keep = g.net.stations[sid].bus[0].cars;
+  const r = ui.busCars(sid, busId, 1);
+  console.log(r && r.error && g.net.stations[sid].bus[0].cars === keep
+    ? '✓ 有草案时拒绝调整运营（' + r.error + '）'
+    : '✗ 有草案时仍在改');
+  g.cancelDraft();
+} catch (e) { console.log('✗ 配车检查：' + e.message); }
+
 // 也测一下未接入线路的站（潜在覆盖分支）
 try {
   const sid2 = M.addStation(net, 40.5, row + 20.5, { size: 'S', type: 'underground' }, city);
