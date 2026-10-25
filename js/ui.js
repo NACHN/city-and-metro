@@ -1034,7 +1034,7 @@
     this.highlightLine = null;
     this.placeFeed();
   };
-  UI.prototype.rerenderPage = function () { if (this.stack.length) this.renderPage(false); };
+  UI.prototype.rerenderPage = function () { this.busHi = null; if (this.stack.length) this.renderPage(false); };
   UI.prototype.refreshBuild = function () {
     const top = this.stack[this.stack.length - 1];
     if (top && top.kind === 'build') this.renderPage(false);
@@ -1157,12 +1157,26 @@
       if (s.bus.length >= (B.maxPerStation || 4)) return { error: '每站最多 ' + (B.maxPerStation || 4) + ' 条接驳线' };
       let k = 1;
       while (s.bus.some(function (b) { return b.id === 'b' + k; })) k++;
-      s.bus.push({ id: 'b' + k, x: cand.x, y: cand.y, lenM: cand.lenM, cars: cand.cars || CM.Metro.busFleet(cand.lenM), at: [y, m] });
+      s.bus.push({ id: 'b' + k, x: cand.x, y: cand.y, lenM: cand.lenM, cars: cand.cars || CM.Metro.busFleet(cand.lenM), name: cand.name || '', at: [y, m] });
       return null;
     });
     if (r && r.error) { this.toast(r.error, 'bad'); return; }
     this.rerenderPage();
   };
+  // 接驳端点的称呼：开线时若带了设施名就直接用，老存档按最近的设施现算一次。
+  // 没有设施的话返回空字符串，面板会退回「接驳端点」。
+  UI.prototype.busTermName = function (x, y) {
+    const g = this.g(), fn = g && g.model && g.model.fn;
+    if (!fn) return '';
+    let best = null, bd = Infinity;
+    for (const f of fn.list) {
+      if (!isFinite(f.x) || !isFinite(f.y)) continue;
+      const d = U.dist(f.x, f.y, x, y) * CFG.CELL_M;
+      if (d < bd) { bd = d; best = f; }
+    }
+    return best && bd <= 350 ? best.name : '';
+  };
+
   // 接驳线终点评估：距离、配车、等效步行，以及「这里到底是不是盲区」——
   // 端点步行圈里有多少人现在没有地铁覆盖，这才是玩家要的那个判断。
   UI.prototype.busPointInfo = function (st, x, y) {
@@ -1384,6 +1398,7 @@
   };
 
   UI.prototype.select = function (sel, noPage) {
+    if (!this.selection || !sel || this.selection.kind !== sel.kind || this.selection.id !== sel.id) this.busHi = null;
     this.selection = sel;
     if (!sel) { this.highlightLine = null; if (!noPage && this.stack.length && ['station', 'line', 'road', 'zone', 'facility'].indexOf(this.stack[this.stack.length - 1].kind) >= 0) this.back(); return; }
     if (noPage) return;

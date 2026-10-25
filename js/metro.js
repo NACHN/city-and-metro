@@ -317,6 +317,14 @@
     if (!B) return b.lenM;
     return (b.lenM / 1000 / B.speedKmh * 60 + M.busWaitMin(b)) * CFG.walk.mPerMin;
   };
+  // 接驳线编号色（1–4）：地图上的端点徽标与车站面板里的编号共用同一组颜色，
+  // 所以「面板第 2 条」和「地图上的 2 号」一眼能对上。
+  M.BUS_COLORS = ['#e8590c', '#0c8599', '#6741d9', '#c2255c'];
+  M.busNo = function (b) {
+    const n = parseInt(String((b && b.id) || '').replace(/[^0-9]/g, ''), 10);
+    return isFinite(n) && n > 0 ? n : 0;
+  };
+  M.busColor = function (n) { return M.BUS_COLORS[(Math.max(1, n | 0) - 1) % M.BUS_COLORS.length]; };
   M.busCost = function (cars) { return Math.max(0, cars | 0) * ((CFG.bus && CFG.bus.vehicleCost) || 0); };   // 万元
 
   // ---------------- 车站配套（出入口 / P+R） ----------------

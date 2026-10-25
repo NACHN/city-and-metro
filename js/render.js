@@ -2182,7 +2182,62 @@
       }
       ctx.globalAlpha = 1;
     }
+    this.drawBusLines(ctx, ui, under);
     this.drawnC = C;
+  };
+  // ---------------- 接驳巴士（经营模式） ----------------
+  // 选中车站时把它开的接驳线画在地图上：站 → 端点，端点上有编号徽标，
+  // 编号与车站面板里那一行一一对应（1–4）。悬停面板某一行会加粗对应的那条。
+  Renderer.prototype.drawBusLines = function (ctx, ui, under) {
+    const g = this.game, B = CFG.bus;
+    if (!B || !ui || !ui.selection || ui.selection.kind !== 'station') return;
+    if (under > 0.5) return;                       // 地下视图不画地面接驳
+    const net = g.draft ? g.draft.net : g.net;
+    const st = net.stations && net.stations[ui.selection.id];
+    if (!st || !st.bus || !st.bus.length) return;
+    const num = function (b) { return CM.Metro.busNo(b); };
+    const list = st.bus.slice().sort(function (a, b) { return (num(a) || 99) - (num(b) || 99); });
+    const hi = ui.busHi && ui.busHi.st === st.id ? ui.busHi.line : null;
+    const a0 = this.P(st.x, st.y, 0);
+    ctx.save();
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    for (let q = 0; q < list.length; q++) {
+      const b = list[q], n = num(b) || (q + 1), col = CM.Metro.busColor(n);
+      const bp = this.P(b.x, b.y, 0);
+      const dim = hi && hi !== b.id;
+      const alpha = dim ? 0.18 : 1;
+      ctx.globalAlpha = alpha;
+      // 端点步行圈只在悬停时画：平时四五个圈会把地图糊住
+      if (hi === b.id) {
+        const rr = (B.walkReachM || 400) / CFG.CELL_M, step = Math.max(12, Math.round(rr * 3));
+        ctx.beginPath();
+        for (let k = 0; k <= step; k++) {
+          const ang = k / step * Math.PI * 2;
+          const pp = this.P(b.x + Math.cos(ang) * rr, b.y + Math.sin(ang) * rr, 0);
+          if (k) ctx.lineTo(pp.x, pp.y); else ctx.moveTo(pp.x, pp.y);
+        }
+        ctx.strokeStyle = col; ctx.globalAlpha = 0.28 * alpha; ctx.lineWidth = 1.3; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]);
+        ctx.globalAlpha = alpha;
+      }
+      // 线：白色衬边 + 本色虚线（虚线的「接驳」观感与地铁实线区分开）
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = (hi === b.id ? 6.5 : 5);
+      ctx.beginPath(); ctx.moveTo(a0.x, a0.y); ctx.lineTo(bp.x, bp.y); ctx.stroke();
+      ctx.strokeStyle = col; ctx.lineWidth = hi === b.id ? 3.2 : 2.4;
+      ctx.setLineDash([7, 5]); ctx.lineDashOffset = -this.time * 14;
+      ctx.beginPath(); ctx.moveTo(a0.x, a0.y); ctx.lineTo(bp.x, bp.y); ctx.stroke();
+      ctx.setLineDash([]); ctx.lineDashOffset = 0;
+      // 端点编号徽标：与面板里的 1–4 对应
+      const rad = U.clamp(this.z * 0.16, 7, 11) * (hi === b.id ? 1.15 : 1);
+      ctx.beginPath(); ctx.arc(bp.x, bp.y, rad, 0, Math.PI * 2);
+      ctx.fillStyle = col; ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(1.4, rad * 0.18); ctx.stroke();
+      ctx.fillStyle = '#fff';
+      ctx.font = '700 ' + Math.round(rad * 1.15) + 'px ' + FONT;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(n), bp.x, bp.y + rad * 0.06);
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
   };
   // ---------------- 轨道建设方式（v2.0） ----------------
   // 每个编译后的区段只计算一次装饰数据（采样下标）：越水区间、地下 / 地面 / 高出地面各段、桥墩与铁路交叉。

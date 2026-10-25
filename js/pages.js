@@ -172,8 +172,6 @@
         return b;
       }, false, 'metro'));
     }
-    // 接驳系统（经营模式）：车站先建接驳站，再按需要开线、配车。
-    // 配车决定班次，班次决定候车，候车决定等效步行距离——「投多少钱」和「有多大用」是同一件事。
     if (g.econ.caps.land && CFG.bus && official) {
       const B = CFG.bus, busList = official.bus || [], hub = official.busHub | 0;
       let cars = 0;
@@ -189,44 +187,62 @@
               '建接驳站 · ' + U.fmtMoney(B.hubCost * g.econ.costIndex(g.clock.y)))));
           return b;
         }
+        // 已开的线路：编号 → 名称 → 指标 → 配车，一行一件事。
+        // 编号与地图端点徽标同色同号，悬停这一行地图上对应的那条会加粗、其余变淡。
         if (busList.length) {
-          const list = h('div', { class: 'kv' });
-          for (const x of busList) {
+          const sorted = busList.slice().sort(function (a, c) { return (CM.Metro.busNo(a) || 99) - (CM.Metro.busNo(c) || 99); });
+          const list = h('div', { class: 'bus-list' });
+          sorted.forEach(function (x, k) {
+            const n = CM.Metro.busNo(x) || (k + 1), col = CM.Metro.busColor(n);
             const nv = Math.max(1, x.cars | 0);
             const hw = CM.Metro.busCycleMin(x.lenM) / nv;
-            list.append(
-              h('div', { class: 'k' }, '接驳 ' + U.fmtKm(x.lenM) + ' · 间隔 ' + hw.toFixed(1) + ' 分 · 等效步行 ' + Math.round(CM.Metro.busEqM(x)) + ' m'),
-              h('div', { class: 'v' },
-                h('button', { class: 'btn sm', onclick: function () { self.busCars(id, x.id, -1); } }, '−'),
-                h('span', { style: { margin: '0 4px' } }, nv + ' 辆'),
-                h('button', { class: 'btn sm', onclick: function () { self.busCars(id, x.id, 1); } }, '+'),
-                h('button', { class: 'btn sm ghost danger', style: { marginLeft: '6px' }, onclick: function () { self.busClose(id, x.id); } }, '停运')));
-          }
+            const nm = x.name || self.busTermName(x.x, x.y);
+            list.appendChild(h('div', {
+              class: 'bus-row',
+              onmouseenter: function () { self.busHi = { st: id, line: x.id }; },
+              onmouseleave: function () { self.busHi = null; },
+            },
+              h('div', { class: 'bus-h' },
+                h('span', { class: 'bus-no', style: { background: col } }, String(n)),
+                h('b', { class: 'bus-nm' }, nm || '接驳端点'),
+                h('span', { class: 'bus-d' }, U.fmtKm(x.lenM)),
+                h('button', { class: 'btn sm bus-x', onclick: function () { self.busClose(id, x.id); } }, '停运')),
+              h('div', { class: 'bus-m' },
+                h('span', { class: 'bus-mt' }, '间隔 ' + hw.toFixed(1) + ' 分 · 等效步行 ' + Math.round(CM.Metro.busEqM(x)) + ' m'),
+                h('div', { class: 'bus-step' },
+                  h('button', { class: 'btn sm', onclick: function () { self.busCars(id, x.id, -1); } }, '−'),
+                  h('span', { class: 'bus-nv' }, nv + ' 辆'),
+                  h('button', { class: 'btn sm', onclick: function () { self.busCars(id, x.id, 1); } }, '+')))));
+          });
           b.appendChild(list);
-          b.appendChild(h('div', { class: 'note', style: { marginTop: '4px' } },
-            '运营保养 ' + U.fmtMoney(cars * B.opsPerVehicleYear) + '/年（' + U.fmtMoney(cars * B.opsPerVehicleYear / 12) + '/月），与客流无关。加车能缩短间隔、提升吸引力，也同时抬高固定支出。'));
+          b.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } },
+            '合计保养 ' + U.fmtMoney(cars * B.opsPerVehicleYear) + '/年（' + U.fmtMoney(cars * B.opsPerVehicleYear / 12) + '/月），与客流无关。'));
         }
-        // 手动选点：接驳接哪儿取决于玩家看到的盲区，清单只能给个参考
-        b.appendChild(h('div', { class: 'row', style: { marginTop: '10px', flexWrap: 'wrap' } },
+        // 新开线：先在地图上选终点，系统找出的盲区作为备选
+        b.appendChild(h('div', { class: 'row', style: { marginTop: busList.length ? '10px' : '0', flexWrap: 'wrap' } },
           h('button', { class: 'btn sm primary', onclick: function () { self.busPick(id); } }, '在地图上选终点'),
-          h('span', { class: 'tiny muted' }, '悬停会显示距离、配车，以及端点范围内有多少人现在还没有地铁')));
+          h('span', { class: 'tiny muted' }, '悬停即看距离、配车与端点盲区')));
         const cands = self.busCandidates(official);
-        if (!cands.length) {
-          b.appendChild(h('div', { class: 'note', style: { marginTop: busList.length ? '8px' : '0' } },
-            busList.length ? '这一站周边没有新的步行盲区了。' : '这一站步行范围内已经覆盖了周边人口，没有找到值得开通接驳的盲区。'));
+        if (busList.length >= (B.maxPerStation || 4)) {
+          b.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } }, '已开满 ' + (B.maxPerStation || 4) + ' 条，要开新线得先停运一条。'));
+        } else if (!cands.length) {
+          b.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } },
+            busList.length ? '周边已经没有新的步行盲区了。' : '这一站步行范围内已经覆盖了周边人口，没有找到值得开通接驳的盲区。'));
         } else {
-          b.appendChild(h('div', { class: 'note', style: { margin: '10px 0 4px' } }, '或者从系统找出的盲区里挑一个（按人流排序）：'));
-          const rows = h('div', { class: 'kv' });
+          b.appendChild(h('div', { class: 'note', style: { margin: '10px 0 2px' } }, '或从系统找出的盲区里挑一个（按人流排序）：'));
+          const rows = h('div', { class: 'bus-cands' });
           for (const c of cands) {
-            rows.append(
-              h('div', { class: 'k' }, (c.name ? '「' + c.name + '」' : U.fmtPeople(c.w) + ' 人') + ' · 直线 ' + U.fmtKm(c.d)),
-              h('div', { class: 'v' }, h('button', { class: 'btn sm', onclick: function () { self.busOpen(id, c); } },
-                '开通 ' + U.fmtMoney(c.cost) + ' · ' + c.cars + ' 辆')));
+            rows.appendChild(h('div', { class: 'bus-cand' },
+              h('div', { class: 'bus-cand-t' },
+                h('b', null, c.name ? c.name : U.fmtPeople(c.w) + ' 人'),
+                h('span', { class: 'bus-d' }, '直线 ' + U.fmtKm(c.d))),
+              h('button', { class: 'btn sm', onclick: function () { self.busOpen(id, c); } },
+                '开通 · ' + U.fmtMoney(c.cost))));
           }
           b.appendChild(rows);
         }
-        b.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } },
-          '接驳线只扩展这一站的服务范围，不凭空产生出行：原本走不到地铁的人改走地铁，出行总量不变。购车一次投入，运营按月支出——线路开得太早、客流还没起来时是亏的。单条最长 ' + (B.maxLenM / 1000) + ' km，每站最多 ' + B.maxPerStation + ' 条。'));
+        b.appendChild(h('div', { class: 'note', style: { marginTop: '8px' } },
+          '接驳线只扩展这一站的服务范围，不凭空产生出行。购车一次投入，运营按月支出——线路开得太早、客流还没起来时是亏的。单条最长 ' + (B.maxLenM / 1000) + ' km，每站最多 ' + B.maxPerStation + ' 条。'));
         return b;
       }, false, 'bus'));
     }
