@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>车站面板 · 重设计原型</title>
+<title>车站面板 · 重设计原型 v2</title>
 <style>
   :root {
     --bg: #0d141c; --panel: #151f2b; --panel2: #1b2634; --line: #26323f;
@@ -11,7 +11,6 @@
     --accent: #1D9E75; --accent-bg: #1D9E7522;
     --warn: #BA7517; --warn-bg: #BA751722; --bad: #D4537E; --bad-bg: #D4537E22;
     --info: #3c7dd9; --info-bg: #3c7dd922;
-    --radius: 10px;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
@@ -19,12 +18,11 @@
     background: #0a0f15; color: var(--text); font: 13px/1.5 -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
     display: flex; justify-content: center; padding: 24px 16px 60px;
   }
-  .page { width: 100%; max-width: 420px; }
+  .page { width: 100%; max-width: 440px; }
   .pagehead { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; padding: 0 4px; }
   .pagehead h1 { font-size: 13px; margin: 0; color: var(--text2); font-weight: 600; letter-spacing: .04em; }
   .pagehead span { font-size: 11px; color: var(--text3); }
 
-  /* ---------- 面板 ---------- */
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
 
   /* 头部 */
@@ -38,71 +36,89 @@
   .chip.l1 { color: #4fb3ff; border-color: #4fb3ff44; background: #4fb3ff14; }
   .chip.l2 { color: #ffb454; border-color: #ffb45444; background: #ffb45414; }
   .chip.xfer { color: var(--accent); border-color: #1D9E7555; background: var(--accent-bg); }
-
-  /* 常驻指标条：一眼看到四个关键数 */
   .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); margin-top: 12px; border-radius: 9px; overflow: hidden; }
   .kpi { background: var(--panel2); padding: 8px 6px 7px; text-align: center; }
   .kpi b { display: block; font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
   .kpi small { display: block; font-size: 10px; color: var(--text3); margin-top: 2px; }
   .kpi.warn b { color: var(--warn); }
-  .kpi.bad b { color: var(--bad); }
 
   /* 折叠组 */
   .grp { border-top: 1px solid var(--line); }
-  .grp:first-of-type { border-top: 0; }
   .gh { display: flex; align-items: center; gap: 8px; padding: 11px 14px; cursor: pointer; user-select: none; }
   .gh:hover { background: #ffffff06; }
-  .gh .t { font-size: 12.5px; font-weight: 600; color: var(--text); }
+  .gh .t { font-size: 12.5px; font-weight: 600; }
   .gh .s { font-size: 11px; color: var(--text3); margin-left: auto; text-align: right; }
   .gh .cv { width: 14px; text-align: center; color: var(--text3); transition: transform .18s ease; font-size: 10px; }
   .grp.open .gh .cv { transform: rotate(90deg); }
   .gb { display: none; padding: 2px 14px 14px; }
   .grp.open .gb { display: block; }
 
-  /* 行/键值 */
-  .kv { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 12px; }
-  .kv + .kv { border-top: 1px dashed #ffffff0c; }
-  .kv .k { color: var(--text2); }
-  .kv .v { color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
-  .v.good { color: var(--accent); } .v.warn { color: var(--warn); } .v.bad { color: var(--bad); } .v.muted { color: var(--text3); }
+  /* ===== 客流：左柱状 + 右半圆多层环 ===== */
+  .flowtop { display: flex; gap: 12px; align-items: flex-start; }
+  .flowleft { flex: 1; min-width: 0; }
+  .flowright { width: 132px; flex: none; position: relative; }
 
-  /* 分段切换 */
-  .seg { display: inline-flex; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 2px; margin-bottom: 10px; }
-  .seg button { border: 0; background: transparent; color: var(--text2); font-size: 11.5px; padding: 4px 10px; border-radius: 6px; cursor: pointer; }
-  .seg button.on { background: #ffffff12; color: var(--text); }
+  .bars { display: flex; align-items: flex-end; gap: 2px; height: 88px; margin-top: 4px; }
+  .bars .b { flex: 1; background: linear-gradient(180deg, #1D9E75cc, #1D9E7522); border-radius: 2px 2px 0 0; min-height: 2px; }
+  .bars .b.pk { background: linear-gradient(180deg, #BA7517dd, #BA751722); }
+  .barlab { display: flex; justify-content: space-between; font-size: 10px; color: var(--text3); margin-top: 2px; }
 
-  /* 小时客流柱 */
-  .bars { display: flex; align-items: flex-end; gap: 3px; height: 74px; margin: 6px 0 4px; }
-  .bars .b { flex: 1; background: linear-gradient(180deg, #1D9E75cc, #1D9E7533); border-radius: 2px 2px 0 0; min-height: 2px; position: relative; }
-  .bars .b.pk { background: linear-gradient(180deg, #BA7517dd, #BA751733); }
-  .barlab { display: flex; justify-content: space-between; font-size: 10px; color: var(--text3); }
+  .gauge { width: 132px; height: 74px; display: block; }
+  .gauge .track { fill: none; stroke: #ffffff10; stroke-width: 7; stroke-linecap: round; }
+  .gauge .val { fill: none; stroke-width: 7; stroke-linecap: round; transition: stroke-dasharray .45s ease; }
+  .gauge .r1 { stroke: #1D9E75; }
+  .gauge .r2 { stroke: #BA7517; }
+  .gauge .r3 { stroke: #4fb3ff; }
+  .gcenter { position: absolute; left: 0; right: 0; top: 22px; text-align: center; pointer-events: none; }
+  .gcenter .big { font-size: 16px; font-weight: 700; letter-spacing: -.02em; line-height: 1.1; }
+  .gcenter .big i { font-size: 10px; font-style: normal; color: var(--text3); font-weight: 500; }
+  .gcenter .cap { font-size: 9.5px; color: var(--text3); margin-top: 1px; }
+  .gtags { position: absolute; left: 0; right: 0; bottom: -1px; display: flex; justify-content: center; gap: 4px; }
+  .gtag { font-size: 9.5px; padding: 1px 5px; border-radius: 999px; border: 1px solid var(--line); color: var(--text3); }
+  .gtag.on { color: var(--accent); border-color: #1D9E7555; background: var(--accent-bg); }
+  .gtag.off { opacity: .5; }
+  .glegend { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; font-size: 10px; color: var(--text3); }
+  .glegend span { display: flex; align-items: center; gap: 5px; }
+  .glegend i { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex: none; }
+  .glegend b { margin-left: auto; color: var(--text2); font-weight: 600; font-variant-numeric: tabular-nums; }
 
-  /* 目的占比条 */
-  .mix { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 8px 0 6px; }
+  /* 进站 / 换乘 / 出站 三块 */
+  .trio { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; background: var(--line); border-radius: 10px; overflow: hidden; margin-top: 12px; }
+  .trio .c { background: var(--panel2); padding: 9px 6px 8px; text-align: center; }
+  .trio .c .ar { font-size: 11px; color: var(--text3); line-height: 1; }
+  .trio .c b { display: block; font-size: 16px; font-weight: 700; letter-spacing: -.02em; margin-top: 2px; }
+  .trio .c b i { font-size: 10px; font-style: normal; color: var(--text3); font-weight: 500; }
+  .trio .c small { display: block; font-size: 10px; color: var(--text3); margin-top: 1px; }
+  .trio .c.mid { background: #182430; }
+  .trio .c.mid b { color: #4fb3ff; }
+
+  /* 分目的 */
+  .mix { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 12px 0 6px; }
   .mix i { display: block; height: 100%; }
   .mixlegend { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 10.5px; color: var(--text3); }
   .mixlegend span { display: inline-flex; align-items: center; gap: 4px; }
   .mixlegend i { width: 7px; height: 7px; border-radius: 2px; display: inline-block; }
 
-  /* 提示条 */
-  .note { display: flex; gap: 7px; padding: 8px 10px; border-radius: 8px; font-size: 11.5px; line-height: 1.45; margin-top: 8px; }
-  .note.info { background: var(--info-bg); color: #a9c7f2; }
+  /* 键值 / 提示 / 设施 / 按钮 */
+  .kv { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 12px; }
+  .kv + .kv { border-top: 1px dashed #ffffff0c; }
+  .kv .k { color: var(--text2); }
+  .kv .v { text-align: right; font-variant-numeric: tabular-nums; }
+  .v.good { color: var(--accent); } .v.warn { color: var(--warn); } .v.bad { color: var(--bad); } .v.muted { color: var(--text3); }
+  .note { display: flex; gap: 7px; padding: 8px 10px; border-radius: 8px; font-size: 11.5px; line-height: 1.45; margin-top: 10px; }
   .note.warn { background: var(--warn-bg); color: #e8c68a; }
-  .note.bad { background: var(--bad-bg); color: #f0a9c2; }
   .note b { font-weight: 650; }
-
-  /* 设施列表 */
   .fac { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 12px; }
   .fac + .fac { border-top: 1px dashed #ffffff0c; }
   .fac .d { margin-left: auto; color: var(--text3); font-size: 11px; }
-
-  /* 按钮 */
   .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
   .btn { border: 1px solid var(--line); background: var(--panel2); color: var(--text); font-size: 12px; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
   .btn:hover { background: #ffffff0c; }
   .btn.primary { background: var(--accent); border-color: var(--accent); color: #04120c; font-weight: 600; }
+  .seg { display: inline-flex; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 2px; margin-bottom: 10px; }
+  .seg button { border: 0; background: transparent; color: var(--text2); font-size: 11.5px; padding: 4px 10px; border-radius: 6px; cursor: pointer; }
+  .seg button.on { background: #ffffff12; color: var(--text); }
 
-  /* 说明卡（原型自带，不属于游戏） */
   .spec { margin-top: 18px; padding: 12px 14px; border: 1px dashed var(--line); border-radius: 12px; color: var(--text3); font-size: 11.5px; line-height: 1.6; }
   .spec b { color: var(--text2); }
   .spec ol { margin: 6px 0 0; padding-left: 18px; }
@@ -110,10 +126,9 @@
 </head>
 <body>
 <div class="page">
-  <div class="pagehead"><h1>车站面板 · 重设计原型</h1><span>静态示例 · 数据为示意</span></div>
+  <div class="pagehead"><h1>车站面板 · 重设计原型 v2</h1><span>覆盖做半圆环 · 进出站三块</span></div>
 
   <div class="panel">
-    <!-- ① 头部：身份 + 四个常驻指标 -->
     <div class="head">
       <div class="top">
         <span class="stname">公园前</span>
@@ -134,7 +149,7 @@
       </div>
     </div>
 
-    <!-- ② 客流（默认展开，且可收起） -->
+    <!-- 客流：柱状 + 半圆多层环 + 进出站三块 -->
     <div class="grp open" data-grp>
       <div class="gh"><span class="cv">▶</span><span class="t">客流</span><span class="s">工作日 8.6 万 · 周末 6.1 万</span></div>
       <div class="gb">
@@ -142,32 +157,62 @@
           <button class="on" data-day="wd">工作日</button>
           <button data-day="we">周末</button>
         </div>
-        <div class="bars" id="bars"></div>
-        <div class="barlab"><span>6 时</span><span>12 时</span><span>18 时</span><span>23 时</span></div>
 
-        <div class="kv"><span class="k">进站 / 出站</span><span class="v" id="io">4.2 万 / 4.4 万</span></div>
-        <div class="kv"><span class="k">换乘量</span><span class="v">3.3 万人次</span></div>
-        <div class="kv"><span class="k">高峰站台满载率</span><span class="v warn">92%（接近饱和）</span></div>
+        <div class="flowtop">
+          <div class="flowleft">
+            <div class="bars" id="bars"></div>
+            <div class="barlab"><span>6 时</span><span>12</span><span>18</span><span>23 时</span></div>
+          </div>
+
+          <div class="flowright">
+            <svg class="gauge" viewBox="0 0 132 74" aria-label="步行覆盖、站台饱和度、换乘占比的三层半圆环">
+              <path class="track" d="M 12 62 A 54 54 0 0 1 120 62" pathLength="100"></path>
+              <path class="val r1" id="arc1" d="M 12 62 A 54 54 0 0 1 120 62" pathLength="100" stroke-dasharray="0 100"></path>
+              <path class="track" d="M 26 62 A 40 40 0 0 1 106 62" pathLength="100"></path>
+              <path class="val r3" id="arc3" d="M 26 62 A 40 40 0 0 1 106 62" pathLength="100" stroke-dasharray="0 100"></path>
+              <path class="track" d="M 40 62 A 26 26 0 0 1 92 62" pathLength="100"></path>
+              <path class="val r2" id="arc2" d="M 40 62 A 26 26 0 0 1 92 62" pathLength="100" stroke-dasharray="0 100"></path>
+            </svg>
+            <div class="gcenter">
+              <div class="big">4.2<i>万</i></div>
+              <div class="cap">15 分钟步行覆盖</div>
+            </div>
+            <div class="gtags">
+              <span class="gtag on">出入口 3 级</span>
+              <span class="gtag on">P+R</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="glegend">
+          <span><i style="background:#1D9E75"></i>步行覆盖 <b>4.2 / 8.0 万</b></span>
+          <span><i style="background:#BA7517"></i>站台饱和度 <b>0.92</b></span>
+          <span><i style="background:#4fb3ff"></i>换乘占比 <b>38%</b></span>
+        </div>
+
+        <!-- 三块：左进站 · 中换乘 · 右出站 -->
+        <div class="trio">
+          <div class="c"><div class="ar">↑</div><b>4.2<i>万</i></b><small>进站</small></div>
+          <div class="c mid"><div class="ar">⇄</div><b>3.3<i>万</i></b><small>换乘</small></div>
+          <div class="c"><div class="ar">↓</div><b>4.4<i>万</i></b><small>出站</small></div>
+        </div>
 
         <div class="mix" id="mix"></div>
         <div class="mixlegend" id="mixlegend"></div>
       </div>
     </div>
 
-    <!-- ③ 车站与换乘：把原来的「配套 / 换乘 / 覆盖」三块并成一组 -->
+    <!-- 车站与换乘：覆盖/P+R/出入口已上提到客流块，这里只剩换乘关系 -->
     <div class="grp" data-grp>
-      <div class="gh"><span class="cv">▶</span><span class="t">车站与换乘</span><span class="s">出入口 3 级 · 站内换乘</span></div>
+      <div class="gh"><span class="cv">▶</span><span class="t">换乘关系</span><span class="s">站内换乘 1 ⇄ 2 号线</span></div>
       <div class="gb">
-        <div class="kv"><span class="k">出入口</span><span class="v">3 级 · 步行可达 620 m</span></div>
-        <div class="kv"><span class="k">P+R 停车</span><span class="v">中型 · 480 位</span></div>
-        <div class="kv"><span class="k">换乘</span><span class="v">站内换乘 1 ⇄ 2 号线</span></div>
+        <div class="kv"><span class="k">站内换乘</span><span class="v">1 号线 ⇄ 2 号线</span></div>
+        <div class="kv"><span class="k">换乘步行</span><span class="v">约 2 分钟</span></div>
         <div class="kv"><span class="k">站外换乘</span><span class="v">步行 300 m 至 西门口</span></div>
-        <div class="kv"><span class="k">15 分钟步行覆盖</span><span class="v">4.2 万人</span></div>
-        <div class="note warn"><b>站台接近饱和。</b>再加密班次收益有限，考虑扩为大型站或新线分流。</div>
+        <div class="note warn"><b>站台接近饱和（0.92）。</b>再加密班次收益有限，考虑扩为大型站或新线分流。</div>
       </div>
     </div>
 
-    <!-- ④ 物业与地价 -->
     <div class="grp" data-grp>
       <div class="gh"><span class="cv">▶</span><span class="t">物业与地价</span><span class="s">二级上盖 · 回收期 11.4 年</span></div>
       <div class="gb">
@@ -180,7 +225,6 @@
       </div>
     </div>
 
-    <!-- ⑤ 运营与费用 -->
     <div class="grp" data-grp>
       <div class="gh"><span class="cv">▶</span><span class="t">运营与费用</span><span class="s">月净 −620 万</span></div>
       <div class="gb">
@@ -192,7 +236,6 @@
       </div>
     </div>
 
-    <!-- ⑥ 附近设施（只在有设施时出现） -->
     <div class="grp" data-grp>
       <div class="gh"><span class="cv">▶</span><span class="t">附近的重要设施</span><span class="s">2 处</span></div>
       <div class="gb">
@@ -201,7 +244,6 @@
       </div>
     </div>
 
-    <!-- ⑦ 修改车站（默认收起，破坏性操作放最后） -->
     <div class="grp" data-grp>
       <div class="gh"><span class="cv">▶</span><span class="t">修改车站</span><span class="s">规模 / 名称 / 移动</span></div>
       <div class="gb">
@@ -217,47 +259,43 @@
   </div>
 
   <div class="spec">
-    <b>这一版改了什么</b>
+    <b>v2 改了什么</b>
     <ol>
-      <li><b>8 个展开框 → 4 个组 + 1 个常驻指标条</b>：配套/换乘/覆盖合成「车站与换乘」，设施与修改默认收起。</li>
-      <li><b>客流可收起</b>，但默认展开——它是最常看的信息。原来它无法折叠，把下面的内容都挤到了屏幕外。</li>
-      <li><b>关键数上提到头部</b>：日均、高峰、换乘占比、饱和度四个指标常驻，不用展开任何框。</li>
-      <li><b>摘要放右侧</b>：收起状态下也能看到「出入口 3 级 · 站内换乘」「回收期 11.4 年」这类结论。</li>
-      <li><b>风险就近提示</b>：饱和度、回收期、回收率用颜色和一句话说明，不用玩家自己算。</li>
+      <li><b>覆盖人口做成半圆环</b>，放在小时柱状右边；中间是覆盖人数，其余两层是饱和度与换乘占比。</li>
+      <li><b>三层可叠</b>：外圈覆盖、中圈换乘占比、内圈饱和度，同一骨架还能再叠（地价溢价、物业回收）。</li>
+      <li><b>P+R 与出入口做成中心标签</b>：亮=有、灰=没有——原来要展开「车站配套」才看得到。</li>
+      <li><b>进站 / 换乘 / 出站三块并列</b>，中间换乘用蓝色区分，一眼看出这是「通过型」还是「目的地型」车站。</li>
+      <li>因此「车站与换乘」从 6 行缩成 2 行，覆盖与配套不再各占一个展开框。</li>
     </ol>
   </div>
 </div>
 
 <script>
-  // 折叠
   document.querySelectorAll('[data-grp]').forEach(function (g) {
     g.querySelector('.gh').addEventListener('click', function () { g.classList.toggle('open'); });
   });
 
-  // 示意数据
   const D = {
-    wd: { hours: [2, 6, 22, 58, 96, 74, 46, 42, 50, 58, 62, 70, 88, 100, 76, 52, 40, 18], io: '4.2 万 / 4.4 万' },
-    we: { hours: [1, 3, 9, 22, 40, 52, 58, 62, 66, 68, 70, 72, 74, 70, 62, 50, 34, 16], io: '3.0 万 / 3.1 万' }
+    wd: { hours: [2, 6, 22, 58, 96, 74, 46, 42, 50, 58, 62, 70, 88, 100, 76, 52, 40, 18] },
+    we: { hours: [1, 3, 9, 22, 40, 52, 58, 62, 66, 68, 70, 72, 74, 70, 62, 50, 34, 16] }
   };
   const MIX = [
     { k: '通勤', v: 52, c: '#1D9E75' }, { k: '购物', v: 18, c: '#3c7dd9' }, { k: '休闲', v: 12, c: '#BA7517' },
     { k: '上学', v: 8, c: '#8a7bd8' }, { k: '接驳', v: 6, c: '#4fb3ff' }, { k: '医疗', v: 4, c: '#D4537E' }
   ];
-  const bars = document.getElementById('bars');
-  const mix = document.getElementById('mix');
-  const legend = document.getElementById('mixlegend');
-  mix.innerHTML = MIX.map(function (m) { return '<i style="width:' + m.v + '%;background:' + m.c + '"></i>'; }).join('');
-  legend.innerHTML = MIX.map(function (m) {
+  document.getElementById('mix').innerHTML = MIX.map(function (m) {
+    return '<i style="width:' + m.v + '%;background:' + m.c + '"></i>';
+  }).join('');
+  document.getElementById('mixlegend').innerHTML = MIX.map(function (m) {
     return '<span><i style="background:' + m.c + '"></i>' + m.k + ' ' + m.v + '%</span>';
   }).join('');
 
+  const bars = document.getElementById('bars');
   function draw(day) {
-    const d = D[day], max = Math.max.apply(null, d.hours);
-    bars.innerHTML = d.hours.map(function (v, i) {
-      const pk = v >= max * 0.9;
-      return '<span class="b' + (pk ? ' pk' : '') + '" style="height:' + Math.round(v / max * 100) + '%" title="' + (i + 6) + ' 时 · ' + v + ' 千人"></span>';
+    const h = D[day].hours, max = Math.max.apply(null, h);
+    bars.innerHTML = h.map(function (v, i) {
+      return '<span class="b' + (v >= max * 0.9 ? ' pk' : '') + '" style="height:' + Math.round(v / max * 100) + '%" title="' + (i + 6) + ' 时 · ' + v + ' 千人"></span>';
     }).join('');
-    document.getElementById('io').textContent = d.io;
   }
   draw('wd');
 
@@ -266,6 +304,14 @@
       document.querySelectorAll('[data-seg] button').forEach(function (x) { x.classList.remove('on'); });
       b.classList.add('on');
       draw(b.dataset.day);
+    });
+  });
+
+  // 三层半圆环：pathLength=100，直接用百分比当 dasharray
+  const RING = { arc1: 4.2 / 8.0, arc3: 0.38, arc2: 0.92 };
+  requestAnimationFrame(function () {
+    Object.keys(RING).forEach(function (id) {
+      document.getElementById(id).setAttribute('stroke-dasharray', (RING[id] * 100).toFixed(1) + ' 100');
     });
   });
 </script>
