@@ -428,6 +428,42 @@
     if (d.compVer !== d.ver) { d.compiled = M.compile(d.net, this.city); d.compVer = d.ver; }
     return d.compiled;
   };
+  // 预算容错：这份草案花掉之后，还剩下多少「月运营现金」，以及负债压力。
+  // 钱不是软卡点，但「排期」是硬约束——所以这里给的是缓冲月数，而不是能不能建。
+  Game.prototype.draftBudget = function () {
+    const ev = this.draftEval(); if (!ev) return null;
+    const econ = this.econ;
+    const avail = (econ.funds || 0) + (econ.capex || 0);
+    const left = avail - (ev.total || 0);
+    // 近 3 个已封账月份的平均运营支出
+    const L = econ.ledger || [];
+    let ops = 0, n = 0;
+    for (let i = L.length - 1; i >= 0 && n < 3; i--) { const r = L[i]; if (!r || !r.closed) continue; ops += r.ops || 0; n++; }
+    const mOps = n ? ops / n : 0;
+    const months = mOps > 0.01 ? left / mOps : Infinity;
+    const debt = econ.debtTotal ? econ.debtTotal() : 0;
+    const grantYear = econ.baseGrant ? econ.baseGrant(this.clock.y) * 12 : 0;
+    const debtRatio = grantYear > 0 ? debt / grantYear : 0;
+    let level = 'good', text;
+    if (left < -0.5) {
+      level = 'bad';
+      text = '超出可用资金 ' + U.fmtMoney(-left) + '：确认后必须发债或分批建设，否则资金会见底。';
+    } else if (mOps > 0.01 && months < 3) {
+      level = 'bad';
+      text = '建设后只剩 ' + months.toFixed(1) + ' 个月的运营现金（按近 3 个月月均运营 ' + U.fmtMoney(mOps) + ' 计）：一次意外支出就会转负。';
+    } else if (mOps > 0.01 && months < 6) {
+      level = 'warn';
+      text = '建设后只剩 ' + months.toFixed(1) + ' 个月的运营现金（月均运营 ' + U.fmtMoney(mOps) + '），容错偏低；可考虑分批或留出任务预备金。';
+    } else if (mOps > 0.01) {
+      text = '建设后仍保留 ' + months.toFixed(0) + ' 个月的运营现金（月均运营 ' + U.fmtMoney(mOps) + '）。';
+    } else {
+      text = '建设后可用余额 ' + U.fmtMoney(Math.max(0, left)) + '。';
+    }
+    if (debtRatio > 2.5) { level = 'bad'; text += ' 另外，债务已是年拨款的 ' + debtRatio.toFixed(1) + ' 倍，还本付息会进一步压缩缓冲。'; }
+    else if (debtRatio > 1.5) { level = level === 'good' ? 'warn' : level; text += ' 债务为年拨款的 ' + debtRatio.toFixed(1) + ' 倍，注意还款节奏。'; }
+    return { avail: avail, left: left, months: months, mOps: mOps, debt: debt, debtRatio: debtRatio, level: level, text: text };
+  };
+
   Game.prototype.canConfirm = function () {
     const ev = this.draftEval();
     if (!ev) return { ok: false, reason: '没有草案' };

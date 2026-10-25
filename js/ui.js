@@ -1476,6 +1476,11 @@
       for (const it of ev.items) box.appendChild(h('div', { class: 'chg small' }, h('span', null, it.label), h('span', { class: 'num' }, U.fmtMoney(it.amount))));
       if (!ev.items.length) box.appendChild(h('div', { class: 'note' }, '本次修改不产生费用（拆除与小范围调整免费）。'));
       box.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } }, g.econ.isFree() ? '自由建造：资金不限。' : '当前资金 ' + U.fmtMoney(g.econ.funds) + '。'));
+      // 预算容错：钱不是软卡点，排期才是——所以给的是「花完之后还剩几个月运营现金」
+      if (!g.econ.isFree()) {
+        const bud = g.draftBudget && g.draftBudget();
+        if (bud) box.appendChild(this.callout(bud.level === 'bad' ? 'bad' : (bud.level === 'warn' ? 'warn' : 'info'), 'coin', bud.text));
+      }
       return box;
     }, false, 'coin'));
     if (ev.warnings.length) {
