@@ -1042,6 +1042,18 @@
     const wR = new Float32Array(N), wJ = new Float32Array(N), capR = new Float32Array(N), capJ = new Float32Array(N);
     let sR = 0, sJ = 0;
     const mi = ctx.monthIndex;
+    // 可达项口径：'walk' 用步行到站距离三档（现状）；'jobAccess' 用「45 分钟内可达岗位数」的相对档位。
+    // 后者才是「人往通勤方便的地方去」——它对「远但快」的走廊给高分，而不是只奖励离站近。
+    const GR = CM.GROWTH_ACCESS || {};
+    const jaOn = !!(ctx.jobAccess && GR.from === 'jobAccess');
+    const ja = jaOn ? ctx.jobAccess : null;
+    const jb = GR.bands || [1.5, 1, 0.6];
+    let jaMean = 1;
+    if (jaOn) {
+      let sum = 0, n = 0;
+      for (let z = 0; z < ja.length; z++) if (ja[z] > 0) { sum += ja[z]; n++; }
+      if (n > 0 && sum > 0) jaMean = sum / n;
+    }
     // 增长归因（A8）：把本月的分项留下来给片区页解释「为什么这里长人（或不长）」。
     // 只读快照，不参与计算、不存档；why 里记的是这一格没参与增长的原因。
     const G = {
@@ -1081,7 +1093,11 @@
       }
       nb /= 8;
       const walk = ctx.cellWalk ? ctx.cellWalk[c] : Infinity;
-      const st = walk < 500 ? 1 : (walk < 850 ? 0.55 : (walk < 1125 ? 0.22 : 0));
+      let st = walk < 500 ? 1 : (walk < 850 ? 0.55 : (walk < 1125 ? 0.22 : 0));
+      if (jaOn) {
+        const r = ja[this.zoneOf(c)] / jaMean;
+        st = r >= jb[0] ? 1 : (r >= jb[1] ? 0.55 : (r >= jb[2] ? 0.22 : 0));
+      }
       const acc = ctx.zoneAccess ? ctx.zoneAccess[this.zoneOf(c)] : 0.3;
       let seed = 1;
       if (!this.street[c]) {

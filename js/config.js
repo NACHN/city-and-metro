@@ -397,6 +397,13 @@
     perf: { solverBudgetMs: 5, chunkBudgetMs: 6, cacheMaxPx: 24e6, maxCars: 320, maxPeds: 180, maxWalkers: 120, maxRiders: 120, trainVoices: 3, maxOneShots: 6 },
   };
 
+  // 增长权重里的「可达项」用哪个量（顶层配置，不随地图导出）：
+  //   'walk'      = 步行到站距离三档（现状，free/challenge 用）
+  //   'jobAccess' = 45 分钟内可达的岗位数（经营模式用，见 Model.computeJobAccess）
+  // 三档阈值按「相对全市均值」给，系数与 walk 口径完全一致（1 / 0.55 / 0.22），所以切换只改「用哪个量」。
+  // 放在顶层而不是 CFG.growth 里：growth 在 MAP_CFG_KEYS 中，往里加键会要求每张地图同步刷新 source.json。
+  CM.GROWTH_ACCESS = { from: 'walk', minMin: 45, bands: [1.5, 1.0, 0.6] };
+
   // 模式能力表：所有「钱怎么算、任务有没有后果、有没有土地与车辆系统」的判断都从这里读。
   // 不要再用 mode === 'challenge' 这类字符串比较——新增模式时漏改会静默降级成自由建造。
   // 未登记的模式按 challenge 处理（与加表之前的行为一致）。

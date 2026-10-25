@@ -954,6 +954,48 @@
     return { cellWalk: cellWalk, cellStation: cellStation, cellLim: cellLim, stLimit: stLimit, zl: zl, zCov: zCov, zWalk: zWalk, trees: trees, accessible: accessible, catchPop: catchPop, transfers: transfers, coverage: pt > 0 ? pc / pt : 0, NZ: NZ, facKey: fn ? fn.key : '' };
   };
 
+  // 「可到达的工作机会」：小区 i 在 capMin 分钟内（取小汽车与地铁中较优）能到达的岗位数。
+  // 这是「人往通勤方便的地方去」需要的量——比「离最近车站多远」更接近真实区位价值。
+  // 每月算一次（城市增长用），O(Z²) 但不进求解循环；小汽车时间已经 ≤ capMin 时不必再看地铁。
+  Model.prototype.computeJobAccess = function (capMin) {
+    const Z = this.Z, out = new Float32Array(Z);
+    const acc = this.net && this.net.acc;
+    const P = this.ctxs && this.ctxs.wd && this.ctxs.wd.per ? this.ctxs.wd.per[1] : null;
+    const car = P ? P.skimT : null;
+    const skim = this.liveBuf && this.liveBuf.skim;
+    const gt = skim && skim.gt ? skim.gt : null;
+    const N = this.net && this.net.C ? this.net.C.stations.length : 0;
+    const walkW = (CFG.choice && CFG.choice.walkW) || 1;
+    const zl = acc ? acc.zl : null;
+    for (let i = 0; i < Z; i++) {
+      let s = this.zJobs[i];
+      const lo = zl ? zl[i] : null;
+      for (let j = 0; j < Z; j++) {
+        if (i === j || this.zJobs[j] <= 0) continue;
+        let t = Infinity;
+        if (car) { const v = car[i * Z + j]; if (v > 0 && v < 1e8) t = v; }
+        if (t > capMin && lo && gt && zl && zl[j] && N > 0) {
+          // 只有在小汽车已经超时的情况下才试地铁，省掉绝大多数的 4×4 组合
+          const ld = zl[j];
+          for (let a = 0; a < lo.length; a++) {
+            const A = lo[a], row = A.s * N;
+            for (let b = 0; b < ld.length; b++) {
+              const B = ld[b];
+              if (A.s === B.s) continue;
+              const g = gt[row + B.s];
+              if (!(g < 1e8)) continue;
+              const v = walkW * (A.w + B.w) + g;
+              if (v < t) t = v;
+            }
+          }
+        }
+        if (t <= capMin) s += this.zJobs[j];
+      }
+      out[i] = s;
+    }
+    return out;
+  };
+
   Model.prototype.buildMetro = function (C) {
     const N = C.stations.length, R = C.routes.length, mc = CFG.metro;
     const acc = this.computeAccess(C);

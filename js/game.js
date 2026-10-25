@@ -24,6 +24,8 @@
   function applyImpedance(g) {
     const caps = g.econ && g.econ.caps ? g.econ.caps : CM.modeCaps(g.mode);
     CFG.choice.impedance = caps.timeCommute ? 'time' : 'distance';
+    // 增长的可达项暂时保持 'walk'：实测把增长权重换成「可达岗位数」会让城市更分散（见 开发进度 §9.3），
+    // 所以在找到更好的口径之前不打开。要试验时把 CM.GROWTH_ACCESS.from 设成 'jobAccess' 即可。
   }
 
   Game.create = function (opts) {
@@ -231,7 +233,10 @@
     // 城市发展
     const acc = model.net ? model.net.acc : null;
     const econF = this.macro && CM.Macro ? CM.Macro.applyFactors(this) : null;
-    const gr = city.growMonth({ year: yr, monthIndex: this.ym(), zoneAccess: model.zoneAccessNorm, cellWalk: acc ? acc.cellWalk : null, coverage: acc ? acc.coverage : 0, econ: econF });
+    // 增长的可达项：经营模式用「可达岗位数」，其余模式仍用步行到站距离（数值不变）
+    const GA = CM.GROWTH_ACCESS || {};
+    const ja = GA.from === 'jobAccess' ? model.computeJobAccess(GA.minMin || 45) : null;
+    const gr = city.growMonth({ year: yr, monthIndex: this.ym(), zoneAccess: model.zoneAccessNorm, cellWalk: acc ? acc.cellWalk : null, coverage: acc ? acc.coverage : 0, econ: econF, jobAccess: ja });
     yield;
     if (gr.streetsChanged || roadsChanged) { if (roadsChanged) city.updateStreets(); city.buildGraphs(); yield; }
     // 编译与模型刷新分多步执行；this.compiled 与模型网络在同一步内一起替换
