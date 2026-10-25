@@ -720,6 +720,15 @@
       const est = this.propertyOf(s);
       if (!est) continue;
       s.prop = est;
+      // 逐月记一条收支快照（只记录、不参与计算）：车站面板的 12 个月折线用它。
+      // [年月索引, 物业月净, 运营月成本, 物业净] —— 保持最多 24 个月，随存档一起保存。
+      const ymNow = U.ymIndex(this.clock.y, this.clock.m);
+      const hist = s.hist || (s.hist = []);
+      if (!hist.length || hist[hist.length - 1][0] !== ymNow) {
+        const opsM = (CFG.ops.stationDaily[s.size] || 0) * this.econ.opsIndex(this.clock.y) * 30;
+        hist.push([ymNow, Math.round((est.rent - est.maint) * 10) / 10, Math.round(opsM * 10) / 10, Math.round((est.rent - est.maint) * 10) / 10]);
+        if (hist.length > 24) hist.shift();
+      }
       sites++; areaSum += est.area; rentSum += est.rent; maintSum += est.maint;
     }
     this.propStat = { sites: sites, area: areaSum, rent: rentSum, maint: maintSum, net: rentSum - maintSum };
