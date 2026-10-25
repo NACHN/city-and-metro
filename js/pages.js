@@ -819,6 +819,69 @@
         return box;
       }, true));
     }
+    // 增长归因（A8）：这一片为什么长人、为什么不长。
+    // 数据来自 City.growMonth 每月留下的分项快照——增长权重 = 剩余容量 × 可达项 × 临街项 × 随机项，
+    // 容积率决定容量上限（修地铁把上限抬高，所以地铁从「可达」和「容量」两条路进入）。
+    const gr = g.city.growth;
+    if (gr && gr.mi === g.ym()) {
+      const city = g.city, N = city.N;
+      const zw = function (c) { return city.zoneOf(c); };
+      const stat = function (zz) {
+        const o = { all: 0, part: 0, built: 0, sat: 0, closed: 0, noroad: 0, unusable: 0, rem: 0, acc: 0, nb: 0, far: 0, grew: 0, pop: 0, cap: 0 };
+        for (let c = 0; c < N; c++) {
+          if (zz >= 0 && zw(c) !== zz) continue;
+          o.all++;
+          const w = gr.why[c];
+          if (w === 1 || w === 3) o.unusable++;
+          else if (w === 2) o.closed++;
+          else if (w === 4) o.noroad++;
+          else if (w === 5) o.sat++;
+          else o.part++;
+          if (w === 0 || w === 5) { o.built++; o.far += gr.far[c]; o.cap += gr.cap[c]; }
+          if (w === 0) { o.rem += gr.rem[c]; o.acc += 0.25 + gr.acc[c]; o.nb += 0.3 + gr.nb[c]; }
+          o.grew += gr.grew[c]; o.pop += city.pop[c];
+        }
+        return o;
+      };
+      const mine = stat(z), all = stat(-1);
+      const avg = function (o, k) { return o.part > 0 ? o[k] / o.part : NaN; };
+      const rel = function (k) { const a = avg(mine, k), b = avg(all, k); return (isFinite(a) && b > 0) ? a / b : NaN; };
+      // 没有可用空地时这些乘子没有意义，显示「—」而不是 0.00
+      const fx = function (v) { return isFinite(v) ? '×' + v.toFixed(2) + '（全城 1.00）' : '—（无可用空地）'; };
+      const pct = function (v) { return Math.abs(v) > 0 && Math.abs(v) < 0.005 ? '<1%' : U.fmtPct(v, 0); };
+      const farAvg = function (o) { return o.built > 0 ? o.far / o.built : 1; };
+      const share = all.grew !== 0 ? mine.grew / all.grew : 0;
+      const occ = mine.cap > 0 ? Math.min(1, mine.pop / mine.cap) : 1;
+      const sumTxt = mine.grew >= 0 ? '+' + U.fmtPeople(mine.grew) + ' 人' : '−' + U.fmtPeople(-mine.grew) + ' 人';
+      el.appendChild(this.sec('z-grow', '增长归因', sumTxt + ' · 本月', function () {
+        const box = h('div');
+        box.appendChild(self.kv([
+          ['本月新增人口', (mine.grew >= 0 ? '+' : '−') + U.fmtPeople(Math.abs(mine.grew)) + '（占全市 ' + pct(share) + '）'],
+          ['可建格数', mine.built + ' / ' + mine.all + ' 格'],
+          ['剩余容量', U.fmtPeople(mine.rem) + ' 人 · 已用 ' + U.fmtPct(occ, 0)],
+          ['可达项', fx(rel('acc'))],
+          ['临街项', fx(rel('nb'))],
+          ['容积率乘子', '×' + farAvg(mine).toFixed(2) + (farAvg(mine) > 1.02 ? '（地铁放宽容积率）' : '')],
+        ]));
+        // 短板先说：饱和与未开放是「不长」的两个主要原因，和权重高低无关
+        let tip = '';
+        if (occ >= 0.95 && mine.built > 0) tip = '这片已经饱和：容量用尽，再修地铁到这里也长不动——只有加密（分区调整）或外溢到相邻片区。';
+        else if (mine.closed > mine.built) tip = '主要限制是区域未开放：先让全市人口达到门槛，这片才开始长。';
+        else if (mine.noroad > 0 && mine.noroad >= mine.part) tip = '多数格子没有临街道路，增长需要先有街区与道路。';
+        else if (isFinite(rel('acc'))) { const r = rel('acc'), s2 = rel('nb'); tip = r > s2 ? '增长主要由地铁可达性拉动（可达项高于临街项）。' : '增长主要由临街与既有街区拉动（临街项高于可达项），地铁在这里还没形成优势。'; }
+        else tip = '这片没有可用的空地（用地不可建或已被占满），增长只能发生在相邻片区。';
+        // 不长的那几类格子单列一行：这是「为什么长不动」的直接答案
+        const why = [];
+        if (mine.sat) why.push('已饱和 ' + mine.sat);
+        if (mine.closed) why.push('区域未开放 ' + mine.closed);
+        if (mine.noroad) why.push('没有临街道路 ' + mine.noroad);
+        if (mine.unusable) why.push('用地不可建 ' + mine.unusable);
+        if (why.length) box.appendChild(h('div', { class: 'tiny muted', style: { marginTop: '5px' } }, '不参与增长：' + why.join(' · ')));
+        box.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } }, tip));
+        box.appendChild(h('div', { class: 'note', style: { marginTop: '4px' } }, '增长权重 = 剩余容量 × 可达项 × 临街项 × 随机项；容积率决定容量上限（站点旁最高 ' + (1 + (CFG.land ? CFG.land.farGain : 0)) + ' 倍），所以地铁从「可达」和「容量」两条路同时抬高增长。'));
+        return box;
+      }, false, 'people'));
+    }
     // 普通设施（按片区汇总）吸引的出行：分目的，工作日与周末（模拟结果）
     if (model.facData('wd') && model.facData('we')) {
       const Z = model.Z, a = model.facDaily.wd, b = model.facDaily.we, TR = CFG.trips;

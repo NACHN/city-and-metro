@@ -1042,12 +1042,19 @@
     const wR = new Float32Array(N), wJ = new Float32Array(N), capR = new Float32Array(N), capJ = new Float32Array(N);
     let sR = 0, sJ = 0;
     const mi = ctx.monthIndex;
+    // 增长归因（A8）：把本月的分项留下来给片区页解释「为什么这里长人（或不长）」。
+    // 只读快照，不参与计算、不存档；why 里记的是这一格没参与增长的原因。
+    const G = {
+      mi: mi, year: year, dPop: 0, dJobs: 0,
+      rem: new Float32Array(N), acc: new Float32Array(N), st: new Float32Array(N), nb: new Float32Array(N),
+      far: new Float32Array(N), cap: new Float32Array(N), grew: new Float32Array(N), why: new Uint8Array(N),
+    };
     for (let c = 0; c < N; c++) {
       const L = this.lu[c];
-      if (L === LU.WATER || L === LU.HILL || L === LU.PARK || L === LU.AIRPORT || L === LU.LANDMARK) continue;
-      if (!this.regionOpen[this.region[c]]) continue;
+      if (L === LU.WATER || L === LU.HILL || L === LU.PARK || L === LU.AIRPORT || L === LU.LANDMARK) { G.why[c] = 1; continue; }
+      if (!this.regionOpen[this.region[c]]) { G.why[c] = 2; continue; }
       const lf = this.landFrac[c] * (1 - this.taken[c]);
-      if (lf <= 0.05) continue;
+      if (lf <= 0.05) { G.why[c] = 3; continue; }
       const P = L === LU.RURAL ? this.plan[c] : L;
       // 容积率联动（仅经营模式）：站点步行可达的区位允许更高强度的开发（现实中即 TOD 放宽容积率）。
       // 没有地价系统（自由建造 / 经营挑战）时 landAcc 为空，farK 恒为 1，容量与既有模式完全一致。
@@ -1078,11 +1085,13 @@
       const acc = ctx.zoneAccess ? ctx.zoneAccess[this.zoneOf(c)] : 0.3;
       let seed = 1;
       if (!this.street[c]) {
-        if (nb < 0.2 && st === 0 && !this.nearArt[c]) continue;
+        if (nb < 0.2 && st === 0 && !this.nearArt[c]) { G.why[c] = 4; continue; }
         seed = 0.35 + (this.nearArt[c] ? 0.3 : 0);
       }
       const rnd = 0.6 + 0.8 * U.hash2(c, mi, this.seed + 31);
       const remR = cr - this.pop[c], remJ = cj - this.jobs[c];
+      if (remR <= 0) G.why[c] = 5;   // 已饱和：容量用尽，修地铁放宽容积率才会重新松开
+      G.rem[c] = remR > 0 ? remR : 0; G.acc[c] = acc; G.st[c] = st; G.nb[c] = nb; G.far[c] = farK; G.cap[c] = cr;
       if (remR > 0) { wR[c] = remR * (0.25 + acc) * (1 + 1.6 * st) * (0.3 + nb) * rnd * seed; sR += wR[c]; }
       if (remJ > 0) {
         const comBoost = (P === LU.COM || P === LU.MIX) ? 2.0 * ecom : 1;
@@ -1111,8 +1120,12 @@
         for (let c = 0; c < N; c++) arr[c] *= f;
       }
     };
+    const pop0 = Float32Array.from(this.pop);
     add(this.pop, capR, wR, sR, dP);
     add(this.jobs, capJ, wJ, sJ, dJ);
+    for (let c = 0; c < N; c++) G.grew[c] = this.pop[c] - pop0[c];
+    G.dPop = dP; G.dJobs = dJ;
+    this.growth = G;
     let newUrban = 0, streetsChanged = false;
     const seen = new Set();
     // 工地（只用于画面上的塔吊，不参与模拟、不存档）：新城市化或明显加高的街区，记录开工月份
