@@ -136,6 +136,24 @@
   .tg.park { color: #5fd39a; border-color: #5fd39a44; background: #5fd39a12; }
   .tg.hub { color: #d9a3ff; border-color: #d9a3ff44; background: #d9a3ff12; }
 
+  /* ---------- 接驳巴士卡片 ---------- */
+  .busblock { border-top: 1px dashed #ffffff0c; padding-top: 7px; margin-top: 2px; }
+  .bushead { display: flex; align-items: center; gap: 6px; }
+  .bushead .lbl { width: 52px; flex: none; font-size: 10.5px; color: var(--text3); }
+  .buscount { font-size: 10px; color: var(--text3); }
+  .buslist { display: flex; flex-direction: column; gap: 5px; margin-top: 5px; }
+  .buscard { display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--panel2); border-radius: 8px; padding: 5px 7px; font-size: 10.5px; }
+  .buscard .bn { width: 15px; height: 15px; border-radius: 50%; background: #4fb3ff22; color: var(--info); display: grid; place-items: center; font-size: 9px; flex: none; }
+  .buscard .bname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+  .buscard .bpax { color: var(--text3); font-variant-numeric: tabular-nums; flex: none; }
+  .buscard .mini { display: flex; align-items: center; gap: 3px; flex: none; }
+  .buscard .mini button { width: 16px; height: 16px; border: 1px solid var(--line); background: transparent; color: var(--text2); border-radius: 5px; cursor: pointer; font-size: 10px; line-height: 1; padding: 0; }
+  .buscard .mini button:hover { background: #ffffff10; }
+  .buscard .mini b { min-width: 11px; text-align: center; color: var(--text); font-variant-numeric: tabular-nums; }
+  .buscard .xdel { width: 16px; height: 16px; border: 0; background: transparent; color: var(--text3); cursor: pointer; font-size: 10px; padding: 0; flex: none; }
+  .buscard .xdel:hover { color: var(--bad); }
+  .busempty { font-size: 10.5px; color: var(--text3); padding: 3px 0 1px 58px; }
+
   /* ---------- 建设 ---------- */
   .bsec { margin-bottom: 13px; }
   .bsec:last-child { margin-bottom: 0; }
@@ -275,13 +293,10 @@
           </div>
         </div>
         <div class="bsec">
-          <h4>接驳巴士</h4>
+          <h4>接驳站</h4>
           <div class="opt">
-            <span class="lbl">配车</span>
-            <span class="cnt">
-              <button id="busMinus">−</button><b id="busNum">12</b><span>辆</span><button id="busPlus">+</button>
-            </span>
-            <span class="val2" id="busCost">21 万/月</span>
+            <button class="btn" style="flex:1">+ 新建接驳线</button>
+            <span class="val2" id="busBuilt">已建 2 条</span>
           </div>
         </div>
         <div class="bsec">
@@ -317,19 +332,19 @@
     <div class="col info">
       <!-- 经济 -->
       <div class="panel econ">
-        <div class="phead" data-panel><i class="dotmark" style="background:var(--accent)"></i><span class="t">经济</span><span class="s" id="netSummary">本月净 +119 万</span><span class="cv">▾</span></div>
+        <div class="phead" data-panel><i class="dotmark" style="background:var(--accent)"></i><span class="t">经济</span><span class="s" id="netSummary">本月净 +129 万</span><span class="cv">▾</span></div>
         <div class="pbody">
           <div class="econ-grid">
             <!-- 左：运营收支 -->
             <div>
               <h4 class="sub-h">运营收支</h4>
               <div class="money">
-                <div class="net good" id="netVal">+119<i>万/月</i></div>
+                <div class="net good" id="netVal">+129<i>万/月</i></div>
                 <div class="side"><b>回收率 50%</b>票款覆盖一半成本</div>
               </div>
               <div class="clegend">
                 <span><i style="background:#1D9E75"></i>收 <b>1,426</b></span>
-                <span><i style="background:#D4537E"></i>支 <b id="expTotal">1,307</b></span>
+                <span><i style="background:#D4537E"></i>支 <b id="expTotal">1,297</b></span>
                 <span class="muted">近 12 月</span>
               </div>
               <div class="linechart" id="moneyChart"></div>
@@ -342,7 +357,7 @@
                 <div class="out"><h5>支出</h5>
                   <div class="li"><span>运营</span><b>1,240</b></div>
                   <div class="li"><span>维护</span><b>46</b></div>
-                  <div class="li"><span>接驳</span><b id="busExpense">21</b></div>
+                  <div class="li"><span>接驳</span><b id="busExpense">11</b></div>
                 </div>
               </div>
             </div>
@@ -420,6 +435,10 @@
               <span class="tg park">250 m 人民公园</span>
             </span>
           </div>
+          <div class="busblock">
+            <div class="bushead"><span class="lbl">接驳巴士</span><span id="busCount" class="buscount">2 条</span></div>
+            <div id="busList" class="buslist"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -434,7 +453,7 @@
     <li><b>经济内部左右排</b>：运营收支（左，含折线）与物业地价（右）并排，省下一半高度。</li>
     <li><b>换乘信息压成一行</b>：<span class="tg l1">1 号线</span> <span class="tg l2">2 号线</span> <span class="tg walk">300 m 西门口</span>，颜色即含义（蓝/橙是线路，琥珀是站外步行）。</li>
     <li><b>附近设施压成一行</b>：<span class="tg shop">400 m 北京路步行街</span> <span class="tg park">250 m 人民公园</span>，蓝=商业、绿=公园。</li>
-    <li><b>接驳巴士补回建设面板</b>：配车 −/+ 会实时改动右下「支出 · 接驳」与净额——操作与结果隔着两栏也能对上。</li>
+    <li><b>接驳巴士按线路列出</b>：建设面板只负责「建线」，配车与撤销在乘客面板按线调整——建站是建设，调车是运营。配车变化实时改动经济的「支出 · 接驳」与净额。</li>
   </ol>
 </div>
 
@@ -628,24 +647,56 @@
   });
   recalc();
 
-  /* 接驳巴士：配车 → 月成本 → 经济块实时联动 */
-  let busN = 12;
-  const BUS_UNIT = 21 / 12;            // 万元/月/辆
+  /* 接驳巴士：按线路配车（运营），月成本联动经济块 */
+  const BUS = [
+    { n: 1, name: '华南理工大学', pax: 9752, vans: 4 },
+    { n: 2, name: '华师一带（天河西）', pax: 1423, vans: 2 }
+  ];
+  const BUS_UNIT = 1.75;               // 万元/月/辆
   const INC = 1426, OPS = 1240, MAINT = 46;
-  function busRecalc() {
-    const cost = busN * BUS_UNIT;
-    document.getElementById('busNum').textContent = busN;
-    document.getElementById('busCost').textContent = Math.round(cost) + ' 万/月';
-    document.getElementById('busExpense').textContent = Math.round(cost);
-    const exp = OPS + MAINT + cost, net = INC - exp;
+  function busRender() {
+    const list = document.getElementById('busList');
+    const count = document.getElementById('busCount');
+    document.getElementById('busBuilt').textContent = '已建 ' + BUS.length + ' 条';
+    count.textContent = BUS.length ? BUS.length + ' 条' : '';
+    if (!BUS.length) { list.innerHTML = '<div class="busempty">暂无</div>'; }
+    else {
+      list.innerHTML = BUS.map(function (b, i) {
+        return '<div class="buscard" data-i="' + i + '">' +
+          '<span class="bn">' + b.n + '</span>' +
+          '<span class="bname" title="' + b.name + '">' + b.name + '</span>' +
+          '<span class="bpax">' + b.pax.toLocaleString('en') + ' 人次</span>' +
+          '<span class="mini"><button data-a="m">−</button><b>' + b.vans + '</b><button data-a="p">+</button></span>' +
+          '<button class="xdel" data-a="x" title="撤销这条接驳线">✕</button>' +
+          '</div>';
+      }).join('');
+      list.querySelectorAll('.buscard').forEach(function (card) {
+        const i = +card.dataset.i;
+        card.querySelectorAll('button').forEach(function (btn) {
+          btn.onclick = function () {
+            const a = btn.dataset.a;
+            if (a === 'p') BUS[i].vans = Math.min(30, BUS[i].vans + 1);
+            else if (a === 'm') BUS[i].vans = Math.max(0, BUS[i].vans - 1);
+            else BUS.splice(i, 1);
+            busRender(); busEcon();
+          };
+        });
+      });
+    }
+    busEcon();
+  }
+  function busEcon() {
+    let cost = 0;
+    BUS.forEach(function (b) { cost += b.vans * BUS_UNIT; });
+    const busC = Math.round(cost);
+    document.getElementById('busExpense').textContent = busC;
+    const exp = OPS + MAINT + busC, net = INC - exp;
     document.getElementById('expTotal').textContent = Math.round(exp).toLocaleString('en');
     document.getElementById('netVal').innerHTML = (net >= 0 ? '+' : '') + Math.round(net) + '<i>万/月</i>';
     document.getElementById('netVal').className = 'net ' + (net >= 0 ? 'good' : 'bad');
     document.getElementById('netSummary').textContent = '本月净 ' + (net >= 0 ? '+' : '') + Math.round(net) + ' 万';
   }
-  document.getElementById('busPlus').onclick = function () { busN = Math.min(40, busN + 2); busRecalc(); };
-  document.getElementById('busMinus').onclick = function () { busN = Math.max(0, busN - 2); busRecalc(); };
-  busRecalc();
+  busRender();
 
   window.addEventListener('resize', function () { drawMoneyChart(); });
 </script>
