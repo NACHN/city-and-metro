@@ -37,7 +37,7 @@
         ' · OD 记录 ' + (model.od ? model.od.dest.length : 0));
       console.log('  游玩帧率：' + fps.toFixed(1) + ' fps（最长一帧 ' + fmt(worst) + '）');
       console.log('  求解一轮：' + fmt(one) + ' · 连跑两轮：' + fmt(two));
-      console.log('  求解后帧率：' + fps2.toFixed(1) + ' fps（最长一帧 ' + fmt(worst2) + '）');
+      console.log('  求解后帧率：' + (fps2 < 5 ? '读数作废（页面被浏览器节流：后台标签/失焦/控制台占用）' : fps2.toFixed(1) + ' fps（最长一帧 ' + fmt(worst2) + '）'));
       console.log('  内存：' + mem);
       // ④ 拆开看：渲染一帧 vs 模拟一步各占多少（各跑 20 次取平均）
       const timeIt = function (fn, n) { const t0 = T(); for (let i = 0; i < n; i++) fn(); return (T() - t0) / n; };
@@ -66,7 +66,8 @@
       const sum = rows.reduce(function (a, k) { return a + cost[k]; }, 0);
       console.log('  合计 ' + fmt(sum) + ' · 一帧预算 ' + fmt(1000 / Math.max(1, fps)) +
         ' · 未计入 ' + fmt(Math.max(0, 1000 / Math.max(1, fps) - sum)) + '（合成/GC/浏览器自身）');
-      console.log('  判读：① <45 fps 或最长帧 >50 ms → 看「渲染一帧」占比；② 求解 >800 ms → 求解太慢');
+      console.log('  判读：① 渲染一帧 >10 ms 且占总帧 >40% → 画布绘制是瓶颈；② g.update ≈ 每帧预算 → 正常（模拟在吃满预算）；' +
+        '③ 求解 >800 ms → 求解太慢；④ 「未计入」占比高 → 画布合成/GC 开销');
     });
   });
 })();
