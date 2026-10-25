@@ -572,6 +572,23 @@
     return true;
   };
 
+  // 读档时重建上盖商场：Fac.dynamic 是运行时状态、不进存档，刷新页面后会丢。
+  // 丢了就相当于「上盖不再是设施」——没有购物吸引、没有面积份额的竞争、地价也少了 POI 加成。
+  // 注意：city.pop / city.jobs 是随存档恢复的，里面已经含了上盖带来的人口与岗位，
+  // 所以这里只把「已计入」标记补上（devPopDone/devJobsDone），不能再加一遍，否则读档会重复计人口。
+  function restoreDevMalls(g) {
+    const P = CFG.property, Fac = CM.Fac;
+    if (!P || !Fac || !g.net || !g.econ || !g.econ.caps.land) return false;
+    for (const id in g.net.stations) {
+      const s = g.net.stations[id], lv = s.dev | 0;
+      if (!lv) continue;
+      const area = (P.areaBySize[s.size] || 0) * (P.levels[lv] || 0);
+      s.devPopDone = area * (P.resShare || 0) / (P.resAreaPerCap || 40);
+      s.devJobsDone = area * (1 - (P.resShare || 0)) * (P.jobsPerM2 || 0);
+    }
+    return g.syncDevMalls();
+  }
+
   // 上盖商场的实际到访（人次/年）：由 OD 分配得出，模型未算完时为 0
   Game.prototype.mallVisits = function (s) {
     const m = this.model, fd = m && m.facDaily;
@@ -833,6 +850,8 @@
     g.model.setNetwork(g.compiled);
     g.econ = CM.Economy.restore(s.econ);
     g.econ.revOf = function (yy) { return g.fiscalRev(yy); };
+    // 上盖商场重建后再建一次需求表，让它们在第一次求解前就作为目的地节点存在
+    if (restoreDevMalls(g)) { g.model.buildZones(); g.model.buildDemand(); }
     g.model.fare = g.econ.fare;
     g.tasks = CM.Tasks.restore(s.tasks);
     g.events = s.events || []; g.history = s.history || []; g.firedEvents = s.firedEvents || {};
