@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>车站面板 · 重设计原型 v4</title>
+<title>车站面板 · 重设计原型 v5 · 信息与建设分离</title>
 <style>
   :root {
     --panel: #151f2b; --panel2: #1b2634; --line: #26323f;
@@ -16,20 +16,44 @@
   html, body { margin: 0; height: 100%; }
   body {
     background: #0a0f15; color: var(--text); font: 13px/1.5 -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-    display: flex; justify-content: center; padding: 24px 16px 60px;
+    padding: 20px 16px 40px; display: flex; flex-direction: column; align-items: center; gap: 10px;
   }
-  .page { width: 100%; max-width: 440px; }
-  .pagehead { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; padding: 0 4px; }
-  .pagehead h1 { font-size: 13px; margin: 0; color: var(--text2); font-weight: 600; letter-spacing: .04em; }
-  .pagehead span { font-size: 11px; color: var(--text3); }
+  .demobar { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text3); }
+  .demobar button { border: 1px solid var(--line); background: var(--panel2); color: var(--text2); font-size: 11px; padding: 3px 9px; border-radius: 7px; cursor: pointer; }
+  .demobar button.on { background: #ffffff14; color: var(--text); }
+
+  /* ---------- 舞台：左建设 · 右信息 ---------- */
+  .stage { display: flex; gap: 12px; align-items: flex-start; justify-content: center; width: 100%; max-width: 820px; }
+  .col { display: flex; flex-direction: column; width: 100%; }
+  .col.info { max-width: 440px; flex: 1 1 440px; }
+  .col.build { max-width: 330px; flex: 0 0 330px; }
+
+  /* 宽屏：两栏并列；窄屏：单栏切换 */
+  body[data-layout="narrow"] .stage { max-width: 440px; }
+  body[data-layout="narrow"] .stage > .col { display: none; max-width: 100%; flex: 1 1 auto; }
+  body[data-layout="narrow"][data-view="info"] .stage > .col.info { display: flex; }
+  body[data-layout="narrow"][data-view="build"] .stage > .col.build { display: flex; }
+  body[data-layout="wide"].build-hidden .stage > .col.build { display: none; }
+
+  /* 窄屏顶部分段 */
+  .tabbar { display: none; width: 100%; max-width: 440px; }
+  body[data-layout="narrow"] .tabbar { display: flex; }
+  .tabbar .seg2 { flex: 1; }
+
+  .seg2 { display: flex; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
+  .seg2 button { flex: 1; border: 0; background: transparent; color: var(--text2); font-size: 12px; padding: 6px 0; border-radius: 7px; cursor: pointer; }
+  .seg2 button.on { background: #ffffff14; color: var(--text); font-weight: 600; }
 
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
 
+  /* ---------- 信息面板 ---------- */
   .head { padding: 13px 14px 12px; border-bottom: 1px solid var(--line); }
   .head .top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .stname { font-size: 17px; font-weight: 650; letter-spacing: .01em; }
-  .fav { margin-left: auto; color: var(--text3); cursor: pointer; font-size: 15px; line-height: 1; }
-  .fav:hover { color: var(--warn); }
+  .hbtn { margin-left: auto; display: flex; gap: 6px; }
+  .iconbtn { width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid var(--line); background: var(--panel2); color: var(--text2); border-radius: 7px; cursor: pointer; font-size: 12px; }
+  .iconbtn:hover { background: #ffffff10; color: var(--text); }
+  .iconbtn.on { background: var(--accent-bg); border-color: #1D9E7555; color: var(--accent); }
   .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
   .chip { font-size: 11px; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--text2); white-space: nowrap; }
   .chip.l1 { color: var(--info); border-color: #4fb3ff44; background: #4fb3ff14; }
@@ -46,12 +70,10 @@
   .gb { display: none; padding: 2px 14px 14px; }
   .grp.open .gb { display: block; }
 
-  /* ===== 运营收支 ===== */
   .money { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; padding-top: 2px; }
   .money .net { font-size: 26px; font-weight: 720; letter-spacing: -.03em; line-height: 1; }
   .money .net i { font-size: 11px; font-style: normal; font-weight: 500; color: var(--text3); margin-left: 3px; }
   .money .net.good { color: var(--accent); }
-  .money .net.bad { color: var(--bad); }
   .money .side { text-align: right; font-size: 10.5px; color: var(--text3); line-height: 1.5; }
   .money .side b { display: block; font-size: 12px; color: var(--text2); font-weight: 600; }
 
@@ -61,7 +83,7 @@
   .clegend b { color: var(--text); font-weight: 650; font-variant-numeric: tabular-nums; }
   .clegend .muted { margin-left: auto; }
   .linechart { position: relative; height: 98px; margin-top: 4px; }
-  .linechart svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .linechart svg { display: block; width: 100%; height: 100%; }
 
   .split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
   .split .col { font-size: 11px; }
@@ -71,27 +93,21 @@
   .split .col.in .li b { color: #6fd3ae; }
   .split .col.out .li b { color: #e79bb4; }
 
-  /* ===== 客流 ===== */
   .flowtop { display: flex; gap: 12px; align-items: flex-start; }
   .flowleft { flex: 1; min-width: 0; }
   .flowright { width: 128px; flex: none; display: flex; gap: 8px; align-items: center; }
-
   .bars { display: flex; align-items: flex-end; gap: 2px; height: 86px; margin-top: 2px; }
   .bars .b { flex: 1; background: linear-gradient(180deg, #1D9E75cc, #1D9E7522); border-radius: 2px 2px 0 0; min-height: 2px; cursor: crosshair; transition: filter .12s; }
   .bars .b.pk { background: linear-gradient(180deg, #BA7517dd, #BA751722); }
   .bars .b:hover { filter: brightness(1.45); }
   .barlab { display: flex; justify-content: space-between; font-size: 10px; color: var(--text3); margin-top: 2px; }
 
-  /* 半圆：圆弧在左、开口朝右 */
   .gauge { width: 48px; height: 82px; flex: none; display: block; }
   .gauge .track { fill: none; stroke: #ffffff10; stroke-width: 6; stroke-linecap: round; }
-  .gauge .val { fill: none; stroke-width: 6; stroke-linecap: round; transition: stroke-dasharray .45s ease, filter .12s; }
+  .gauge .val { fill: none; stroke-width: 6; stroke-linecap: round; transition: stroke-dasharray .45s ease; }
   .gauge .track, .gauge .val { pointer-events: none; }
   .gauge .hit { fill: none; stroke: transparent; stroke-width: 15; cursor: crosshair; pointer-events: stroke; }
-  .gauge .hit:hover + .val, .gauge .val:hover { filter: brightness(1.3); }
-  .gauge .r1 { stroke: #1D9E75; }
-  .gauge .r2 { stroke: #BA7517; }
-  .gauge .r3 { stroke: #4fb3ff; }
+  .gauge .r1 { stroke: #1D9E75; } .gauge .r2 { stroke: #BA7517; } .gauge .r3 { stroke: #4fb3ff; }
 
   .gdata { flex: 1; min-width: 0; }
   .gdata .big { font-size: 19px; font-weight: 720; letter-spacing: -.03em; line-height: 1.05; }
@@ -131,15 +147,47 @@
   .fac { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 12px; }
   .fac + .fac { border-top: 1px dashed #ffffff0c; }
   .fac .d { margin-left: auto; color: var(--text3); font-size: 11px; }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
-  .btn { border: 1px solid var(--line); background: var(--panel2); color: var(--text); font-size: 12px; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
-  .btn:hover { background: #ffffff0c; }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: #04120c; font-weight: 600; }
-  .seg { display: inline-flex; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 2px; margin-bottom: 9px; }
-  .seg button { border: 0; background: transparent; color: var(--text2); font-size: 11.5px; padding: 4px 10px; border-radius: 6px; cursor: pointer; }
-  .seg button.on { background: #ffffff12; color: var(--text); }
 
-  /* 通用 hover 提示 */
+  /* ---------- 建设面板 ---------- */
+  .bhead { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .bhead .t { font-size: 13px; font-weight: 650; }
+  .bhead .close { margin-left: auto; }
+  .bbody { padding: 12px 14px 14px; max-height: calc(100vh - 240px); overflow: auto; }
+  .bsec { margin-bottom: 16px; }
+  .bsec > h4 { margin: 0 0 7px; font-size: 10.5px; color: var(--text3); font-weight: 500; letter-spacing: .02em; }
+
+  .cards3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .card { border: 1px solid var(--line); background: var(--panel2); border-radius: 9px; padding: 8px 7px; cursor: pointer; }
+  .card:hover { border-color: #3b4d63; }
+  .card.on { border-color: var(--accent); background: var(--accent-bg); }
+  .card b { display: block; font-size: 12px; font-weight: 650; }
+  .card small { display: block; font-size: 9.5px; color: var(--text3); margin-top: 2px; line-height: 1.35; }
+
+  .opt { display: flex; align-items: center; gap: 8px; }
+  .opt .lbl { width: 52px; font-size: 11px; color: var(--text3); flex: none; }
+  .opt .seg2 { flex: 1; }
+  .opt .seg2 button { font-size: 11px; padding: 5px 0; }
+
+  .stepper { display: flex; align-items: center; gap: 8px; }
+  .stepper .lbl { width: 52px; font-size: 11px; color: var(--text3); flex: none; }
+  .stepper .dots { display: flex; gap: 4px; flex: 1; }
+  .stepper .dot { flex: 1; height: 6px; border-radius: 3px; background: #ffffff12; cursor: pointer; }
+  .stepper .dot.on { background: var(--accent); }
+  .stepper .val { width: 74px; text-align: right; font-size: 11px; color: var(--text2); font-variant-numeric: tabular-nums; }
+
+  .sum { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text2); padding: 3px 0; }
+  .sum b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+  .bfoot { padding: 10px 14px 12px; background: var(--panel2); border-top: 1px solid var(--line); }
+  .bfoot .tot { display: flex; align-items: baseline; gap: 6px; font-size: 11px; color: var(--text3); }
+  .bfoot .tot b { font-size: 19px; font-weight: 720; color: var(--text); letter-spacing: -.02em; }
+  .bfoot .tot em { font-style: normal; margin-left: auto; color: var(--text3); }
+  .bfoot .btns { display: flex; gap: 8px; margin-top: 8px; }
+  .btn { border: 1px solid var(--line); background: var(--panel2); color: var(--text); font-size: 12px; padding: 7px 12px; border-radius: 8px; cursor: pointer; }
+  .btn:hover { background: #ffffff0c; }
+  .btn.primary { flex: 1; background: var(--accent); border-color: var(--accent); color: #04120c; font-weight: 650; }
+
+  /* 提示 */
   .tip {
     position: fixed; z-index: 99; pointer-events: none; opacity: 0; transform: translate(-50%, -100%);
     background: #0b1219f2; border: 1px solid #33475c; border-radius: 8px; padding: 6px 8px;
@@ -153,187 +201,298 @@
   .tip .r span { color: var(--text2); }
   .tip .r em { font-style: normal; margin-left: auto; font-variant-numeric: tabular-nums; }
 
-  .spec { margin-top: 18px; padding: 12px 14px; border: 1px dashed var(--line); border-radius: 12px; color: var(--text3); font-size: 11.5px; line-height: 1.6; }
+  .spec { width: 100%; max-width: 820px; margin-top: 14px; padding: 12px 14px; border: 1px dashed var(--line); border-radius: 12px; color: var(--text3); font-size: 11.5px; line-height: 1.6; }
   .spec b { color: var(--text2); }
   .spec ol { margin: 6px 0 0; padding-left: 18px; }
 </style>
 </head>
-<body>
-<div class="page">
-  <div class="pagehead"><h1>车站面板 · 重设计原型 v4</h1><span>12 月收支折线 · 图表可交互</span></div>
+<body data-layout="wide" data-view="info">
 
-  <div class="panel">
-    <div class="head">
-      <div class="top">
-        <span class="stname">公园前</span>
-        <span class="chip xfer">⇄ 换乘站</span>
-        <span class="chip">中型站 · 地下</span>
-        <span class="fav" title="收藏">☆</span>
+<div class="demobar">
+  <span>演示布局：</span>
+  <button id="btnWide" class="on">宽屏（双栏）</button>
+  <button id="btnNarrow">窄屏（切页）</button>
+  <span id="hint" style="opacity:.7">点右上角 🔨 切换建设面板</span>
+</div>
+
+<div class="tabbar" style="margin-bottom:2px">
+  <div class="seg2" id="tabbar">
+    <button data-view="info" class="on">信息</button>
+    <button data-view="build">建设</button>
+  </div>
+</div>
+
+<div class="stage">
+  <!-- ================= 建设面板（操作） ================= -->
+  <div class="col build">
+    <div class="panel">
+      <div class="bhead">
+        <span class="t">建设 · 公园前</span>
+        <button class="iconbtn close" id="btnCloseBuild" title="关闭">✕</button>
       </div>
-      <div class="chips">
-        <span class="chip l1">● 1 号线</span>
-        <span class="chip l2">● 2 号线</span>
-        <span class="chip">1995 年启用</span>
-      </div>
-    </div>
-
-    <!-- ① 运营收支 -->
-    <div class="grp open" data-grp>
-      <div class="gh"><span class="cv">▶</span><span class="t">运营收支</span><span class="s">本月 +140 万</span></div>
-      <div class="gb">
-        <div class="money">
-          <div class="net good">+140<i>万元 / 月</i></div>
-          <div class="side"><b>票款回收率 50%</b>票款只覆盖一半运营成本</div>
-        </div>
-
-        <div class="clegend">
-          <span><i style="background:#1D9E75"></i>收入 <b>1,426</b></span>
-          <span><i style="background:#D4537E"></i>支出 <b>1,286</b></span>
-          <span class="muted">近 12 个月 · 万元</span>
-        </div>
-        <div class="linechart" id="moneyChart"></div>
-
-        <div class="split">
-          <div class="col in">
-            <h4>收入构成</h4>
-            <div class="li"><span>票款</span><b>620</b></div>
-            <div class="li"><span>运营补贴</span><b>620</b></div>
-            <div class="li"><span>物业租金</span><b>186</b></div>
-          </div>
-          <div class="col out">
-            <h4>支出构成</h4>
-            <div class="li"><span>运营成本</span><b>1,240</b></div>
-            <div class="li"><span>设施维护</span><b>46</b></div>
-            <div class="li"><span>接驳巴士</span><b>0</b></div>
+      <div class="bbody">
+        <div class="bsec">
+          <h4>车站规模</h4>
+          <div class="cards3" id="sizeCards">
+            <div class="card" data-size="S"><b>小型</b><small>1.5 亿 · 站台 1 编组</small></div>
+            <div class="card on" data-size="M"><b>中型</b><small>2.5 亿 · 站台 2 编组</small></div>
+            <div class="card" data-size="L"><b>大型</b><small>4.0 亿 · 站台 3 编组</small></div>
           </div>
         </div>
-      </div>
-    </div>
 
-    <!-- ② 客流 -->
-    <div class="grp open" data-grp>
-      <div class="gh"><span class="cv">▶</span><span class="t">客流</span><span class="s">工作日 8.6 万 · 周末 6.1 万</span></div>
-      <div class="gb">
-        <div class="seg" data-seg>
-          <button class="on" data-day="wd">工作日</button>
-          <button data-day="we">周末</button>
-        </div>
-
-        <div class="flowtop">
-          <div class="flowleft">
-            <div class="bars" id="bars"></div>
-            <div class="barlab"><span>6 时</span><span>12</span><span>18</span><span>23 时</span></div>
-          </div>
-
-          <div class="flowright">
-            <svg class="gauge" viewBox="0 0 48 82" aria-label="步行覆盖、换乘占比、站台饱和度的三层半圆环">
-              <path class="track" d="M 36 8 A 33 33 0 0 0 36 74" pathLength="100"></path>
-              <path class="hit" d="M 36 8 A 33 33 0 0 0 36 74" data-k="步行覆盖" data-v="4.2 / 8.0 万人（52%）" data-c="#1D9E75"></path>
-              <path class="val r1" id="arc1" d="M 36 8 A 33 33 0 0 0 36 74" pathLength="100" stroke-dasharray="0 100"></path>
-              <path class="track" d="M 36 16 A 25 25 0 0 0 36 66" pathLength="100"></path>
-              <path class="hit" d="M 36 16 A 25 25 0 0 0 36 66" data-k="换乘占比" data-v="38%" data-c="#4fb3ff"></path>
-              <path class="val r3" id="arc3" d="M 36 16 A 25 25 0 0 0 36 66" pathLength="100" stroke-dasharray="0 100"></path>
-              <path class="track" d="M 36 24 A 17 17 0 0 0 36 58" pathLength="100"></path>
-              <path class="hit" d="M 36 24 A 17 17 0 0 0 36 58" data-k="站台饱和度" data-v="0.92（接近饱和）" data-c="#BA7517"></path>
-              <path class="val r2" id="arc2" d="M 36 24 A 17 17 0 0 0 36 58" pathLength="100" stroke-dasharray="0 100"></path>
-            </svg>
-
-            <div class="gdata">
-              <div class="big">4.2<i>万</i></div>
-              <div class="cap">15 分钟步行覆盖</div>
-              <div class="glegend">
-                <span><i style="background:#1D9E75"></i>覆盖 <b>52%</b></span>
-                <span><i style="background:#4fb3ff"></i>换乘 <b>38%</b></span>
-                <span><i style="background:#BA7517"></i>饱和度 <b>0.92</b></span>
-              </div>
-              <div class="gtags">
-                <span class="gtag on">出入口 3 级</span>
-                <span class="gtag on">P+R 480</span>
-              </div>
+        <div class="bsec">
+          <h4>施工方式</h4>
+          <div class="opt">
+            <div class="seg2" id="typeSeg">
+              <button data-type="underground" class="on">地下</button>
+              <button data-type="surface">地面 −60%</button>
+              <button data-type="elevated">高架 −30%</button>
             </div>
           </div>
         </div>
 
-        <div class="trio">
-          <div class="c"><div class="ar">↑</div><b>4.2<i>万</i></b><small>进站</small></div>
-          <div class="c mid"><div class="ar">⇄</div><b>3.3<i>万</i></b><small>换乘</small></div>
-          <div class="c"><div class="ar">↓</div><b>4.4<i>万</i></b><small>出站</small></div>
+        <div class="bsec">
+          <h4>车站配套</h4>
+          <div class="stepper" style="margin-bottom:8px">
+            <span class="lbl">出入口</span>
+            <span class="dots" data-dots="exit">
+              <i class="dot on" data-v="0"></i><i class="dot" data-v="1"></i><i class="dot" data-v="2"></i><i class="dot" data-v="3"></i>
+            </span>
+            <span class="val" id="exitVal">0 级 · 0</span>
+          </div>
+          <div class="opt">
+            <span class="lbl">P+R</span>
+            <span class="seg2" id="prSeg">
+              <button data-pr="0" class="on">无</button>
+              <button data-pr="1">小型</button>
+              <button data-pr="2">中型</button>
+              <button data-pr="3">大型</button>
+            </span>
+          </div>
         </div>
 
-        <div class="mix" id="mix"></div>
-        <div class="mixlegend" id="mixlegend"></div>
-      </div>
-    </div>
+        <div class="bsec">
+          <h4>上盖开发</h4>
+          <div class="cards3">
+            <div class="card on" data-dev="0"><b>不开发</b><small>—</small></div>
+            <div class="card" data-dev="1"><b>一级</b><small>1.6 万㎡ · 0.9 亿</small></div>
+            <div class="card" data-dev="2"><b>二级</b><small>4.0 万㎡ · 2.2 亿</small></div>
+            <div class="card" data-dev="3"><b>三级</b><small>7.6 万㎡ · 4.1 亿</small></div>
+          </div>
+        </div>
 
-    <div class="grp" data-grp>
-      <div class="gh"><span class="cv">▶</span><span class="t">换乘关系</span><span class="s">站内换乘 1 ⇄ 2 号线</span></div>
-      <div class="gb">
-        <div class="kv"><span class="k">站内换乘</span><span class="v">1 号线 ⇄ 2 号线 · 约 2 分钟</span></div>
-        <div class="kv"><span class="k">站外换乘</span><span class="v">步行 300 m 至 西门口</span></div>
-        <div class="note warn"><b>站台接近饱和（0.92）。</b>再加密班次收益有限，考虑扩为大型站或新线分流。</div>
-      </div>
-    </div>
+        <div class="bsec">
+          <h4>其他</h4>
+          <div class="opt" style="gap:8px">
+            <button class="btn" style="flex:1">改名</button>
+            <button class="btn" style="flex:1">移动车站</button>
+          </div>
+        </div>
 
-    <div class="grp" data-grp>
-      <div class="gh"><span class="cv">▶</span><span class="t">物业与地价</span><span class="s">二级上盖 · 回收期 11.4 年</span></div>
-      <div class="gb">
-        <div class="kv"><span class="k">上盖开发</span><span class="v">二级 · 商业 2.4 万㎡ / 住宅 1.6 万㎡</span></div>
-        <div class="kv"><span class="k">月租金（满租）</span><span class="v">186 万元</span></div>
-        <div class="kv"><span class="k">回收期</span><span class="v warn">11.4 年</span></div>
-        <div class="kv"><span class="k">站内地价</span><span class="v">8,420 元/㎡</span></div>
-        <div class="kv"><span class="k">周边 500 m 均值</span><span class="v muted">6,930 元/㎡</span></div>
-        <div class="kv"><span class="k">站点溢价</span><span class="v good">1.21×</span></div>
+        <div class="bsec" style="margin-bottom:0">
+          <h4>费用</h4>
+          <div class="sum"><span>土建</span><b id="sumCivil">2.50 亿</b></div>
+          <div class="sum"><span>配套</span><b id="sumFac">0.00 亿</b></div>
+          <div class="sum"><span>上盖</span><b id="sumDev">0.00 亿</b></div>
+        </div>
       </div>
-    </div>
 
-    <div class="grp" data-grp>
-      <div class="gh"><span class="cv">▶</span><span class="t">附近的重要设施</span><span class="s">2 处</span></div>
-      <div class="gb">
-        <div class="fac"><span>🛍</span><span>北京路步行街</span><span class="d">步行 400 m</span></div>
-        <div class="fac"><span>🌳</span><span>人民公园</span><span class="d">步行 250 m</span></div>
-      </div>
-    </div>
-
-    <div class="grp" data-grp>
-      <div class="gh"><span class="cv">▶</span><span class="t">修改车站</span><span class="s">规模 / 名称 / 移动</span></div>
-      <div class="gb">
-        <div class="kv"><span class="k">当前规模</span><span class="v">中型站（站台 2 编组）</span></div>
-        <div class="kv"><span class="k">改建为大型站</span><span class="v muted">约 1.8 亿元</span></div>
-        <div class="row">
-          <button class="btn">改名</button>
-          <button class="btn">移动车站</button>
-          <button class="btn primary">扩为大型站</button>
+      <div class="bfoot">
+        <div class="tot"><span>合计</span><b id="sumAll">2.50 亿</b><em>可用 8.4 亿</em></div>
+        <div class="btns">
+          <button class="btn">取消</button>
+          <button class="btn primary">确认建设</button>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="spec">
-    <b>v4 改了什么</b>
-    <ol>
-      <li><b>去掉两条进度条</b>——它们只表达「收入 1426 / 支出 1286」，信息量低于一张 12 个月的走势。</li>
-      <li><b>换成 12 个月收支折线</b>：两条线同轴，<b>hover 显示当月收入、支出与净额</b>，并高亮该月。</li>
-      <li><b>小时客流柱可 hover</b>：显示「14 时 · 9.6 千人」，柱子提亮。</li>
-      <li><b>半圆三层都能 hover</b>：每一层的名称与数值（覆盖 4.2/8.0 万、换乘 38%、饱和度 0.92）。</li>
-      <li>提示框是统一的浮层（跟随鼠标、跟随主题），不是浏览器原生的 title 气泡。</li>
-    </ol>
+  <!-- ================= 信息面板（信息） ================= -->
+  <div class="col info">
+    <div class="panel">
+      <div class="head">
+        <div class="top">
+          <span class="stname">公园前</span>
+          <span class="chip xfer">⇄ 换乘站</span>
+          <div class="hbtn">
+            <button class="iconbtn" id="btnFav" title="收藏">☆</button>
+            <button class="iconbtn" id="btnBuild" title="建设 / 改建">🔨</button>
+          </div>
+        </div>
+        <div class="chips">
+          <span class="chip l1">● 1 号线</span>
+          <span class="chip l2">● 2 号线</span>
+          <span class="chip">中型站 · 地下</span>
+          <span class="chip">1995 年启用</span>
+        </div>
+      </div>
+
+      <div class="grp open" data-grp>
+        <div class="gh"><span class="cv">▶</span><span class="t">运营收支</span><span class="s">本月 +140 万</span></div>
+        <div class="gb">
+          <div class="money">
+            <div class="net good">+140<i>万元 / 月</i></div>
+            <div class="side"><b>票款回收率 50%</b>票款只覆盖一半运营成本</div>
+          </div>
+          <div class="clegend">
+            <span><i style="background:#1D9E75"></i>收入 <b>1,426</b></span>
+            <span><i style="background:#D4537E"></i>支出 <b>1,286</b></span>
+            <span class="muted">近 12 个月 · 万元</span>
+          </div>
+          <div class="linechart" id="moneyChart"></div>
+          <div class="split">
+            <div class="col in">
+              <h4>收入构成</h4>
+              <div class="li"><span>票款</span><b>620</b></div>
+              <div class="li"><span>运营补贴</span><b>620</b></div>
+              <div class="li"><span>物业租金</span><b>186</b></div>
+            </div>
+            <div class="col out">
+              <h4>支出构成</h4>
+              <div class="li"><span>运营成本</span><b>1,240</b></div>
+              <div class="li"><span>设施维护</span><b>46</b></div>
+              <div class="li"><span>接驳巴士</span><b>0</b></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grp open" data-grp>
+        <div class="gh"><span class="cv">▶</span><span class="t">客流</span><span class="s">工作日 8.6 万 · 周末 6.1 万</span></div>
+        <div class="gb">
+          <div class="seg2" style="max-width:180px;margin-bottom:9px" id="daySeg">
+            <button data-day="wd" class="on">工作日</button>
+            <button data-day="we">周末</button>
+          </div>
+          <div class="flowtop">
+            <div class="flowleft">
+              <div class="bars" id="bars"></div>
+              <div class="barlab"><span>6 时</span><span>12</span><span>18</span><span>23 时</span></div>
+            </div>
+            <div class="flowright">
+              <svg class="gauge" viewBox="0 0 48 82" aria-label="步行覆盖、换乘占比、站台饱和度的三层半圆环">
+                <path class="track" d="M 36 8 A 33 33 0 0 0 36 74" pathLength="100"></path>
+                <path class="hit" d="M 36 8 A 33 33 0 0 0 36 74" data-k="步行覆盖" data-v="4.2 / 8.0 万人（52%）" data-c="#1D9E75"></path>
+                <path class="val r1" id="arc1" d="M 36 8 A 33 33 0 0 0 36 74" pathLength="100" stroke-dasharray="0 100"></path>
+                <path class="track" d="M 36 16 A 25 25 0 0 0 36 66" pathLength="100"></path>
+                <path class="hit" d="M 36 16 A 25 25 0 0 0 36 66" data-k="换乘占比" data-v="38%" data-c="#4fb3ff"></path>
+                <path class="val r3" id="arc3" d="M 36 16 A 25 25 0 0 0 36 66" pathLength="100" stroke-dasharray="0 100"></path>
+                <path class="track" d="M 36 24 A 17 17 0 0 0 36 58" pathLength="100"></path>
+                <path class="hit" d="M 36 24 A 17 17 0 0 0 36 58" data-k="站台饱和度" data-v="0.92（接近饱和）" data-c="#BA7517"></path>
+                <path class="val r2" id="arc2" d="M 36 24 A 17 17 0 0 0 36 58" pathLength="100" stroke-dasharray="0 100"></path>
+              </svg>
+              <div class="gdata">
+                <div class="big">4.2<i>万</i></div>
+                <div class="cap">15 分钟步行覆盖</div>
+                <div class="glegend">
+                  <span><i style="background:#1D9E75"></i>覆盖 <b>52%</b></span>
+                  <span><i style="background:#4fb3ff"></i>换乘 <b>38%</b></span>
+                  <span><i style="background:#BA7517"></i>饱和度 <b>0.92</b></span>
+                </div>
+                <div class="gtags">
+                  <span class="gtag on">出入口 3 级</span>
+                  <span class="gtag on">P+R 480</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="trio">
+            <div class="c"><div class="ar">↑</div><b>4.2<i>万</i></b><small>进站</small></div>
+            <div class="c mid"><div class="ar">⇄</div><b>3.3<i>万</i></b><small>换乘</small></div>
+            <div class="c"><div class="ar">↓</div><b>4.4<i>万</i></b><small>出站</small></div>
+          </div>
+          <div class="mix" id="mix"></div>
+          <div class="mixlegend" id="mixlegend"></div>
+        </div>
+      </div>
+
+      <div class="grp" data-grp>
+        <div class="gh"><span class="cv">▶</span><span class="t">换乘关系</span><span class="s">站内换乘 1 ⇄ 2 号线</span></div>
+        <div class="gb">
+          <div class="kv"><span class="k">站内换乘</span><span class="v">1 号线 ⇄ 2 号线 · 约 2 分钟</span></div>
+          <div class="kv"><span class="k">站外换乘</span><span class="v">步行 300 m 至 西门口</span></div>
+          <div class="note warn"><b>站台接近饱和（0.92）。</b>再加密班次收益有限，考虑扩为大型站或新线分流。</div>
+        </div>
+      </div>
+
+      <div class="grp" data-grp>
+        <div class="gh"><span class="cv">▶</span><span class="t">物业与地价</span><span class="s">未开发 · 地价 8,420</span></div>
+        <div class="gb">
+          <div class="kv"><span class="k">上盖开发</span><span class="v muted">未开发</span></div>
+          <div class="kv"><span class="k">站内地价</span><span class="v">8,420 元/㎡</span></div>
+          <div class="kv"><span class="k">周边 500 m 均值</span><span class="v muted">6,930 元/㎡</span></div>
+          <div class="kv"><span class="k">站点溢价</span><span class="v good">1.21×</span></div>
+        </div>
+      </div>
+
+      <div class="grp" data-grp>
+        <div class="gh"><span class="cv">▶</span><span class="t">附近的重要设施</span><span class="s">2 处</span></div>
+        <div class="gb">
+          <div class="fac"><span>🛍</span><span>北京路步行街</span><span class="d">步行 400 m</span></div>
+          <div class="fac"><span>🌳</span><span>人民公园</span><span class="d">步行 250 m</span></div>
+        </div>
+      </div>
+    </div>
   </div>
+</div>
+
+<div class="spec">
+  <b>v5 的核心：信息与操作分家</b>
+  <ol>
+    <li><b>宽屏：左建设 / 右信息</b>两栏并列，建设面板固定 330px，信息面板 440px。互不干扰，边看数边改。</li>
+    <li><b>窄屏：顶部「信息 / 建设」切页</b>，同一时间只显示一个——原来那种「8 个框 + 修改车站」的长列表彻底消失。</li>
+    <li><b>标题栏只有一个 🔨 图标</b>：宽屏切显示/隐藏，窄屏切到建设页。它是唯一的双向入口。</li>
+    <li><b>「修改车站」从信息面板移除</b>，规模 / 施工方式 / 配套 / 上盖 / 改名 / 移动全部搬进建设面板，并带实时造价合计。</li>
+    <li>信息面板因此只剩四块：运营收支、客流、换乘关系、物业与地价、附近设施——全是只读。</li>
+  </ol>
 </div>
 
 <div class="tip" id="tip"></div>
 
 <script>
+  /* ---------- 布局切换 ---------- */
+  const body = document.body;
+  function setLayout(v) {
+    body.dataset.layout = v;
+    document.getElementById('btnWide').classList.toggle('on', v === 'wide');
+    document.getElementById('btnNarrow').classList.toggle('on', v === 'narrow');
+    document.getElementById('hint').textContent = v === 'wide' ? '点右上角 🔨 显示/隐藏左侧建设面板' : '点右上角 🔨 或顶部标签切换到建设';
+    if (v === 'wide') body.classList.remove('build-hidden');
+    setTimeout(drawMoneyChart, 0);
+  }
+  document.getElementById('btnWide').onclick = function () { setLayout('wide'); };
+  document.getElementById('btnNarrow').onclick = function () { setLayout('narrow'); };
+
+  function setView(v) {
+    body.dataset.view = v;
+    document.querySelectorAll('#tabbar button').forEach(function (b) { b.classList.toggle('on', b.dataset.view === v); });
+  }
+  document.querySelectorAll('#tabbar button').forEach(function (b) {
+    b.onclick = function () { setView(b.dataset.view); };
+  });
+
+  document.getElementById('btnBuild').onclick = function () {
+    if (body.dataset.layout === 'wide') {
+      body.classList.toggle('build-hidden');
+      this.classList.toggle('on', !body.classList.contains('build-hidden'));
+    } else {
+      setView(body.dataset.view === 'build' ? 'info' : 'build');
+    }
+  };
+  document.getElementById('btnCloseBuild').onclick = function () {
+    if (body.dataset.layout === 'wide') body.classList.add('build-hidden');
+    else setView('info');
+  };
+
+  /* ---------- 折叠 ---------- */
   document.querySelectorAll('[data-grp]').forEach(function (g) {
     g.querySelector('.gh').addEventListener('click', function () { g.classList.toggle('open'); });
   });
 
-  /* ---------- 统一提示框 ---------- */
+  /* ---------- 提示框 ---------- */
   const tip = document.getElementById('tip');
   function showTip(html, x, y) {
-    tip.innerHTML = html;
-    tip.style.left = x + 'px';
-    tip.style.top = (y - 10) + 'px';
-    tip.classList.add('show');
+    tip.innerHTML = html; tip.style.left = x + 'px'; tip.style.top = (y - 10) + 'px'; tip.classList.add('show');
   }
   function hideTip() { tip.classList.remove('show'); }
   function bindTip(el, html) {
@@ -342,71 +501,54 @@
     el.addEventListener('mouseleave', hideTip);
   }
 
-  /* ---------- 12 个月收支折线 ---------- */
+  /* ---------- 收支折线 ---------- */
   const MONEY = {
     months: ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'],
     income: [1198, 1216, 1284, 1302, 1268, 1330, 1388, 1402, 1366, 1408, 1420, 1426],
     expense: [1140, 1162, 1208, 1224, 1186, 1238, 1272, 1284, 1250, 1272, 1278, 1286]
   };
   const COL = { income: '#1D9E75', expense: '#D4537E' };
-
   function drawMoneyChart() {
     const box = document.getElementById('moneyChart');
     const W = box.clientWidth || 380, H = box.clientHeight || 98;
-    const padL = 26, padR = 8, padT = 8, padB = 16;
-    const iw = W - padL - padR, ih = H - padT - padB;
+    const padL = 26, padR = 8, padT = 8, padB = 16, iw = W - padL - padR, ih = H - padT - padB;
     const all = MONEY.income.concat(MONEY.expense);
     const lo = Math.min.apply(null, all), hi = Math.max.apply(null, all);
-    const pad = (hi - lo) * 0.25 || 20;
-    const y0 = lo - pad, y1 = hi + pad;
-    const X = function (i) { return padL + iw * i / (MONEY.months.length - 1); };
+    const pad = (hi - lo) * 0.25 || 20, y0 = lo - pad, y1 = hi + pad, n = MONEY.months.length;
+    const X = function (i) { return padL + iw * i / (n - 1); };
     const Y = function (v) { return padT + ih * (1 - (v - y0) / (y1 - y0)); };
-    const path = function (arr) {
-      return arr.map(function (v, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); }).join(' ');
-    };
+    const path = function (a) { return a.map(function (v, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); }).join(' '); };
     const grid = [y0 + (y1 - y0) * 0.85, y0 + (y1 - y0) * 0.45, y0 + (y1 - y0) * 0.05];
-
-    box.innerHTML =
-      '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' +
-        grid.map(function (g) {
-          return '<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + Y(g).toFixed(1) + '" y2="' + Y(g).toFixed(1) + '" stroke="#ffffff0d" stroke-width="1"></line>' +
-                 '<text x="0" y="' + (Y(g) + 3).toFixed(1) + '" fill="#6b7f95" font-size="9">' + Math.round(g) + '</text>';
-        }).join('') +
-        '<path d="' + path(MONEY.income) + '" fill="none" stroke="' + COL.income + '" stroke-width="2" stroke-linejoin="round"></path>' +
-        '<path d="' + path(MONEY.expense) + '" fill="none" stroke="' + COL.expense + '" stroke-width="2" stroke-linejoin="round" stroke-dasharray="4 3"></path>' +
-        '<line id="mguide" x1="0" x2="0" y1="' + padT + '" y2="' + (padT + ih) + '" stroke="#ffffff33" stroke-width="1" stroke-dasharray="3 2" style="opacity:0"></line>' +
-        '<circle id="md1" r="3.2" fill="' + COL.income + '" stroke="#0b1219" stroke-width="1.5" style="opacity:0"></circle>' +
-        '<circle id="md2" r="3.2" fill="' + COL.expense + '" stroke="#0b1219" stroke-width="1.5" style="opacity:0"></circle>' +
-        '<rect id="mhit" x="' + padL + '" y="0" width="' + iw + '" height="' + H + '" fill="transparent" style="cursor:crosshair"></rect>' +
-      '</svg>';
-
-    const hit = box.querySelector('#mhit');
-    const guide = box.querySelector('#mguide'), d1 = box.querySelector('#md1'), d2 = box.querySelector('#md2');
-    const n = MONEY.months.length;
-
+    box.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '">' +
+      grid.map(function (g) {
+        return '<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + Y(g).toFixed(1) + '" y2="' + Y(g).toFixed(1) + '" stroke="#ffffff0d"></line>' +
+               '<text x="0" y="' + (Y(g) + 3).toFixed(1) + '" fill="#6b7f95" font-size="9">' + Math.round(g) + '</text>';
+      }).join('') +
+      '<path d="' + path(MONEY.income) + '" fill="none" stroke="' + COL.income + '" stroke-width="2" stroke-linejoin="round"></path>' +
+      '<path d="' + path(MONEY.expense) + '" fill="none" stroke="' + COL.expense + '" stroke-width="2" stroke-dasharray="4 3" stroke-linejoin="round"></path>' +
+      '<line id="mguide" y1="' + padT + '" y2="' + (padT + ih) + '" stroke="#ffffff33" stroke-dasharray="3 2" style="opacity:0"></line>' +
+      '<circle id="md1" r="3.2" fill="' + COL.income + '" stroke="#0b1219" stroke-width="1.5" style="opacity:0"></circle>' +
+      '<circle id="md2" r="3.2" fill="' + COL.expense + '" stroke="#0b1219" stroke-width="1.5" style="opacity:0"></circle>' +
+      '<rect id="mhit" x="' + padL + '" y="0" width="' + iw + '" height="' + H + '" fill="transparent" style="cursor:crosshair"></rect></svg>';
+    const hit = box.querySelector('#mhit'), guide = box.querySelector('#mguide'), d1 = box.querySelector('#md1'), d2 = box.querySelector('#md2');
     hit.addEventListener('mousemove', function (e) {
       const r = box.getBoundingClientRect();
-      const rel = Math.max(0, Math.min(1, (e.clientX - r.left - padL) / iw));
-      const i = Math.round(rel * (n - 1));
+      const i = Math.round(Math.max(0, Math.min(1, (e.clientX - r.left - padL) / iw)) * (n - 1));
       const inc = MONEY.income[i], exp = MONEY.expense[i], net = inc - exp;
       guide.setAttribute('x1', X(i)); guide.setAttribute('x2', X(i)); guide.style.opacity = 1;
       d1.setAttribute('cx', X(i)); d1.setAttribute('cy', Y(inc)); d1.style.opacity = 1;
       d2.setAttribute('cx', X(i)); d2.setAttribute('cy', Y(exp)); d2.style.opacity = 1;
-      showTip(
-        '<b>' + MONEY.months[i] + '</b>' +
+      showTip('<b>' + MONEY.months[i] + '</b>' +
         '<div class="r"><i style="background:' + COL.income + '"></i><span>收入</span><em>' + inc + '</em></div>' +
         '<div class="r"><i style="background:' + COL.expense + '"></i><span>支出</span><em>' + exp + '</em></div>' +
-        '<div class="r"><span>净额</span><em style="color:' + (net >= 0 ? '#1D9E75' : '#D4537E') + '">' + (net >= 0 ? '+' : '') + net + '</em></div>',
-        e.clientX, e.clientY);
+        '<div class="r"><span>净额</span><em style="color:' + (net >= 0 ? '#1D9E75' : '#D4537E') + '">' + (net >= 0 ? '+' : '') + net + '</em></div>', e.clientX, e.clientY);
     });
-    hit.addEventListener('mouseleave', function () {
-      guide.style.opacity = 0; d1.style.opacity = 0; d2.style.opacity = 0; hideTip();
-    });
+    hit.addEventListener('mouseleave', function () { guide.style.opacity = 0; d1.style.opacity = 0; d2.style.opacity = 0; hideTip(); });
   }
   drawMoneyChart();
-  window.addEventListener('resize', drawMoneyChart);
+  window.addEventListener('resize', function () { drawMoneyChart(); });
 
-  /* ---------- 客流：小时柱 ---------- */
+  /* ---------- 客流柱 / 半圆 ---------- */
   const D = {
     wd: { hours: [2, 6, 22, 58, 96, 74, 46, 42, 50, 58, 62, 70, 88, 100, 76, 52, 40, 18] },
     we: { hours: [1, 3, 9, 22, 40, 52, 58, 62, 66, 68, 70, 72, 74, 70, 62, 50, 34, 16] }
@@ -422,38 +564,83 @@
     });
   }
   drawBars('wd');
-  document.querySelectorAll('[data-seg] button').forEach(function (b) {
-    b.addEventListener('click', function () {
-      document.querySelectorAll('[data-seg] button').forEach(function (x) { x.classList.remove('on'); });
-      b.classList.add('on');
-      drawBars(b.dataset.day);
-    });
+  document.querySelectorAll('#daySeg button').forEach(function (b) {
+    b.onclick = function () {
+      document.querySelectorAll('#daySeg button').forEach(function (x) { x.classList.remove('on'); });
+      b.classList.add('on'); drawBars(b.dataset.day);
+    };
   });
-
-  /* ---------- 半圆三层：hover 显示 ---------- */
   document.querySelectorAll('.gauge .hit').forEach(function (p) {
     bindTip(p, '<b>' + p.dataset.k + '</b><div class="r"><i style="background:' + p.dataset.c + '"></i><span>当前</span><em>' + p.dataset.v + '</em></div>');
   });
 
-  /* ---------- 分目的 ---------- */
   const MIX = [
     { k: '通勤', v: 52, c: '#1D9E75' }, { k: '购物', v: 18, c: '#3c7dd9' }, { k: '休闲', v: 12, c: '#BA7517' },
     { k: '上学', v: 8, c: '#8a7bd8' }, { k: '接驳', v: 6, c: '#4fb3ff' }, { k: '医疗', v: 4, c: '#D4537E' }
   ];
-  document.getElementById('mix').innerHTML = MIX.map(function (m) {
-    return '<i style="width:' + m.v + '%;background:' + m.c + '"></i>';
-  }).join('');
-  document.getElementById('mixlegend').innerHTML = MIX.map(function (m) {
-    return '<span><i style="background:' + m.c + '"></i>' + m.k + ' ' + m.v + '%</span>';
-  }).join('');
+  document.getElementById('mix').innerHTML = MIX.map(function (m) { return '<i style="width:' + m.v + '%;background:' + m.c + '"></i>'; }).join('');
+  document.getElementById('mixlegend').innerHTML = MIX.map(function (m) { return '<span><i style="background:' + m.c + '"></i>' + m.k + ' ' + m.v + '%</span>'; }).join('');
 
-  /* ---------- 半圆填充 ---------- */
   const RING = { arc1: 4.2 / 8.0, arc3: 0.38, arc2: 0.92 };
   requestAnimationFrame(function () {
-    Object.keys(RING).forEach(function (id) {
-      document.getElementById(id).setAttribute('stroke-dasharray', (RING[id] * 100).toFixed(1) + ' 100');
-    });
+    Object.keys(RING).forEach(function (id) { document.getElementById(id).setAttribute('stroke-dasharray', (RING[id] * 100).toFixed(1) + ' 100'); });
   });
+
+  /* ---------- 建设面板：选择与造价 ---------- */
+  const SIZE = { S: 1.5, M: 2.5, L: 4.0 };
+  const TYPE_K = { underground: 1, surface: 0.4, elevated: 0.7 };
+  const EXIT = [0, 0.32, 0.58, 1.15];
+  const PR = [0, 0.2, 0.45, 0.9];
+  const DEV = [0, 0.9, 2.2, 4.1];
+  const st = { size: 'M', type: 'underground', exit: 0, pr: 0, dev: 0 };
+
+  function money(v) { return v.toFixed(2) + ' 亿'; }
+  function recalc() {
+    const civil = SIZE[st.size] * TYPE_K[st.type];
+    const fac = EXIT[st.exit] + PR[st.pr];
+    const dev = DEV[st.dev];
+    document.getElementById('sumCivil').textContent = money(civil);
+    document.getElementById('sumFac').textContent = money(fac);
+    document.getElementById('sumDev').textContent = money(dev);
+    document.getElementById('sumAll').textContent = money(civil + fac + dev);
+    document.getElementById('exitVal').textContent = st.exit + ' 级 · ' + (EXIT[st.exit] ? money(EXIT[st.exit]) : '0');
+  }
+
+  document.querySelectorAll('#sizeCards .card').forEach(function (c) {
+    c.onclick = function () {
+      document.querySelectorAll('#sizeCards .card').forEach(function (x) { x.classList.remove('on'); });
+      c.classList.add('on'); st.size = c.dataset.size; recalc();
+    };
+  });
+  document.querySelectorAll('#typeSeg button').forEach(function (b) {
+    b.onclick = function () {
+      document.querySelectorAll('#typeSeg button').forEach(function (x) { x.classList.remove('on'); });
+      b.classList.add('on'); st.type = b.dataset.type; recalc();
+    };
+  });
+  document.querySelectorAll('[data-dots="exit"] .dot').forEach(function (d) {
+    d.onclick = function () {
+      const v = +d.dataset.v;
+      document.querySelectorAll('[data-dots="exit"] .dot').forEach(function (x) { x.classList.toggle('on', +x.dataset.v <= v); });
+      st.exit = v; recalc();
+    };
+  });
+  document.querySelectorAll('#prSeg button').forEach(function (b) {
+    b.onclick = function () {
+      document.querySelectorAll('#prSeg button').forEach(function (x) { x.classList.remove('on'); });
+      b.classList.add('on'); st.pr = +b.dataset.pr; recalc();
+    };
+  });
+  document.querySelectorAll('[data-dev]').forEach(function (c) {
+    c.onclick = function () {
+      document.querySelectorAll('[data-dev]').forEach(function (x) { x.classList.remove('on'); });
+      c.classList.add('on'); st.dev = +c.dataset.dev; recalc();
+    };
+  });
+  recalc();
+
+  /* 初始：宽屏且建设可见 */
+  document.getElementById('btnBuild').classList.add('on');
 </script>
 </body>
 </html>
