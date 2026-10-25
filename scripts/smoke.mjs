@@ -40,6 +40,8 @@ const jsonOnly = argv.includes('--json');
 const mapArg = arg('maps', 'gz,tutorial,hz,hk,tk,tp');
 // 强制模式（逗号分隔），用于测试地图尚未放行的模式，例如 --modes=tycoon
 const modeArg = arg('modes', null);
+// 阻抗口径（CFG.choice.impedance）：默认按 config.js 的 'distance'；用 --impedance=time 验证时间口径
+const impArg = arg('impedance', null);
 
 globalThis.window = globalThis;
 globalThis.self = globalThis;
@@ -81,6 +83,7 @@ function advanceMonth(g) {
 
 function runMap(mapId, mode) {
   CM.useMap(mapId);
+  if (impArg) CM.CFG.choice.impedance = impArg;
   const g = CM.Game.create({ map: mapId, mode: mode, name: 'smoke' });
   g.model.solveNow(2);
   let days = 0;

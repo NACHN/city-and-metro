@@ -260,6 +260,39 @@
   }
   // 单个起点的分目的出行分布（生产约束重力模型）：小区按各目的的吸引与距离衰减，重要设施作为独立目的地；
   // 候选目的地取综合份额最高的 240 个小区与份额足够的设施，各目的在候选中按比例分配；最后加上枢纽接驳
+  // 广义时间（分钟）：取小汽车与地铁中较优的那个。需求生成阶段用它代替直线距离，
+  // 这样「40 km 的快线通勤」不会被判得比「12 km 的堵车」更远——睡城 OD 才有可能被生成。
+  // 小汽车：优先用上一轮早高峰的 skim 行；缺失（首次求解、还没有网络）时按自由流估，与 odOrigin 的兜底一致。
+  // 地铁：优先用小区接驳表 zl（每端最多 4 个站）与站间广义时间 gt；没有 skim 时按线路平均速度估。
+  // o/d 可以是小区（0…Z−1）或重要设施（Z…Z+F−1），与 zl 的下标一致。
+  function impMinutes(imp, o, d, distKm) {
+    let t = distKm > 0 ? distKm * 1.3 / 16 * 60 + 3 : 0;
+    if (imp.skT && o < imp.Z && d < imp.Z) {
+      const v = imp.skT[o * imp.Z + d];
+      if (v > 0 && v < 1e8) t = v;
+    }
+    const lo = imp.zl ? imp.zl[o] : null, ld = imp.zl ? imp.zl[d] : null;
+    if (lo && ld && imp.gt && imp.N > 0) {
+      let best = Infinity;
+      for (let a = 0; a < lo.length; a++) {
+        const A = lo[a], row = A.s * imp.N;
+        for (let b = 0; b < ld.length; b++) {
+          const B = ld[b];
+          if (A.s === B.s) continue;
+          const g = imp.gt[row + B.s];
+          if (!(g < 1e8)) continue;
+          const v = imp.walkW * (A.w + B.w) + g;
+          if (v < best) best = v;
+        }
+      }
+      if (best < Infinity) t = Math.min(t, best);
+    } else if (imp.zCov && imp.zCov[o] > 0 && imp.zCov[d] > 0) {
+      const acc = (imp.zWalk[o] || 0) + (imp.zWalk[d] || 0);
+      t = Math.min(t, imp.walkW * acc + distKm / imp.railKmh * 60 + imp.wait);
+    }
+    return t;
+  }
+
   function demandOrigin(D, i) {
     const Z = D.Z, F = D.F, A = D.A, Ls = D.Ls, fA = D.fA, fL = D.fL, rate = D.rate, rw = D.rw, zJobs = D.zJobs, zAsum = D.zAsum;
     const zCx = D.zCx, zCy = D.zCy, nx = D.nx, ny = D.ny, hostZ = D.hostZ, kmPerCell = D.kmPerCell;
@@ -267,7 +300,8 @@
     const w = D.w, wf = D.wf, scores = D.scores, s = D.s, kk = D.kk, cand = D.cand, candF = D.candF, tot = D.tot, o = D.out;
     const dest = o.dest, c0 = o.t[0], c1 = o.t[1], c2 = o.t[2], c3 = o.t[3], c4 = o.t[4], c5 = o.t[5];
     const w0 = w[0], w1 = w[1], w2 = w[2], w3 = w[3], w4 = w[4], A0 = A[0], A1 = A[1], A2 = A[2], A3 = A[3], A4 = A[4];
-    const L0 = Ls[0], L1 = Ls[1], L2 = Ls[2], L3 = Ls[3], L4 = Ls[4];
+    const imp = D.imp || null, TSc = imp ? D.Ts : null;
+    const L0 = imp ? TSc[0] : Ls[0], L1 = imp ? TSc[1] : Ls[1], L2 = imp ? TSc[2] : Ls[2], L3 = imp ? TSc[3] : Ls[3], L4 = imp ? TSc[4] : Ls[4];
     let n = D.n;
     const P = D.zPop[i];
     if (P >= 20) {
@@ -276,7 +310,10 @@
       const xi = zCx[i], yi = zCy[i];
       for (let j = 0; j < Z; j++) {
         if (j === i || (zJobs[j] < 5 && zAsum[j] < 5)) { w0[j] = 0; w1[j] = 0; w2[j] = 0; w3[j] = 0; w4[j] = 0; continue; }
-        const dx = xi - zCx[j], dy = yi - zCy[j], d = Math.sqrt(dx * dx + dy * dy) * kmPerCell;
+        const dx = xi - zCx[j], dy = yi - zCy[j], dkm = Math.sqrt(dx * dx + dy * dy) * kmPerCell;
+        const d = imp ? impMinutes(imp, i, j, dkm) : dkm;
+        // 时间口径下超过 maxMin 的目的地直接不进入需求表（这才是「按时间截断」，而不是按直线距离砍）
+        if (imp && !(d <= imp.maxMin)) { w0[j] = 0; w1[j] = 0; w2[j] = 0; w3[j] = 0; w4[j] = 0; continue; }
         let v;
         v = A0[j] > 0 ? A0[j] * Math.exp(-d / L0) : 0; w0[j] = v; s0 += v;
         v = A1[j] > 0 ? A1[j] * Math.exp(-d / L1) : 0; w1[j] = v; s1 += v;
@@ -289,6 +326,7 @@
         if (!fL[k] || hostZ[Z + k] === i) { for (let p = 1; p < 5; p++) wf[p][k] = 0; continue; }
         const dx = xi - nx[Z + k], dy = yi - ny[Z + k];
         let d = Math.sqrt(dx * dx + dy * dy) * kmPerCell;
+        if (imp) d = impMinutes(imp, i, Z + k, d);
         // 接驳端点附近的小区，到设施的等效距离按「接驳 + 端点步行」算，比直线更近时替换。
         // 上盖商场就在站上（端点→设施 = 0），景区设施则是端点开到门口后再走几步。
         if (facBus) { const bv = facBus[k * Z + i]; if (bv < d) d = bv; }
@@ -599,7 +637,27 @@
     let ob = this._odBufs[this._odFlip];
     const per = 240 + F + hubs.length;
     if (!ob || ob.cap < Z * 120) ob = this._odBufs[this._odFlip] = odBuffer(Z * 160);
-    const D = { Z: Z, F: F, A: A, Ls: Ls, fA: fA, fL: fL, rate: rate, rw: rate.map(function (r) { return r / rsum; }), zPop: this.zPop, zJobs: this.zJobs, zAsum: zAsum,
+    // 阻抗口径（CFG.choice.impedance）：'time' 时用广义时间代替直线距离做衰减，并顺带按时间截断。
+    // 时间口径不在每次求解里重算，而是在需求表重建时取「上一轮早高峰」的 skim —— 需求表只在城市/线网变化时重建，
+    // 所以这个滞后是自然的（先有网络，再有基于它的通勤分布）。
+    const C0 = CFG.choice, impOn = C0.impedance === 'time';
+    let imp = null, Ts = Ls;
+    if (impOn) {
+      const accI = this.net && this.net.acc;
+      const wdP = this.ctxs && this.ctxs.wd && this.ctxs.wd.per ? this.ctxs.wd.per[1] : null;
+      const skim = this.liveBuf && this.liveBuf.skim;
+      const refKmh = C0.impedanceRefKmh || 22;
+      imp = {
+        Z: Z, walkW: C0.walkW || 1,
+        skT: wdP && wdP.skimT ? wdP.skimT : null,
+        zl: accI ? accI.zl : null, zCov: accI ? accI.zCov : null, zWalk: accI ? accI.zWalk : null,
+        gt: skim && skim.gt ? skim.gt : null,
+        N: this.net && this.net.C ? this.net.C.stations.length : 0,
+        railKmh: C0.impedanceRailKmh || 40, wait: C0.impedanceWaitMin || 5, maxMin: C0.impedanceMaxMin || 90,
+      };
+      Ts = Ls.map(function (v) { return v / refKmh * 60; });   // km 尺度 → 分钟尺度（标定不变）
+    }
+    const D = { Z: Z, F: F, A: A, Ls: Ls, imp: imp, Ts: Ts, fA: fA, fL: fL, rate: rate, rw: rate.map(function (r) { return r / rsum; }), zPop: this.zPop, zJobs: this.zJobs, zAsum: zAsum,
       zCx: this.zCx, zCy: this.zCy, nx: fn.nx, ny: fn.ny, hostZ: fn.hostZ, kmPerCell: kmPerCell, hubs: hubs, hubTours: hubTours,
       facBus: facBus,
       w: [new Float64Array(Z), new Float64Array(Z), new Float64Array(Z), new Float64Array(Z), new Float64Array(Z)],

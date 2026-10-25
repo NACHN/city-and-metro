@@ -71,31 +71,76 @@ const PATCH = {
   }
 };
 
-function run(name, patches, after, withTimer, zone) {
+// 出行距离分布：区块中心直线距离，按 desTot 加权（工作日 + 周末，按小时数折算）
+function distProfile(model, CM) {
+  const B = model.B, ZW = model.ZW, BW = model.BW;
+  const bx = new Float64Array(B), by = new Float64Array(B), bn = new Float64Array(B);
+  for (let z = 0; z < model.Z; z++) { const b = (((z / ZW) | 0) >> 1) * BW + ((z % ZW) >> 1); bx[b] += model.zCx[z]; by[b] += model.zCy[z]; bn[b]++; }
+  for (let b = 0; b < B; b++) { bx[b] /= Math.max(1, bn[b]); by[b] /= Math.max(1, bn[b]); }
+  let tot = 0, t10 = 0, t15 = 0, sumKm = 0;
+  for (const dt of ['wd', 'we']) {
+    const per = model.ctxs[dt].per;
+    for (let p = 0; p < per.length; p++) {
+      const P2 = per[p], h = model.pHours[p];
+      for (let b1 = 0; b1 < B; b1++) for (let b2 = 0; b2 < B; b2++) {
+        const k = b1 * B + b2, t = P2.desTot[k];
+        if (t <= 0) continue;
+        const dx = bx[b1] - bx[b2], dy = by[b1] - by[b2];
+        const km = Math.sqrt(dx * dx + dy * dy) * CM.CFG.CELL_M / 1000;
+        const w = t * h;
+        tot += w; sumKm += w * km;
+        if (km > 10) t10 += w;
+        if (km > 15) t15 += w;
+      }
+    }
+  }
+  return { t10: tot > 0 ? t10 / tot : 0, t15: tot > 0 ? t15 / tot : 0, avg: tot > 0 ? sumKm / tot : 0 };
+}
+function run(name, patches, after, withTimer, zone, decay, impMode, opt) {
   const sb = sandbox();
   for (const f of PRE) load(sb, f);
   const CM = sb.CM, M = CM.Metro;
   CM.useMap('gz');
   if (zone) CM.CFG.ZONE = zone;   // 小区边长（格）：2 → 0.5 km，模拟更大城市的 OD 规模
+  if (opt && opt.fast) CM.CFG.metro.vmax = { underground: 44, surface: 38, elevated: 44 };   // ≈158 km/h
+  if (impMode) CM.CFG.choice.impedance = impMode;   // 'time' → 用广义时间代替直线距离
+  if (decay && decay !== 1) {      // 距离衰减的特征长度（km）：放大它 → 允许更长距离的出行
+    const c = CM.CFG.choice;
+    for (const k of ['distDecayHW', 'distDecayHO']) c[k] = c[k].map(function (p) { return [p[0], p[1] * decay]; });
+  }
   // 同一条线网：按人口重心建 24 站十字线
   const city = new CM.City(); city.generate(19900101, 1990);
   let br = -1, bc = -1, row = 40, col = 40;
   for (let j = 8; j < city.H - 8; j++) { let s = 0; for (let i = 10; i < city.W - 10; i++) s += city.pop[j * city.W + i]; if (s > br) { br = s; row = j; } }
   for (let i = 8; i < city.W - 8; i++) { let s = 0; for (let j = 10; j < city.H - 10; j++) s += city.pop[j * city.W + i]; if (s > bc) { bc = s; col = i; } }
   const net = M.empty(), la = M.newLine(net, '横'), lb = M.newLine(net, '竖');
-  let prev = null;
-  for (let k = 0; k < 12; k++) { const s = M.addStation(net, 26 + k * 4 + 0.5, row + 0.5, { size: 'M', type: 'underground' }, city); if (prev) M.addSegment(net, la, prev, s, [], 'underground'); prev = s; }
-  prev = null;
-  for (let k = 0; k < 12; k++) { const s = M.addStation(net, col + 0.5, 22 + k * 4 + 0.5, { size: 'M', type: 'underground' }, city); if (prev) M.addSegment(net, lb, prev, s, [], 'underground'); prev = s; }
+  // opt.line === 'long'：一条贯穿全图的 25 km 干线（4 km 站距，7 站），用来检验「睡城—市中心」的 OD
+  if (opt && opt.line === 'long') {
+    let prev = null;
+    for (let k = 0; k < 7; k++) {
+      const s = M.addStation(net, 10 + k * 16 + 0.5, row + 0.5, { size: 'M', type: 'underground' }, city);
+      if (prev) M.addSegment(net, la, prev, s, [], 'underground');
+      prev = s;
+    }
+  } else {
+    let prev = null;
+    for (let k = 0; k < 12; k++) { const s = M.addStation(net, 26 + k * 4 + 0.5, row + 0.5, { size: 'M', type: 'underground' }, city); if (prev) M.addSegment(net, la, prev, s, [], 'underground'); prev = s; }
+    prev = null;
+    for (let k = 0; k < 12; k++) { const s = M.addStation(net, col + 0.5, 22 + k * 4 + 0.5, { size: 'M', type: 'underground' }, city); if (prev) M.addSegment(net, lb, prev, s, [], 'underground'); prev = s; }
+  }
   const compiled = M.compile(net, city);
   // sim.js（带补丁）+ 其余模块
   const simSrc = patches.reduce((s, f) => f(s), fs.readFileSync(path.join(root, 'js/sim.js'), 'utf8'));
   load(sb, 'js/sim.js', simSrc);
   for (const f of POST) load(sb, f);
+  if (impMode) console.log('  [检查] CFG.choice.impedance = ' + CM.CFG.choice.impedance + ' · Model 前');
   const model = new sb.CM.Model(city);
   model.setNetwork(compiled);
   if (after) after(CM, model, city);
-  model.buildDemand();   // 需求表在构造时已建好；补丁只影响重建，所以这里重建一次
+  // 真实游戏里需求表是在「有 skim」之后重建的（城市/线网变化时）。这里照同样顺序：
+  // 先解一次把 skim 填满，再重建需求，避免时间口径落到自由流兜底上。
+  model.solveNow(2);
+  model.buildDemand();
   model.solveNow(3);
   const recs = model.od.dest.length;
   let ms = Infinity, rt = 0;
@@ -104,55 +149,34 @@ function run(name, patches, after, withTimer, zone) {
     const t0 = T(); model.solveNow(1); const dt = T() - t0;
     if (dt < ms) { ms = dt; rt = CM.__rt || 0; }
   }
-  return { name: name, Z: model.Z, recs: recs, per: recs / model.Z, ms: ms, rt: rt, metro: model.daily.metro, share: model.daily.metroShare, commute: model.daily.commute, trips: model.daily.trips };
+  const prof = distProfile(model, CM);
+  return { name: name, Z: model.Z, recs: recs, t10: prof.t10, t15: prof.t15, avg: prof.avg, per: recs / model.Z, ms: ms, rt: rt, metro: model.daily.metro, share: model.daily.metroShare, commute: model.daily.commute, trips: model.daily.trips };
 }
 
 const rows = [];
 const V = [
-  { name: '基线', patches: [] },
-  { name: '基线（含最短路计时）', patches: [s => PATCH.timer(s)], timer: true },
-  { name: 'OD 上限 120', patches: [s => PATCH.cap(s, 120)] },
-  { name: 'OD 上限 60', patches: [s => PATCH.cap(s, 60)] },
-  { name: '目的地截断 20 km', patches: [s => PATCH.odcut(s)], setup: function (CM) { CM.setOdCut(20); } },
-  { name: '目的地截断 12 km', patches: [s => PATCH.odcut(s)], setup: function (CM) { CM.setOdCut(12); } },
-  { name: '目的地截断 8 km', patches: [s => PATCH.odcut(s)], setup: function (CM) { CM.setOdCut(8); } },
-  { name: '细分小区 基线', patches: [], zone: 2 },
-  { name: '细分小区 截断 12 km', patches: [s => PATCH.odcut(s)], setup: function (CM) { CM.setOdCut(12); }, zone: 2 },
-  { name: '块内共用树（人口）', patches: [s => PATCH.tree(s)], setup: function (CM, model) {
-    const rep = reps(model, 'pop');
-    model._treeRep = rep;
-  } },
-  { name: '块内共用树（几何）', patches: [s => PATCH.tree(s)], setup: function (CM, model) { model._treeRep = reps(model, 'geo'); } },
+  { name: '十字线 · 距离', patches: [] },
+  { name: '十字线 · 时间', patches: [], imp: 'time' },
+  { name: '长线 · 距离', patches: [], opt: { line: 'long' } },
+  { name: '长线 · 时间', patches: [], opt: { line: 'long' }, imp: 'time' },
+  { name: '长线快车 · 距离', patches: [], opt: { line: 'long', fast: true } },
+  { name: '长线快车 · 时间', patches: [], opt: { line: 'long', fast: true }, imp: 'time' },
+  { name: '长线快车 · 时间 ×1.5', patches: [], opt: { line: 'long', fast: true }, imp: 'time', decay: 1.5 },
 ];
-function reps(model, how) {
-  const Z = model.Z, ZW = model.ZW, BW = model.BW, x = model.zCx, y = model.zCy;
-  const blockOf = function (z) { return (((z / ZW) | 0) >> 1) * BW + ((z % ZW) >> 1); };
-  const repBlock = new Int32Array(model.B).fill(-1), best = new Float64Array(model.B).fill(-Infinity);
-  const bx = new Float64Array(model.B), by = new Float64Array(model.B), bn = new Float64Array(model.B);
-  for (let z = 0; z < Z; z++) { const b = blockOf(z); bx[b] += x[z]; by[b] += y[z]; bn[b]++; }
-  for (let b = 0; b < model.B; b++) { bx[b] /= Math.max(1, bn[b]); by[b] /= Math.max(1, bn[b]); }
-  for (let z = 0; z < Z; z++) {
-    const b = blockOf(z);
-    const score = how === 'pop' ? model.zPop[z] : -(Math.abs(x[z] - bx[b]) + Math.abs(y[z] - by[b]));
-    if (score > best[b]) { best[b] = score; repBlock[b] = z; }
-  }
-  const rep = new Int32Array(Z);
-  for (let z = 0; z < Z; z++) { const r = repBlock[blockOf(z)]; rep[z] = r >= 0 ? r : z; }
-  return rep;
-}
-for (const v of V) {
-  const r = run(v.name, v.patches || [], v.setup, v.timer, v.zone);
-  rows.push(r);
-}
+for (const v of V) rows.push(run(v.name, v.patches || [], v.setup, v.timer, v.zone, v.decay, v.imp, v.opt));
 
 const b = rows[0];
-const dif = function (v) { const x = (v / b.metro - 1) * 100; return (x >= 0 ? '+' : '') + x.toFixed(1) + '%'; };
 console.log('');
-console.log('变体                    每起点  OD 条数      地铁/日    相对基线   分担率   通勤    一轮');
+console.log('变体                       OD 条数  >10km  >15km  均距   通勤   地铁/日     相对基线   分担率   一轮');
 for (const r of rows) {
-  console.log(r.name.padEnd(23) + String(Math.round(r.per)).padStart(5) + '  ' + String(r.recs).padStart(8) +
-    '  ' + Math.round(r.metro).toLocaleString('en').padStart(9) + '  ' + dif(r.metro).padStart(8) +
-    '  ' + (r.share * 100).toFixed(2) + '%  ' + r.commute.toFixed(1) + ' 分  ' +
-    r.ms.toFixed(0).padStart(4) + ' ms  ' + (r.ms / b.ms).toFixed(2) + '×' +
-    (r.rt ? '   其中最短路 ' + r.rt.toFixed(0) + ' ms（' + (r.rt / r.ms * 100).toFixed(0) + '%）' : ''));
+  const d = ((r.metro / b.metro - 1) * 100);
+  console.log(r.name.padEnd(25) + String(r.recs).padStart(8) +
+    '  ' + (r.t10 * 100).toFixed(1).padStart(5) + '%' +
+    '  ' + (r.t15 * 100).toFixed(1).padStart(5) + '%' +
+    '  ' + r.avg.toFixed(1).padStart(4) + ' km' +
+    '  ' + r.commute.toFixed(1).padStart(4) + ' 分' +
+    '  ' + Math.round(r.metro).toLocaleString('en').padStart(9) +
+    '  ' + ((d >= 0 ? '+' : '') + d.toFixed(1) + '%').padStart(8) +
+    '  ' + (r.share * 100).toFixed(2) + '%' +
+    '  ' + r.ms.toFixed(0).padStart(4) + ' ms');
 }
