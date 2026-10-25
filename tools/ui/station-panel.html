@@ -144,7 +144,12 @@
   .buscard { display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--panel2); border-radius: 8px; padding: 5px 7px; font-size: 10.5px; }
   .buscard .bn { width: 15px; height: 15px; border-radius: 50%; background: #4fb3ff22; color: var(--info); display: grid; place-items: center; font-size: 9px; flex: none; }
   .buscard .bname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
-  .buscard .bpax { color: var(--text3); font-variant-numeric: tabular-nums; flex: none; }
+  .buscard .bcost { color: #e79bb4; font-variant-numeric: tabular-nums; flex: none; font-size: 10px; }
+  .buscard .bpax { color: var(--text3); font-variant-numeric: tabular-nums; flex: none; font-size: 10px; }
+  .buscard .bpax b { color: var(--text); font-weight: 600; }
+  .buscard .bpax i { font-style: normal; }
+  .buscard .bpax i.warn { color: var(--warn); font-weight: 600; }
+  .buscard .bpax i.muted { opacity: .6; }
   .buscard .mini { display: flex; align-items: center; gap: 3px; flex: none; }
   .buscard .mini button { width: 16px; height: 16px; border: 1px solid var(--line); background: transparent; color: var(--text2); border-radius: 5px; cursor: pointer; font-size: 10px; line-height: 1; padding: 0; }
   .buscard .mini button:hover { background: #ffffff10; }
@@ -333,19 +338,19 @@
     <div class="col info">
       <!-- 经济 -->
       <div class="panel econ">
-        <div class="phead" data-panel><i class="dotmark" style="background:var(--accent)"></i><span class="t">经济</span><span class="s" id="netSummary">本月净 +129 万</span><span class="cv">▾</span></div>
+        <div class="phead" data-panel><i class="dotmark" style="background:var(--accent)"></i><span class="t">经济</span><span class="s" id="netSummary">本月净 +123 万</span><span class="cv">▾</span></div>
         <div class="pbody">
           <div class="econ-grid">
             <!-- 左：运营收支 -->
             <div>
               <h4 class="sub-h">运营收支</h4>
               <div class="money">
-                <div class="net good" id="netVal">+129<i>万/月</i></div>
+                <div class="net good" id="netVal">+123<i>万/月</i></div>
                 <div class="side"><b>回收率 50%</b>票款覆盖一半成本</div>
               </div>
               <div class="clegend">
                 <span><i style="background:#1D9E75"></i>收 <b>1,426</b></span>
-                <span><i style="background:#D4537E"></i>支 <b id="expTotal">1,297</b></span>
+                <span><i style="background:#D4537E"></i>支 <b id="expTotal">1,303</b></span>
                 <span class="muted">近 12 月</span>
               </div>
               <div class="linechart" id="moneyChart"></div>
@@ -358,7 +363,7 @@
                 <div class="out"><h5>支出</h5>
                   <div class="li"><span>运营</span><b>1,240</b></div>
                   <div class="li"><span>维护</span><b>46</b></div>
-                  <div class="li"><span>接驳</span><b id="busExpense">11</b></div>
+                  <div class="li"><span>接驳</span><b id="busExpense">17</b></div>
                 </div>
               </div>
             </div>
@@ -456,7 +461,8 @@
     <li><b>经济内部左右排</b>：运营收支（左，含折线）与物业地价（右）并排，省下一半高度。</li>
     <li><b>换乘信息压成一行</b>：<span class="tg l1">1 号线</span> <span class="tg l2">2 号线</span> <span class="tg walk">300 m 西门口</span>，颜色即含义（蓝/橙是线路，琥珀是站外步行）。</li>
     <li><b>附近设施压成一行</b>：<span class="tg shop">400 m 北京路步行街</span> <span class="tg park">250 m 人民公园</span>，蓝=商业、绿=公园。</li>
-    <li><b>接驳巴士按线路列出</b>：建设面板只负责「建线」，配车与撤销在乘客面板按线调整——建站是建设，调车是运营。末尾「+ 接驳线」可直接加线，配车变化实时改动经济的「支出 · 接驳」与净额。</li>
+    <li><b>接驳巴士按线路列出</b>：每张卡是「线路 · 月成本 · <b>实载/运力</b> · 配车 · 撤销」，运力 = 配车 × 2,680 人次/日。
+        实载接近运力时百分比标黄（该加车），远低于运力时淡出（车太多）。末尾「+ 接驳线」可直接加线。</li>
     <li><b>进出站压成一行流向</b>：<b style="font-size:13px">4.2万 → 3.3万 → 4.4万</b>（进站 → 换乘 → 出站），去掉原来每格上面那个竖箭头，数字放大到 18px，整行高度少三分之一。</li>
   </ol>
 </div>
@@ -656,7 +662,8 @@
     { n: 1, name: '华南理工大学', pax: 9752, vans: 4 },
     { n: 2, name: '华师一带（天河西）', pax: 1423, vans: 2 }
   ];
-  const BUS_UNIT = 1.75;               // 万元/月/辆
+  const BUS_UNIT = 2.75;               // 万元/月/辆
+  const CAP_PER_VAN = 2680;            // 每辆车日运力（人次）
   const INC = 1426, OPS = 1240, MAINT = 46;
   function busRender() {
     const list = document.getElementById('busList');
@@ -667,10 +674,16 @@
       list.innerHTML = '<div class="busempty">暂无</div>';
     } else {
       list.innerHTML = BUS.map(function (b, i) {
-        return '<div class="buscard" data-i="' + i + '">' +
+        const cap = Math.round(b.vans * CAP_PER_VAN);
+        const util = cap > 0 ? b.pax / cap : 0;
+        const capCls = util >= 0.95 ? 'warn' : (util < 0.45 ? 'muted' : '');
+        const tip = '实载 ' + b.pax.toLocaleString('en') + ' / 运力 ' + cap.toLocaleString('en') +
+          '（' + Math.round(util * 100) + '%）· 每辆 ' + Math.round(CAP_PER_VAN).toLocaleString('en') + ' 人次/日';
+        return '<div class="buscard" data-i="' + i + '" title="' + tip + '">' +
           '<span class="bn">' + b.n + '</span>' +
           '<span class="bname" title="' + b.name + '">' + b.name + '</span>' +
-          '<span class="bpax">' + b.pax.toLocaleString('en') + ' 人次</span>' +
+          '<span class="bcost">−' + Math.round(b.vans * BUS_UNIT) + '万/月</span>' +
+          '<span class="bpax"><b>' + b.pax.toLocaleString('en') + '</b>/<i class="' + capCls + '">' + cap.toLocaleString('en') + '</i></span>' +
           '<span class="mini"><button data-a="m">−</button><b>' + b.vans + '</b><button data-a="p">+</button></span>' +
           '<button class="xdel" data-a="x" title="撤销这条接驳线">✕</button>' +
           '</div>';
