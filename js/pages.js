@@ -109,14 +109,18 @@
   // ---------------- 车站面板的小部件 ----------------
   // 半圆仪表：圆弧在左、开口朝右；pathLength=100 让 dasharray 直接写百分比
   function stArc(cx, cy, r) { return 'M ' + cx + ' ' + (cy - r) + ' A ' + r + ' ' + r + ' 0 0 0 ' + cx + ' ' + (cy + r); }
+  // rings: [{ v, color, tip }]，tip 是悬停时给内部提示组件看的文字
   function stGauge(rings) {
     const cx = 36, cy = 41;
-    let out = '<svg class="st-gauge" width="48" height="82" viewBox="0 0 48 82" aria-hidden="true">';
+    let out = '<svg class="st-gauge" width="48" height="82" viewBox="0 0 48 82">';
     rings.forEach(function (g, i) {
       const r = 33 - i * 8, d = stArc(cx, cy, r), v = Math.max(0, Math.min(1, g.v || 0));
+      const tip = String(g.tip || '').replace(/"/g, '&quot;');
       out += '<path d="' + d + '" pathLength="100" stroke="var(--line-strong)" stroke-width="6"></path>';
       out += '<path d="' + d + '" pathLength="100" stroke="' + g.color + '" stroke-width="6" stroke-dasharray="' +
         (v * 100).toFixed(1) + ' 100"></path>';
+      // 命中环：比可见弧粗一倍，细线也好指到
+      out += '<path class="hit" d="' + d + '" data-tip="' + tip + '" data-tip-now></path>';
     });
     return out + '</svg>';
   }
@@ -173,9 +177,14 @@
     const head = h('div', { class: 'st-head' });
     head.appendChild(h('button', {
       class: 'st-icon' + (this.building ? ' on' : ''),
-      title: this.building ? '收起建设面板' : '打开建设面板：规模、形式、配套、上盖、接驳站',
-      onclick: function () { self.toggleBuild(); this.classList.toggle('on', !!self.building); this.title = self.building ? '收起建设面板' : '打开建设面板：规模、形式、配套、上盖、接驳站'; },
-    }, '🔨'));
+      'aria-label': '建设面板',
+      'data-tip': this.building ? '收起建设面板' : '建设面板：规模、形式、配套、上盖、接驳站',
+      onclick: function () {
+        self.toggleBuild();
+        this.classList.toggle('on', !!self.building);
+        this.setAttribute('data-tip', self.building ? '收起建设面板' : '建设面板：规模、形式、配套、上盖、接驳站');
+      },
+    }, ic('hammer')));
     const chips = h('div', { class: 'st-chips' });
     if (lines.length) {
       for (const l of lines) chips.appendChild(h('span', { class: 'tag', style: { background: l.color + '22', color: l.color } }, '● ' + l.name));
@@ -269,7 +278,12 @@
         const mx = Math.max.apply(null, hours.length ? hours : [1]) || 1;
         const barEls = [];
         for (let hr = 0; hr < 24; hr++) {
-          const bar = h('i', { class: hours[hr] >= mx * 0.9 ? 'pk' : '', style: { height: Math.max(2, Math.round(hours[hr] / mx * 100)) + '%' }, title: hr + ' 时 · ' + U.fmtInt(hours[hr]) + ' 人次/时' });
+          const bar = h('i', {
+            class: hours[hr] >= mx * 0.9 ? 'pk' : '',
+            style: { height: Math.max(2, Math.round(hours[hr] / mx * 100)) + '%' },
+            'data-tip': hr + ' 时 · ' + U.fmtInt(hours[hr]) + ' 人次/时',
+            'data-tip-now': true,
+          });
           barEls.push(bar); bars.appendChild(bar);
         }
         left.appendChild(bars);
@@ -278,9 +292,12 @@
         // 右：半圆 + 覆盖人口 + 三行图例
         const right = h('div', { class: 'r' });
         const gaugeBox = h('div', { html: stGauge([
-          { v: cov.p3 > 0 ? cov.p15 / cov.p3 : 0, color: 'var(--teal, #2a9d8f)' },
-          { v: xferPct, color: 'var(--accent)' },
-          { v: sat, color: 'var(--warn)' },
+          { v: cov.p3 > 0 ? cov.p15 / cov.p3 : 0, color: 'var(--teal, #2a9d8f)',
+            tip: '15 分钟步行覆盖 ' + U.fmtPeople(cov.p15) + ' / 3 km 内 ' + U.fmtPeople(cov.p3) + '（' + U.fmtPct(cov.p3 > 0 ? cov.p15 / cov.p3 : 0, 0) + '）' },
+          { v: xferPct, color: 'var(--accent)',
+            tip: '换乘占比 ' + U.fmtPct(xferPct, 0) + '：换乘 ' + U.fmtPeople(xf) + ' / 进站 ' + U.fmtPeople(inn) },
+          { v: sat, color: 'var(--warn)',
+            tip: '站台饱和度 ' + sat.toFixed(2) + '：高峰 ' + U.fmtPeople(peak) + ' / 车站容量 ' + U.fmtPeople(capH) },
         ]) });
         right.appendChild(gaugeBox);
         const gd = h('div', { class: 'st-gdata' });
@@ -296,14 +313,14 @@
         box.appendChild(gEl);
         // 流向：进站 → 换乘 → 出站
         const flow = h('div', { class: 'st-flowrow' });
-        const cell = function (v, label, mid) {
-          return h('span', { class: 'c' + (mid ? ' mid' : '') }, h('b', null, U.fmtPeople(v)), h('small', null, label));
+        const cell = function (v, label, mid, tip) {
+          return h('span', { class: 'c' + (mid ? ' mid' : '') }, h('b', null, U.fmtPeople(v)), h('small', null, label), h('span', { class: 'tipspot', 'data-tip': tip }));
         };
-        flow.appendChild(cell(inn, '进站'));
+        flow.appendChild(cell(inn, '进站', false, '闸机进站人次（不含站内换乘）'));
         flow.appendChild(h('span', { class: 'ar' }, '→'));
-        flow.appendChild(cell(xf, '换乘', true));
+        flow.appendChild(cell(xf, '换乘', true, '在本站由一条线换到另一条线的人次'));
         flow.appendChild(h('span', { class: 'ar' }, '→'));
-        flow.appendChild(cell(out, '出站'));
+        flow.appendChild(cell(out, '出站', false, '闸机出站人次；出站通常略多于进站，因为换乘客流只出不进'));
         box.appendChild(flow);
         // 实时更新：模型收敛时数字与柱高一起动
         self.live.push(function () {
@@ -324,7 +341,7 @@
         for (const t of xs) {
           const o = C.stations[t.b];
           xtags.appendChild(h('span', {
-            class: 'st-tag walk click', title: '点击查看「' + o.name + '」',
+            class: 'st-tag walk click', 'data-tip': '点击查看「' + o.name + '」',
             onclick: function () { self.select({ kind: 'station', id: o.id }); },
           }, '步行 ' + Math.round(t.m) + ' m · ' + o.name));
         }
@@ -346,7 +363,7 @@
           const km = Math.max(1, Math.round(it.w));
           const cls = it.f.T.group === '商业' ? 'shop' : (it.f.T.group === '旅游休闲' ? 'park' : '');
           ftags.appendChild(h('span', {
-            class: 'st-tag ' + cls + ' click', title: it.f.name,
+            class: 'st-tag ' + cls + ' click', 'data-tip': it.f.name + ' · ' + it.f.T.name,
             onclick: function () { self.select({ kind: 'facility', id: it.f.id }); },
           }, km + ' 分钟 · ' + it.f.name));
         });
@@ -376,14 +393,14 @@
               onmouseleave: function () { self.busHi = null; this.classList.remove('hi'); },
             },
               h('span', { class: 'no', style: { background: col } }, String(n)),
-              h('span', { class: 'nm', title: nm }, nm),
+              h('span', { class: 'nm', 'data-tip': nm }, nm),
               h('span', { class: 'meta' }, U.fmtKm(x.lenM) + ' · 间隔 ' + hw.toFixed(1) + ' 分'),
               h('span', { class: 'cost' }, '−' + U.fmtMoney(costM) + '/月'),
               h('span', { class: 'step' },
-                h('button', { title: '减一辆', onclick: function () { self.busCars(id, x.id, -1); } }, '−'),
+                h('button', { 'data-tip': '减一辆', onclick: function () { self.busCars(id, x.id, -1); } }, '−'),
                 h('b', null, nv),
-                h('button', { title: '加一辆', onclick: function () { self.busCars(id, x.id, 1); } }, '+')),
-              h('button', { class: 'x', title: '停运这条线', onclick: function () { self.busClose(id, x.id); } }, '✕'));
+                h('button', { 'data-tip': '加一辆', onclick: function () { self.busCars(id, x.id, 1); } }, '+')),
+              h('button', { class: 'x', 'data-tip': '停运这条线', onclick: function () { self.busClose(id, x.id); } }, '✕'));
             list.appendChild(card);
           });
           bw.appendChild(list);

@@ -399,7 +399,7 @@ table.tbl th:first-child, table.tbl td:first-child { text-align: left; }
 #tooltip .m { color: #b7c3d4; }
 #tooltip.bad .t { color: #ff8a8a; }
 /* 界面按钮提示 */
-#uitip { position: fixed; z-index: 60; pointer-events: none; display: flex; align-items: center; gap: 8px; background: rgba(17, 24, 38, 0.95); color: #f1f5fb; padding: 6px 10px; border-radius: 9px; font-size: 12px; font-weight: 500; white-space: nowrap; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25); opacity: 0; transform: scale(.94); transition: opacity .14s, transform .18s var(--spring); }
+#uitip { position: fixed; z-index: 60; pointer-events: none; display: flex; align-items: center; gap: 8px; background: rgba(17, 24, 38, 0.95); color: #f1f5fb; padding: 6px 10px; border-radius: 9px; font-size: 12px; font-weight: 500; line-height: 1.45; max-width: 300px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25); opacity: 0; transform: scale(.94); transition: opacity .14s, transform .18s var(--spring); }
 #uitip.on { opacity: 1; transform: none; }
 #uitip.s-below { transform-origin: top center; }
 #uitip.s-above { transform-origin: bottom center; }
@@ -1631,6 +1631,7 @@ td .tag { margin-left: 4px; padding: 0 6px; font-size: 10px; }
   border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--muted);
   border-radius: 9px; cursor: pointer; font-size: 13px; transition: background .15s var(--ease), color .15s var(--ease), border-color .15s var(--ease);
 }
+.st-icon .ico { width: 15px; height: 15px; }
 .st-icon:hover { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
 .st-icon.on { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
 .st-chips { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
@@ -1658,11 +1659,14 @@ td .tag { margin-left: 4px; padding: 0 6px; font-size: 10px; }
 .st-bars i { flex: 1; min-height: 2px; border-radius: 2px 2px 0 0; background: linear-gradient(180deg, rgba(42,157,143,.85), rgba(42,157,143,.18)); }
 .st-bars i.pk { background: linear-gradient(180deg, rgba(201,130,0,.85), rgba(201,130,0,.16)); }
 .st-bars i:hover { filter: brightness(1.15); }
+.st-bars i { cursor: help; }
 .st-barlab { display: flex; justify-content: space-between; font-size: 10px; color: var(--faint); margin-top: 2px; }
 
 /* 半圆仪表 */
 .st-gauge { flex: none; }
 .st-gauge path { fill: none; stroke-linecap: round; }
+/* 命中环：透明、比可见弧粗一倍，鼠标容易指到（内部提示组件挂在它上面） */
+.st-gauge .hit { stroke: transparent; stroke-width: 15; pointer-events: stroke; cursor: help; }
 .st-gdata .big { font-size: 19px; font-weight: 720; letter-spacing: -.02em; line-height: 1.05; color: var(--text); font-variant-numeric: tabular-nums; }
 .st-gdata .big i { font-size: 10px; font-style: normal; color: var(--faint); font-weight: 500; }
 .st-gdata .cap { font-size: 9.5px; color: var(--faint); margin: 1px 0 5px; }
@@ -1677,7 +1681,9 @@ td .tag { margin-left: 4px; padding: 0 6px; font-size: 10px; }
   margin-top: 9px; padding: 7px 8px 6px; background: var(--surface-2);
   border: 1px solid var(--line); border-radius: 11px;
 }
-.st-flowrow .c { flex: 1 1 0; min-width: 0; text-align: center; }
+.st-flowrow .c { flex: 1 1 0; min-width: 0; text-align: center; position: relative; cursor: help; }
+/* 透明命中层：整格都能触发提示，不只是数字那一行 */
+.st-flowrow .tipspot { position: absolute; inset: -2px -1px; border-radius: 8px; }
 .st-flowrow .c b { display: block; font-size: 18px; font-weight: 720; letter-spacing: -.02em; color: var(--text); font-variant-numeric: tabular-nums; }
 .st-flowrow .c b i { font-size: 10px; font-style: normal; color: var(--faint); font-weight: 500; }
 .st-flowrow .c small { display: block; font-size: 9.5px; color: var(--muted); margin-top: 1px; }

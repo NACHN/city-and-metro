@@ -77,6 +77,16 @@ try {
   console.log(p.side && p.side.el && (p.side.el.children || []).length ? '✓ 建设面板有内容' : '✗ 建设面板为空');
   console.log(Array.isArray(p.locate) ? '✓ 定位坐标 ' + p.locate.map(function (v) { return Math.round(v); }).join(', ') : '✗ 缺定位坐标');
   console.log(/站$/.test(p.title) ? '✓ 标题 ' + p.title : '✗ 标题异常 ' + p.title);
+  // 提示统一走内部组件：正文里不该再有原生 title 属性
+  let native = 0, tipped = 0;
+  const walk = function (n) {
+    if (!n || !n.children) return;
+    if (n.attrs && n.attrs.title) native++;
+    if (n.attrs && n.attrs['data-tip']) tipped++;
+    for (const c of n.children) walk(c);
+  };
+  walk(p.el); walk(p.side && p.side.el);
+  console.log(native === 0 ? '✓ 无原生 title（内部提示 ' + tipped + ' 处）' : '✗ 仍有 ' + native + ' 处原生 title');
 } catch (e) { console.log('✗ 契约检查：' + e.message); }
 // 上盖 + 接驳站 + 接驳线 的分支
 try {

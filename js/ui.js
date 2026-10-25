@@ -283,7 +283,8 @@
       hide();
       if (!el || e.pointerType === 'touch') return;
       cur = el;
-      timer = setTimeout(function () { if (cur === el && document.body.contains(el)) show(el); }, 380);
+      const fast = el.hasAttribute('data-tip-now');
+      timer = setTimeout(function () { if (cur === el && document.body.contains(el)) show(el); }, fast ? 0 : 380);
     });
     document.addEventListener('pointerdown', hide, true);
     document.addEventListener('pointerout', function (e) {
@@ -1099,9 +1100,10 @@
     this.rBadge.innerHTML = ''; this.rBadge.appendChild(ic(pi[0]));
     if (top.kind === 'line' && page.highlightLine) { const ln = (this.g().draft ? this.g().draft.net : this.g().net).lines[page.highlightLine]; if (ln) { this.rBadge.className = 'badge'; this.rBadge.style.background = ln.color; } }
     else this.rBadge.style.background = '';
-    this.rBack.style.visibility = this.stack.length > 1 ? 'visible' : 'hidden';
+    // 用 display 而不是 visibility：后者仍占位，会在标题前留出一段空白
+    this.rBack.style.display = this.stack.length > 1 ? '' : 'none';
     const loc = page.locate || null;
-    this.rLocate.classList.toggle('hidden', !loc);
+    this.rLocate.style.display = loc ? '' : 'none';
     // 左侧建设面板：页面自带 side 才有内容，否则整块收走（避免残留上一个对象的面板）
     if (page.side) {
       this.bTitle.textContent = page.side.title || '建设';
