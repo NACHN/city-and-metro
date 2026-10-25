@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>车站面板 · 重设计原型 v3</title>
+<title>车站面板 · 重设计原型 v4</title>
 <style>
   :root {
     --panel: #151f2b; --panel2: #1b2634; --line: #26323f;
@@ -25,7 +25,6 @@
 
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
 
-  /* 头部：只有身份，不再放指标条 */
   .head { padding: 13px 14px 12px; border-bottom: 1px solid var(--line); }
   .head .top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .stname { font-size: 17px; font-weight: 650; letter-spacing: .01em; }
@@ -37,7 +36,6 @@
   .chip.l2 { color: #ffb454; border-color: #ffb45444; background: #ffb45414; }
   .chip.xfer { color: var(--accent); border-color: #1D9E7555; background: var(--accent-bg); }
 
-  /* 折叠组 */
   .grp { border-top: 1px solid var(--line); }
   .gh { display: flex; align-items: center; gap: 8px; padding: 11px 14px; cursor: pointer; user-select: none; }
   .gh:hover { background: #ffffff06; }
@@ -48,7 +46,7 @@
   .gb { display: none; padding: 2px 14px 14px; }
   .grp.open .gb { display: block; }
 
-  /* ===== 运营收支（最重要的块，默认展开） ===== */
+  /* ===== 运营收支 ===== */
   .money { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; padding-top: 2px; }
   .money .net { font-size: 26px; font-weight: 720; letter-spacing: -.03em; line-height: 1; }
   .money .net i { font-size: 11px; font-style: normal; font-weight: 500; color: var(--text3); margin-left: 3px; }
@@ -57,16 +55,15 @@
   .money .side { text-align: right; font-size: 10.5px; color: var(--text3); line-height: 1.5; }
   .money .side b { display: block; font-size: 12px; color: var(--text2); font-weight: 600; }
 
-  .duo { margin-top: 12px; }
-  .duo .rowb { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
-  .duo .lbl { width: 34px; font-size: 10.5px; color: var(--text3); flex: none; }
-  .duo .track { flex: 1; height: 9px; background: #ffffff0a; border-radius: 5px; overflow: hidden; }
-  .duo .fill { height: 100%; border-radius: 5px; }
-  .duo .fill.in { background: linear-gradient(90deg, #1D9E75aa, #1D9E75); }
-  .duo .fill.out { background: linear-gradient(90deg, #D4537E99, #D4537E); }
-  .duo .amt { width: 62px; text-align: right; font-size: 11px; color: var(--text2); font-variant-numeric: tabular-nums; flex: none; }
+  .clegend { display: flex; align-items: baseline; gap: 12px; margin-top: 12px; font-size: 10.5px; color: var(--text3); }
+  .clegend span { display: inline-flex; align-items: center; gap: 4px; }
+  .clegend i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .clegend b { color: var(--text); font-weight: 650; font-variant-numeric: tabular-nums; }
+  .clegend .muted { margin-left: auto; }
+  .linechart { position: relative; height: 98px; margin-top: 4px; }
+  .linechart svg { display: block; width: 100%; height: 100%; overflow: visible; }
 
-  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
   .split .col { font-size: 11px; }
   .split .col h4 { margin: 0 0 3px; font-size: 10.5px; color: var(--text3); font-weight: 500; }
   .split .li { display: flex; justify-content: space-between; padding: 2px 0; color: var(--text2); }
@@ -74,20 +71,24 @@
   .split .col.in .li b { color: #6fd3ae; }
   .split .col.out .li b { color: #e79bb4; }
 
-  /* ===== 客流：柱状 + 左弧半圆 + 进出站三块 ===== */
+  /* ===== 客流 ===== */
   .flowtop { display: flex; gap: 12px; align-items: flex-start; }
   .flowleft { flex: 1; min-width: 0; }
   .flowright { width: 128px; flex: none; display: flex; gap: 8px; align-items: center; }
 
   .bars { display: flex; align-items: flex-end; gap: 2px; height: 86px; margin-top: 2px; }
-  .bars .b { flex: 1; background: linear-gradient(180deg, #1D9E75cc, #1D9E7522); border-radius: 2px 2px 0 0; min-height: 2px; }
+  .bars .b { flex: 1; background: linear-gradient(180deg, #1D9E75cc, #1D9E7522); border-radius: 2px 2px 0 0; min-height: 2px; cursor: crosshair; transition: filter .12s; }
   .bars .b.pk { background: linear-gradient(180deg, #BA7517dd, #BA751722); }
+  .bars .b:hover { filter: brightness(1.45); }
   .barlab { display: flex; justify-content: space-between; font-size: 10px; color: var(--text3); margin-top: 2px; }
 
   /* 半圆：圆弧在左、开口朝右 */
   .gauge { width: 48px; height: 82px; flex: none; display: block; }
   .gauge .track { fill: none; stroke: #ffffff10; stroke-width: 6; stroke-linecap: round; }
-  .gauge .val { fill: none; stroke-width: 6; stroke-linecap: round; transition: stroke-dasharray .45s ease; }
+  .gauge .val { fill: none; stroke-width: 6; stroke-linecap: round; transition: stroke-dasharray .45s ease, filter .12s; }
+  .gauge .track, .gauge .val { pointer-events: none; }
+  .gauge .hit { fill: none; stroke: transparent; stroke-width: 15; cursor: crosshair; pointer-events: stroke; }
+  .gauge .hit:hover + .val, .gauge .val:hover { filter: brightness(1.3); }
   .gauge .r1 { stroke: #1D9E75; }
   .gauge .r2 { stroke: #BA7517; }
   .gauge .r3 { stroke: #4fb3ff; }
@@ -103,9 +104,7 @@
   .gtags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
   .gtag { font-size: 9px; padding: 1px 5px; border-radius: 999px; border: 1px solid var(--line); color: var(--text3); }
   .gtag.on { color: var(--accent); border-color: #1D9E7555; background: var(--accent-bg); }
-  .gtag.off { opacity: .45; }
 
-  /* 进站 / 换乘 / 出站 */
   .trio { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; background: var(--line); border-radius: 10px; overflow: hidden; margin-top: 12px; }
   .trio .c { background: var(--panel2); padding: 8px 6px 7px; text-align: center; }
   .trio .c .ar { font-size: 10px; color: var(--text3); line-height: 1; }
@@ -121,7 +120,6 @@
   .mixlegend span { display: inline-flex; align-items: center; gap: 4px; }
   .mixlegend i { width: 6px; height: 6px; border-radius: 2px; display: inline-block; }
 
-  /* 键值 / 提示 / 设施 / 按钮 */
   .kv { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 12px; }
   .kv + .kv { border-top: 1px dashed #ffffff0c; }
   .kv .k { color: var(--text2); }
@@ -141,6 +139,20 @@
   .seg button { border: 0; background: transparent; color: var(--text2); font-size: 11.5px; padding: 4px 10px; border-radius: 6px; cursor: pointer; }
   .seg button.on { background: #ffffff12; color: var(--text); }
 
+  /* 通用 hover 提示 */
+  .tip {
+    position: fixed; z-index: 99; pointer-events: none; opacity: 0; transform: translate(-50%, -100%);
+    background: #0b1219f2; border: 1px solid #33475c; border-radius: 8px; padding: 6px 8px;
+    font-size: 11px; line-height: 1.45; color: var(--text); white-space: nowrap;
+    box-shadow: 0 6px 18px #0009; transition: opacity .1s;
+  }
+  .tip.show { opacity: 1; }
+  .tip b { font-weight: 650; }
+  .tip .r { display: flex; align-items: center; gap: 5px; }
+  .tip .r i { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+  .tip .r span { color: var(--text2); }
+  .tip .r em { font-style: normal; margin-left: auto; font-variant-numeric: tabular-nums; }
+
   .spec { margin-top: 18px; padding: 12px 14px; border: 1px dashed var(--line); border-radius: 12px; color: var(--text3); font-size: 11.5px; line-height: 1.6; }
   .spec b { color: var(--text2); }
   .spec ol { margin: 6px 0 0; padding-left: 18px; }
@@ -148,7 +160,7 @@
 </head>
 <body>
 <div class="page">
-  <div class="pagehead"><h1>车站面板 · 重设计原型 v3</h1><span>运营收支上首位 · 半圆开口朝右</span></div>
+  <div class="pagehead"><h1>车站面板 · 重设计原型 v4</h1><span>12 月收支折线 · 图表可交互</span></div>
 
   <div class="panel">
     <div class="head">
@@ -165,7 +177,7 @@
       </div>
     </div>
 
-    <!-- ① 运营收支：玩家最关心的「这个站赚不赚钱」，默认展开置顶 -->
+    <!-- ① 运营收支 -->
     <div class="grp open" data-grp>
       <div class="gh"><span class="cv">▶</span><span class="t">运营收支</span><span class="s">本月 +140 万</span></div>
       <div class="gb">
@@ -174,10 +186,12 @@
           <div class="side"><b>票款回收率 50%</b>票款只覆盖一半运营成本</div>
         </div>
 
-        <div class="duo">
-          <div class="rowb"><span class="lbl">收入</span><span class="track"><span class="fill in" style="width:100%"></span></span><span class="amt">1,426 万</span></div>
-          <div class="rowb"><span class="lbl">支出</span><span class="track"><span class="fill out" style="width:90%"></span></span><span class="amt">1,286 万</span></div>
+        <div class="clegend">
+          <span><i style="background:#1D9E75"></i>收入 <b>1,426</b></span>
+          <span><i style="background:#D4537E"></i>支出 <b>1,286</b></span>
+          <span class="muted">近 12 个月 · 万元</span>
         </div>
+        <div class="linechart" id="moneyChart"></div>
 
         <div class="split">
           <div class="col in">
@@ -196,7 +210,7 @@
       </div>
     </div>
 
-    <!-- ② 客流：柱状 + 左弧半圆 + 三块 -->
+    <!-- ② 客流 -->
     <div class="grp open" data-grp>
       <div class="gh"><span class="cv">▶</span><span class="t">客流</span><span class="s">工作日 8.6 万 · 周末 6.1 万</span></div>
       <div class="gb">
@@ -212,13 +226,15 @@
           </div>
 
           <div class="flowright">
-            <!-- 半圆：圆弧在左、开口朝右；三层半径 33 / 25 / 17 -->
             <svg class="gauge" viewBox="0 0 48 82" aria-label="步行覆盖、换乘占比、站台饱和度的三层半圆环">
               <path class="track" d="M 36 8 A 33 33 0 0 0 36 74" pathLength="100"></path>
+              <path class="hit" d="M 36 8 A 33 33 0 0 0 36 74" data-k="步行覆盖" data-v="4.2 / 8.0 万人（52%）" data-c="#1D9E75"></path>
               <path class="val r1" id="arc1" d="M 36 8 A 33 33 0 0 0 36 74" pathLength="100" stroke-dasharray="0 100"></path>
               <path class="track" d="M 36 16 A 25 25 0 0 0 36 66" pathLength="100"></path>
+              <path class="hit" d="M 36 16 A 25 25 0 0 0 36 66" data-k="换乘占比" data-v="38%" data-c="#4fb3ff"></path>
               <path class="val r3" id="arc3" d="M 36 16 A 25 25 0 0 0 36 66" pathLength="100" stroke-dasharray="0 100"></path>
               <path class="track" d="M 36 24 A 17 17 0 0 0 36 58" pathLength="100"></path>
+              <path class="hit" d="M 36 24 A 17 17 0 0 0 36 58" data-k="站台饱和度" data-v="0.92（接近饱和）" data-c="#BA7517"></path>
               <path class="val r2" id="arc2" d="M 36 24 A 17 17 0 0 0 36 58" pathLength="100" stroke-dasharray="0 100"></path>
             </svg>
 
@@ -293,26 +309,133 @@
   </div>
 
   <div class="spec">
-    <b>v3 改了什么</b>
+    <b>v4 改了什么</b>
     <ol>
-      <li><b>砍掉顶部指标条</b>：四个数已经被下面的半圆环与进出站三块覆盖，重复了。</li>
-      <li><b>运营收支提到第一位、默认展开</b>：这是玩家在经营模式下真正关心的——这个站赚不赚钱、差多少。</li>
-      <li><b>半圆开口朝右、圆弧在左</b>：读数顺序更自然（从左到右），且为右侧留出竖向空间放覆盖人数、三层图例与两个标签。</li>
-      <li>净额用 26px 大字＋颜色（正绿负粉），收入/支出两条横条按同一标尺，一眼看出落差。</li>
-      <li>收入与支出各自拆成三项，放在净额下面——不用再展开「运营与费用」。</li>
+      <li><b>去掉两条进度条</b>——它们只表达「收入 1426 / 支出 1286」，信息量低于一张 12 个月的走势。</li>
+      <li><b>换成 12 个月收支折线</b>：两条线同轴，<b>hover 显示当月收入、支出与净额</b>，并高亮该月。</li>
+      <li><b>小时客流柱可 hover</b>：显示「14 时 · 9.6 千人」，柱子提亮。</li>
+      <li><b>半圆三层都能 hover</b>：每一层的名称与数值（覆盖 4.2/8.0 万、换乘 38%、饱和度 0.92）。</li>
+      <li>提示框是统一的浮层（跟随鼠标、跟随主题），不是浏览器原生的 title 气泡。</li>
     </ol>
   </div>
 </div>
+
+<div class="tip" id="tip"></div>
 
 <script>
   document.querySelectorAll('[data-grp]').forEach(function (g) {
     g.querySelector('.gh').addEventListener('click', function () { g.classList.toggle('open'); });
   });
 
+  /* ---------- 统一提示框 ---------- */
+  const tip = document.getElementById('tip');
+  function showTip(html, x, y) {
+    tip.innerHTML = html;
+    tip.style.left = x + 'px';
+    tip.style.top = (y - 10) + 'px';
+    tip.classList.add('show');
+  }
+  function hideTip() { tip.classList.remove('show'); }
+  function bindTip(el, html) {
+    el.addEventListener('mouseenter', function (e) { showTip(html, e.clientX, e.clientY); });
+    el.addEventListener('mousemove', function (e) { showTip(html, e.clientX, e.clientY); });
+    el.addEventListener('mouseleave', hideTip);
+  }
+
+  /* ---------- 12 个月收支折线 ---------- */
+  const MONEY = {
+    months: ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'],
+    income: [1198, 1216, 1284, 1302, 1268, 1330, 1388, 1402, 1366, 1408, 1420, 1426],
+    expense: [1140, 1162, 1208, 1224, 1186, 1238, 1272, 1284, 1250, 1272, 1278, 1286]
+  };
+  const COL = { income: '#1D9E75', expense: '#D4537E' };
+
+  function drawMoneyChart() {
+    const box = document.getElementById('moneyChart');
+    const W = box.clientWidth || 380, H = box.clientHeight || 98;
+    const padL = 26, padR = 8, padT = 8, padB = 16;
+    const iw = W - padL - padR, ih = H - padT - padB;
+    const all = MONEY.income.concat(MONEY.expense);
+    const lo = Math.min.apply(null, all), hi = Math.max.apply(null, all);
+    const pad = (hi - lo) * 0.25 || 20;
+    const y0 = lo - pad, y1 = hi + pad;
+    const X = function (i) { return padL + iw * i / (MONEY.months.length - 1); };
+    const Y = function (v) { return padT + ih * (1 - (v - y0) / (y1 - y0)); };
+    const path = function (arr) {
+      return arr.map(function (v, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); }).join(' ');
+    };
+    const grid = [y0 + (y1 - y0) * 0.85, y0 + (y1 - y0) * 0.45, y0 + (y1 - y0) * 0.05];
+
+    box.innerHTML =
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' +
+        grid.map(function (g) {
+          return '<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + Y(g).toFixed(1) + '" y2="' + Y(g).toFixed(1) + '" stroke="#ffffff0d" stroke-width="1"></line>' +
+                 '<text x="0" y="' + (Y(g) + 3).toFixed(1) + '" fill="#6b7f95" font-size="9">' + Math.round(g) + '</text>';
+        }).join('') +
+        '<path d="' + path(MONEY.income) + '" fill="none" stroke="' + COL.income + '" stroke-width="2" stroke-linejoin="round"></path>' +
+        '<path d="' + path(MONEY.expense) + '" fill="none" stroke="' + COL.expense + '" stroke-width="2" stroke-linejoin="round" stroke-dasharray="4 3"></path>' +
+        '<line id="mguide" x1="0" x2="0" y1="' + padT + '" y2="' + (padT + ih) + '" stroke="#ffffff33" stroke-width="1" stroke-dasharray="3 2" style="opacity:0"></line>' +
+        '<circle id="md1" r="3.2" fill="' + COL.income + '" stroke="#0b1219" stroke-width="1.5" style="opacity:0"></circle>' +
+        '<circle id="md2" r="3.2" fill="' + COL.expense + '" stroke="#0b1219" stroke-width="1.5" style="opacity:0"></circle>' +
+        '<rect id="mhit" x="' + padL + '" y="0" width="' + iw + '" height="' + H + '" fill="transparent" style="cursor:crosshair"></rect>' +
+      '</svg>';
+
+    const hit = box.querySelector('#mhit');
+    const guide = box.querySelector('#mguide'), d1 = box.querySelector('#md1'), d2 = box.querySelector('#md2');
+    const n = MONEY.months.length;
+
+    hit.addEventListener('mousemove', function (e) {
+      const r = box.getBoundingClientRect();
+      const rel = Math.max(0, Math.min(1, (e.clientX - r.left - padL) / iw));
+      const i = Math.round(rel * (n - 1));
+      const inc = MONEY.income[i], exp = MONEY.expense[i], net = inc - exp;
+      guide.setAttribute('x1', X(i)); guide.setAttribute('x2', X(i)); guide.style.opacity = 1;
+      d1.setAttribute('cx', X(i)); d1.setAttribute('cy', Y(inc)); d1.style.opacity = 1;
+      d2.setAttribute('cx', X(i)); d2.setAttribute('cy', Y(exp)); d2.style.opacity = 1;
+      showTip(
+        '<b>' + MONEY.months[i] + '</b>' +
+        '<div class="r"><i style="background:' + COL.income + '"></i><span>收入</span><em>' + inc + '</em></div>' +
+        '<div class="r"><i style="background:' + COL.expense + '"></i><span>支出</span><em>' + exp + '</em></div>' +
+        '<div class="r"><span>净额</span><em style="color:' + (net >= 0 ? '#1D9E75' : '#D4537E') + '">' + (net >= 0 ? '+' : '') + net + '</em></div>',
+        e.clientX, e.clientY);
+    });
+    hit.addEventListener('mouseleave', function () {
+      guide.style.opacity = 0; d1.style.opacity = 0; d2.style.opacity = 0; hideTip();
+    });
+  }
+  drawMoneyChart();
+  window.addEventListener('resize', drawMoneyChart);
+
+  /* ---------- 客流：小时柱 ---------- */
   const D = {
     wd: { hours: [2, 6, 22, 58, 96, 74, 46, 42, 50, 58, 62, 70, 88, 100, 76, 52, 40, 18] },
     we: { hours: [1, 3, 9, 22, 40, 52, 58, 62, 66, 68, 70, 72, 74, 70, 62, 50, 34, 16] }
   };
+  const bars = document.getElementById('bars');
+  function drawBars(day) {
+    const h = D[day].hours, max = Math.max.apply(null, h);
+    bars.innerHTML = h.map(function (v, i) {
+      return '<span class="b' + (v >= max * 0.9 ? ' pk' : '') + '" data-h="' + (i + 6) + '" data-v="' + (v / 10).toFixed(1) + '" style="height:' + Math.round(v / max * 100) + '%"></span>';
+    }).join('');
+    bars.querySelectorAll('.b').forEach(function (b) {
+      bindTip(b, '<b>' + b.dataset.h + ' 时</b><div class="r"><span>进站</span><em>' + b.dataset.v + ' 千人</em></div>');
+    });
+  }
+  drawBars('wd');
+  document.querySelectorAll('[data-seg] button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('[data-seg] button').forEach(function (x) { x.classList.remove('on'); });
+      b.classList.add('on');
+      drawBars(b.dataset.day);
+    });
+  });
+
+  /* ---------- 半圆三层：hover 显示 ---------- */
+  document.querySelectorAll('.gauge .hit').forEach(function (p) {
+    bindTip(p, '<b>' + p.dataset.k + '</b><div class="r"><i style="background:' + p.dataset.c + '"></i><span>当前</span><em>' + p.dataset.v + '</em></div>');
+  });
+
+  /* ---------- 分目的 ---------- */
   const MIX = [
     { k: '通勤', v: 52, c: '#1D9E75' }, { k: '购物', v: 18, c: '#3c7dd9' }, { k: '休闲', v: 12, c: '#BA7517' },
     { k: '上学', v: 8, c: '#8a7bd8' }, { k: '接驳', v: 6, c: '#4fb3ff' }, { k: '医疗', v: 4, c: '#D4537E' }
@@ -324,24 +447,7 @@
     return '<span><i style="background:' + m.c + '"></i>' + m.k + ' ' + m.v + '%</span>';
   }).join('');
 
-  const bars = document.getElementById('bars');
-  function draw(day) {
-    const h = D[day].hours, max = Math.max.apply(null, h);
-    bars.innerHTML = h.map(function (v, i) {
-      return '<span class="b' + (v >= max * 0.9 ? ' pk' : '') + '" style="height:' + Math.round(v / max * 100) + '%" title="' + (i + 6) + ' 时 · ' + v + ' 千人"></span>';
-    }).join('');
-  }
-  draw('wd');
-
-  document.querySelectorAll('[data-seg] button').forEach(function (b) {
-    b.addEventListener('click', function () {
-      document.querySelectorAll('[data-seg] button').forEach(function (x) { x.classList.remove('on'); });
-      b.classList.add('on');
-      draw(b.dataset.day);
-    });
-  });
-
-  // 三层半圆环（pathLength=100，dasharray 直接写百分比）
+  /* ---------- 半圆填充 ---------- */
   const RING = { arc1: 4.2 / 8.0, arc3: 0.38, arc2: 0.92 };
   requestAnimationFrame(function () {
     Object.keys(RING).forEach(function (id) {
