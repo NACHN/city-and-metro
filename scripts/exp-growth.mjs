@@ -18,12 +18,14 @@ const FILES = ['js/util.js','js/config.js','js/manifest.js','js/news.js','js/geo
  'js/maps.js','js/facility.js','js/city.js','js/metro.js','js/sim.js','js/economy.js','js/macro.js','js/game.js','js/milestones.js','js/save.js'];
 for (const f of FILES) vm.runInThisContext(fs.readFileSync(path.join(root, f), 'utf8'), { filename: f });
 const CM = globalThis.CM, M = CM.Metro, U = CM.U, CFG = CM.CFG;
-CM.useMap('gz');
+const MAPID = process.argv[5] || 'gz';
+CM.useMap(MAPID);
 const YEARS = Number(process.argv[2] || 40);
 
 function run(from) {
   CM.GROWTH_ACCESS.from = from;
-  const city = new CM.City(); city.generate(19900101, 1990);
+  const Y0 = CFG.START.y;
+  const city = new CM.City(); city.generate(Y0 * 10000 + 101, Y0);
   // 按各区域的开放年份逐步开放（与游戏一致）：早期需求集中在核心，才会真的堵起来
   const openByYear = function (yr, m) {
     for (let k = 0; k < city.regions.length; k++) {
@@ -32,7 +34,7 @@ function run(from) {
       if (rg.open != null && rg.open <= yr && city.openRegion) city.openRegion(k, yr, m);
     }
   };
-  openByYear(1990, 0);
+  openByYear(Y0, 0);
   // 24 站十字线网（与之前的实验一致）
   let row = 40, br = -1, col = 40, bc = -1;
   for (let j = 8; j < city.H - 8; j++) { let s = 0; for (let i = 10; i < city.W - 10; i++) s += city.pop[j * city.W + i]; if (s > br) { br = s; row = j; } }
@@ -47,28 +49,21 @@ function run(from) {
   const p0 = Float32Array.from(city.pop);
   const snap = [];
   for (let m = 0; m < YEARS * 12; m++) {
-    const yy = 1990 + Math.floor(m / 12);
+    const yy = Y0 + Math.floor(m / 12);
     if (m % 12 === 0) openByYear(yy, m % 12);
-    if (m % 6 === 0) { const C = M.compile(net, city); model.setNetwork(C); model.solveNow(1); }
+    if (m % 6 === 0) { const C = M.compile(net, city); model.setNetwork(C); model.solveNow(2); }   // 收敛两轮，让拥堵进入 skim
     const ja = from === 'jobAccess' ? model.computeJobAccess(45) : null;
     if (m % 60 === 59) {
-      // 每 5 年记一次：人口、拥堵、地铁、以及「公交口径的可达岗位」与「含开车口径」的差距
+      // 每 5 年记一次：人口、拥堵（与道路面板同口径）、地铁，以及公交/含车两种可达岗位的差距
       const jaT = model.computeJobAccess(45, 'transit'), jaB = model.computeJobAccess(45, 'both');
       const mean = function (a) { let s2 = 0, n = 0; for (let q = 0; q < a.length; q++) if (a[q] > 0) { s2 += a[q]; n++; } return n ? s2 / n : 0; };
-      let congN = 0, congD = 0;
-      const P0 = model.ctxs.wd.per[1];
+      const W = model.weights(8 * 60 + 30);
       const vr = [];
-      if (P0 && P0.arcTime && model.road) {
-        for (let a = 0; a < model.road.nA; a++) {
-          congN += P0.arcTime[a] * model.road.arcLen[a]; congD += P0.arcT0[a] * model.road.arcLen[a];
-          const cap = model.road.arcCap[a] * (model.capF || 1);
-          if (cap > 0) vr.push(P0.arcVol[a] / cap);
-        }
-      }
+      for (let a = 0; a < model.road.nA; a++) vr.push(model.arcVolAt(a, W) / (model.cap(a) || 1));
       vr.sort(function (x, y2) { return x - y2; });
       const qq = function (f) { return vr.length ? vr[Math.min(vr.length - 1, Math.floor(f * vr.length))] : 0; };
-      snap.push({ y: yy, pop: city.totals().pop, cong: congD > 0 ? congN / congD : 1, metro: model.daily ? model.daily.metro : 0,
-        jaT: mean(jaT), jaB: mean(jaB), vc50: qq(0.5), vc95: qq(0.95), vcMax: vr.length ? vr[vr.length - 1] : 0 });
+      snap.push({ y: yy, pop: city.totals().pop, cong: model.cityCongAt(W), metro: model.daily ? model.daily.metro : 0,
+        jaT: mean(jaT), jaB: mean(jaB), vc95: qq(0.95), vcMax: vr.length ? vr[vr.length - 1] : 0 });
     }
     city.growMonth({ year: yy, monthIndex: m, zoneAccess: null, cellWalk: model.net && model.net.acc ? model.net.acc.cellWalk : null, coverage: model.net && model.net.acc ? model.net.acc.coverage : 0, econ: null, jobAccess: ja });
   }
@@ -100,13 +95,13 @@ function run(from) {
 }
 
 const A = run(process.argv[3] || 'walk'), B = run(process.argv[4] || 'jobAccess');
-console.log('每 5 年：人口 / 拥堵指数（行车时间 ÷ 自由流）/ 地铁日客流 / 平均可达岗位（纯公交 vs 含开车）');
+console.log('地图 ' + MAPID + ' · 每 5 年：人口 / 拥堵指数（行车时间 ÷ 自由流）/ 地铁日客流 / 平均可达岗位（纯公交 vs 含开车）');
 for (let k = 0; k < A.snap.length; k++) {
   const a = A.snap[k], b = B.snap[k];
   console.log('  ' + a.y + '  ' + (a.pop / 1e6).toFixed(2) + 'M  ' + a.cong.toFixed(2) + ' / ' + b.cong.toFixed(2) +
     '   ' + Math.round(a.metro).toLocaleString('en').padStart(8) + ' / ' + Math.round(b.metro).toLocaleString('en').padStart(8) +
     '   ' + Math.round(a.jaT).toLocaleString('en').padStart(7) + ' / ' + Math.round(a.jaB).toLocaleString('en').padStart(7) +
-    '   V/C 中位 ' + a.vc50.toFixed(2) + ' · p95 ' + a.vc95.toFixed(2) + ' · 最大 ' + a.vcMax.toFixed(2));
+    '   V/C p95 ' + a.vc95.toFixed(2) + ' · 最大 ' + a.vcMax.toFixed(2));
 }
 console.log('');
 console.log('全市人口：' + A.from + ' ' + (A.pop / 1e6).toFixed(2) + 'M · jobAccess ' + (B.pop / 1e6).toFixed(2) + 'M · 期末地铁/日 ' + Math.round(A.metro) + ' / ' + Math.round(B.metro));

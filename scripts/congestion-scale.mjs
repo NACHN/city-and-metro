@@ -29,16 +29,17 @@ function run(k) {
   const model = new CM.Model(city);
   model.setNetwork(M.compile(net, city));
   model.solveNow(3);
-  const P = model.ctxs.wd.per[1], v = [];
-  for (let a = 0; a < model.road.nA; a++) v.push(P.arcVol[a] / (model.road.arcCap[a] * (model.capF || 1) || 1));
+  // 与道路面板同口径：早高峰整点的加权流量 / 通行能力
+  const W = model.weights(8 * 60 + 30), P = model.ctxs.wd.per[1], v = [];
+  for (let a = 0; a < model.road.nA; a++) v.push(model.arcVolAt(a, W) / (model.cap(a) || 1));
   v.sort((x, y) => x - y);
   const q = (f) => v[Math.min(v.length - 1, Math.floor(f * v.length))];
-  let cn = 0, cd = 0, sum = 0;
-  for (let a = 0; a < model.road.nA; a++) { cn += P.arcTime[a] * model.road.arcLen[a]; cd += model.road.arcT0[a] * model.road.arcLen[a]; }
+  let sum = 0;
   for (const x of v) sum += x;
+  const cong = model.cityCongAt(W);
   const mean = (arr) => { let s = 0, n = 0; for (const x of arr) if (x > 0) { s += x; n++; } return n ? s / n : 0; };
   const jaT = mean(model.computeJobAccess(45, 'transit')), jaB = mean(model.computeJobAccess(45, 'both'));
-  return { k: k, vc50: q(0.5), vc95: q(0.95), vcMax: v[v.length - 1], cong: cn / cd, share: model.daily.metroShare, commute: model.daily.commute, jaT: jaT, jaB: jaB, metro: model.daily.metro };
+  return { k: k, vc50: q(0.5), vc95: q(0.95), vcMax: v[v.length - 1], cong: cong, share: model.daily.metroShare, commute: model.daily.commute, jaT: jaT, jaB: jaB, metro: model.daily.metro };
 }
 console.log('容量倍数   V/C p50  p95   最大   拥堵指数  地铁分担  通勤    可达岗位(公交/含车)');
 for (const k of [1, 0.5, 0.25, 0.15, 0.1]) {
