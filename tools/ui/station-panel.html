@@ -28,10 +28,10 @@
   .col.info { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 
   /* ---------- 身份条：建设图标在最左（与面板从左侧弹出同向） ---------- */
-  .idbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 9px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
-  .idbar .buildbtn { order: -1; }
+  .ihead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  .ihead .buildbtn { order: -1; }
   .stname { font-size: 17px; font-weight: 650; letter-spacing: .01em; }
-  .idbar .tail { margin-left: auto; display: flex; gap: 6px; }
+  .ihead .tail { margin-left: auto; display: flex; gap: 6px; }
   .iconbtn { width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--line); background: var(--panel2); color: var(--text2); border-radius: 8px; cursor: pointer; font-size: 12.5px; }
   .iconbtn:hover { background: #ffffff10; color: var(--text); }
   .iconbtn.on { background: var(--warn-bg); border-color: #BA751755; color: var(--warn); }
@@ -39,6 +39,19 @@
   .chip.l1 { color: var(--info); border-color: #4fb3ff44; background: #4fb3ff14; }
   .chip.l2 { color: #ffb454; border-color: #ffb45444; background: #ffb45414; }
   .chip.xfer { color: var(--accent); border-color: #1D9E7555; background: var(--accent-bg); }
+
+  /* ---------- 信息面板内的分区 ---------- */
+  .sect { border-top: 1px solid var(--line); }
+  .sect:first-of-type { border-top: 0; }
+  .shead { display: flex; align-items: center; gap: 7px; padding: 8px 12px; cursor: pointer; user-select: none; }
+  .shead:hover { background: #ffffff06; }
+  .shead .dotmark { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+  .shead .t { font-size: 11.5px; font-weight: 650; letter-spacing: .02em; }
+  .shead .s { margin-left: auto; font-size: 10.5px; color: var(--text3); }
+  .shead .cv { width: 12px; text-align: center; color: var(--text3); font-size: 9px; transition: transform .18s ease; }
+  .sect.collapsed .shead .cv { transform: rotate(-90deg); }
+  .sbody { padding: 0 12px 12px; }
+  .sect.collapsed .sbody { display: none; }
 
   /* ---------- 面板：整块可收起 ---------- */
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
@@ -246,16 +259,6 @@
     <button data-view="build">建设</button>
   </div>
 
-  <div class="idbar">
-    <button class="iconbtn on buildbtn" id="btnBuild" title="建设 / 改建">🔨</button>
-    <span class="stname">公园前</span>
-    <span class="chip xfer">⇄ 换乘站</span>
-    <span class="chip l1">● 1 号线</span>
-    <span class="chip l2">● 2 号线</span>
-    <span class="chip">中型站 · 地下 · 1995</span>
-    <div class="tail"><button class="iconbtn" id="btnFav" title="收藏">☆</button></div>
-  </div>
-
   <div class="stage">
     <!-- ============ 建设 ============ -->
     <div class="panel build">
@@ -336,10 +339,19 @@
 
     <!-- ============ 信息列 ============ -->
     <div class="col info">
-      <!-- 经济 -->
-      <div class="panel econ">
-        <div class="phead" data-panel><i class="dotmark" style="background:var(--accent)"></i><span class="t">经济</span><span class="s" id="netSummary">本月净 +123 万</span><span class="cv">▾</span></div>
-        <div class="pbody">
+      <div class="panel infopanel">
+<div class="ihead">
+  <button class="iconbtn on buildbtn" id="btnBuild" title="建设 / 改建">🔨</button>
+  <span class="stname">公园前</span>
+  <span class="chip xfer">⇄ 换乘站</span>
+  <span class="chip l1">● 1 号线</span>
+  <span class="chip l2">● 2 号线</span>
+  <span class="chip">中型站 · 地下 · 1995</span>
+  <div class="tail"><button class="iconbtn" id="btnFav" title="收藏">☆</button></div>
+</div>
+        <section class="sect" data-section>
+          <div class="shead"><i class="dotmark" style="background:var(--accent)"></i><span class="t">经济</span><span class="s" id="netSummary">本月净 +123 万</span><span class="cv">▾</span></div>
+          <div class="sbody">
           <div class="econ-grid">
             <!-- 左：运营收支 -->
             <div>
@@ -378,13 +390,12 @@
               <div class="kv"><span class="k">设施维护</span><span class="v">46 万/月</span></div>
             </div>
           </div>
-        </div>
-      </div>
+          </div>
+        </section>
 
-      <!-- 乘客 -->
-      <div class="panel rider">
-        <div class="phead" data-panel><i class="dotmark" style="background:var(--info)"></i><span class="t">乘客</span><span class="s">工作日 8.6 万 · 周末 6.1 万</span><span class="cv">▾</span></div>
-        <div class="pbody">
+        <section class="sect" data-section>
+          <div class="shead"><i class="dotmark" style="background:var(--info)"></i><span class="t">乘客</span><span class="s">工作日 8.6 万 · 周末 6.1 万</span><span class="cv">▾</span></div>
+          <div class="sbody">
           <div class="seg2" style="max-width:164px;margin-bottom:8px" id="daySeg">
             <button data-day="wd" class="on">工作日</button>
             <button data-day="we">周末</button>
@@ -447,14 +458,21 @@
             <div class="bushead"><span class="lbl">接驳巴士</span><span id="busCount" class="buscount">2 条</span></div>
             <div id="busList" class="buslist"></div>
           </div>
-        </div>
+          </div>
+        </section>
       </div>
     </div>
   </div>
 </div>
 
 <div class="spec">
-  <b>v8 改了什么</b>
+  <b>v13：三块并回一个面板</b>
+  <ol>
+    <li>站名 + 经济 + 乘客现在是<b>同一个面板</b>（一条边、无间隙），只在内部用分隔线分成两段——游戏里它是一个侧栏，不是三张卡片。</li>
+    <li>两段仍可各自收起（点段标题），但收起的是段，不是整个面板。</li>
+    <li>建设仍是独立面板，从左侧弹出。</li>
+  </ol>
+  <b style="display:block;margin-top:14px">此前几版的改动</b>
   <ol>
     <li><b>🔨 移到最左</b>：与「从左侧弹出建设面板」的方向一致；收藏仍在最右。</li>
     <li><b>折叠单位提升到面板</b>：经济、乘客各是一整块，内部不再有二级折叠——点标题就能整块收起。</li>
@@ -500,8 +518,8 @@
     }
   };
 
-  /* 面板整块折叠 */
-  document.querySelectorAll('[data-panel]').forEach(function (h) {
+  /* 分区折叠（经济 / 乘客）与建设面板折叠 */
+  document.querySelectorAll('[data-section], [data-panel]').forEach(function (h) {
     h.addEventListener('click', function () {
       const p = h.parentElement;
       p.classList.toggle('collapsed');
