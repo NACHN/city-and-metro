@@ -38,7 +38,8 @@
   .chip.xfer { color: var(--accent); border-color: #1D9E7555; background: var(--accent-bg); }
 
   /* ---------- 三栏 ---------- */
-  .stage { display: grid; grid-template-columns: 300px 1fr 1fr; gap: 10px; align-items: start; }
+  .stage { display: grid; grid-template-columns: 300px minmax(0, 420px); gap: 10px; align-items: start; }
+  .col.info { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
   .phead { display: flex; align-items: center; gap: 7px; padding: 9px 12px; border-bottom: 1px solid var(--line); background: #ffffff04; }
   .phead .dotmark { width: 6px; height: 6px; border-radius: 50%; flex: none; }
@@ -49,10 +50,10 @@
   /* 窄屏：单栏 + 三页切换 */
   .tabbar { display: none; }
   body[data-layout="narrow"] .stage { grid-template-columns: 1fr; max-width: 440px; width: 100%; }
-  body[data-layout="narrow"] .stage > .panel { display: none; }
+  body[data-layout="narrow"] .stage > .panel.build { display: none; }
+  body[data-layout="narrow"] .stage > .col.info { display: none; }
   body[data-layout="narrow"][data-view="build"] .stage > .panel.build { display: flex; }
-  body[data-layout="narrow"][data-view="econ"] .stage > .panel.econ { display: flex; }
-  body[data-layout="narrow"][data-view="rider"] .stage > .panel.rider { display: flex; }
+  body[data-layout="narrow"][data-view="info"] .stage > .col.info { display: flex; }
   body[data-layout="narrow"] .tabbar { display: flex; }
   body[data-layout="narrow"] .wrap { max-width: 440px; }
   .tabbar { display: none; gap: 6px; }
@@ -196,19 +197,18 @@
   .spec ol { margin: 6px 0 0; padding-left: 18px; }
 </style>
 </head>
-<body data-layout="wide" data-view="econ">
+<body data-layout="wide" data-view="info">
 
 <div class="demobar">
   <span>演示布局：</span>
-  <button id="btnWide" class="on">宽屏（三栏）</button>
+  <button id="btnWide" class="on">宽屏（两栏）</button>
   <button id="btnNarrow">窄屏（切页）</button>
-  <span style="opacity:.7">三块：建设 / 经济 / 乘客</span>
+  <span style="opacity:.7">左建设 · 右信息（经济在上、乘客在下）</span>
 </div>
 
 <div class="wrap">
   <div class="tabbar" id="tabbar">
-    <button data-view="econ" class="on">经济</button>
-    <button data-view="rider">乘客</button>
+    <button data-view="info" class="on">信息</button>
     <button data-view="build">建设</button>
   </div>
 
@@ -295,7 +295,8 @@
       </div>
     </div>
 
-    <!-- ============ 经济 ============ -->
+    <!-- ============ 信息列：经济在上、乘客在下 ============ -->
+    <div class="col info">
     <div class="panel econ">
       <div class="phead"><i class="dotmark" style="background:var(--accent)"></i><span class="t">经济</span><span class="s">本月净 +140 万</span></div>
       <div class="pbody">
@@ -410,17 +411,18 @@
         </div>
       </div>
     </div>
+    </div>
   </div>
 </div>
 
 <div class="spec">
-  <b>v6：按「系统」切成三块</b>
+  <b>v7：双栏 + 右侧上下叠（回到不挤的宽度）</b>
   <ol>
-    <li><b>建设</b>——所有会改变城市的操作（规模、施工方式、配套、上盖、改名、移动），带实时造价。</li>
-    <li><b>经济</b>——只读的钱与地：收支（含 12 月折线）、物业与地价、配套设施与维护费。</li>
-    <li><b>乘客</b>——只读的人与流动：客流（柱状 + 半圆 + 进出换乘）、换乘关系、附近设施。</li>
-    <li>宽屏三栏并列（300 + 340 + 340），同一屏看完「能不能建 / 建了赚不赚 / 有多少人用」。</li>
-    <li>窄屏三页切换，页签就是三个系统名——玩家不用再猜「我要找的东西在哪个框里」。</li>
+    <li><b>左：建设</b>（300px）——会改变城市的操作，带实时造价与「占可用百分比」。</li>
+    <li><b>右上：经济</b>——收支（净额 + 12 月折线 + 收支构成）、物业与地价、配套与维护费。</li>
+    <li><b>右下：乘客</b>——客流（柱状 + 三层半圆 + 进/换/出）、换乘关系、附近设施。</li>
+    <li>两栏合计 730px，比三栏（约 1000px）窄三分之一；系统分区还在，只是竖向排列。</li>
+    <li>窄屏两页：<b>信息</b>（经济 + 乘客顺着滚）/ <b>建设</b>。页签不再有第三个。</li>
   </ol>
 </div>
 
@@ -433,7 +435,7 @@
     body.dataset.layout = v;
     document.getElementById('btnWide').classList.toggle('on', v === 'wide');
     document.getElementById('btnNarrow').classList.toggle('on', v === 'narrow');
-    if (v === 'narrow') setView(body.dataset.view || 'econ');
+    if (v === 'narrow') setView(body.dataset.view === 'build' ? 'build' : 'info');
     else setTimeout(drawMoneyChart, 0);
   }
   document.getElementById('btnWide').onclick = function () { setLayout('wide'); };
@@ -442,7 +444,7 @@
   function setView(v) {
     body.dataset.view = v;
     document.querySelectorAll('#tabbar button').forEach(function (b) { b.classList.toggle('on', b.dataset.view === v); });
-    if (v === 'econ') setTimeout(drawMoneyChart, 0);
+    if (v === 'info') setTimeout(drawMoneyChart, 0);
   }
   document.querySelectorAll('#tabbar button').forEach(function (b) { b.onclick = function () { setView(b.dataset.view); }; });
 
@@ -454,7 +456,7 @@
       p.style.display = hidden ? 'flex' : 'none';
       this.classList.toggle('on', hidden);
     } else {
-      setView(body.dataset.view === 'build' ? 'econ' : 'build');
+      setView(body.dataset.view === 'build' ? 'info' : 'build');
     }
   };
   document.getElementById('btnBuild').classList.add('on');
