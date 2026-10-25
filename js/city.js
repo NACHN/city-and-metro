@@ -938,7 +938,10 @@
       if (this.landFrac[c] < 0.5 || this.lu[c] === LU.WATER) continue;
       const poiMul = 1 + L.poiGain * poi[c];
       let accMul = 1;
-      if (walk) { const wm = Math.min(walk[c] || 0, 4000); accMul = 1 + L.accessGain * Math.exp(-wm / L.accessScale); }
+      // 可达项优先用「T 分钟内可达岗位」的乘子（经营模式每月算一次，见 Model.computeLandAccess）；
+      // 没有时退回「离站步行距离」。前者反映的是通勤便利，后者只是离站近。
+      if (this._accMulArr) accMul = this._accMulArr[c] || 1;
+      else if (walk) { const wm = Math.min(walk[c] || 0, 4000); accMul = 1 + L.accessGain * Math.exp(-wm / L.accessScale); }
       const dens = Math.min(L.densCap, (this.pop[c] + 1.5 * this.jobs[c]) / L.densRef);
       const denMul = (1 + L.densGain * Math.pow(dens, L.densPow)) * (1 + L.jobGain * Math.min(3, this.jobs[c] / L.jobRef));
       // 基础乘子 → 按本图梯度系数拉伸（gradK=1 时不改变）
@@ -1072,10 +1075,14 @@
       // 没有地价系统（自由建造 / 经营挑战）时 landAcc 为空，farK 恒为 1，容量与既有模式完全一致。
       const Ld = CFG.land;
       let farK = 1;
-      if (this.landAcc && Ld && Ld.farGain > 0) {
-        const am = this.landAcc[c] || 1;
+      // 可达项：优先用「通勤时间可达性」（ctx.accFar，经营模式每月按 T 分钟内可达岗位算出），
+      // 否则退回「离站步行可达性」（this.landAcc，由 buildLandPrice 派生）。
+      const accSrc = ctx.accFar ? ctx.accFar[c] : (this.landAcc ? this.landAcc[c] : 0);
+      if (accSrc && Ld && Ld.farGain > 0) {
         // 2% 门限：没有站点时 exp(−∞) 会留 0.002 量级的浮点残差，不能让它给全图普涨
-        if (am > 1.02) farK = 1 + Ld.farGain * Math.min(1, (am - 1) / (Ld.accessGain || 0.7));
+        if (accSrc > 1.02) farK = 1 + Ld.farGain * Math.min(1, (accSrc - 1) / (Ld.accessGain || 0.7));
+        // 地价惩罚：同等可达性下，地价越高于中位，越盖不动（拆迁、审批、地租）
+        if (ctx.priceK) farK *= ctx.priceK[c];
       }
       let cr = resCap(P) * eraMul * lf * farK, cj = jobCap(P, this.regions[this.region[c]].plan) * eraMul * lf * farK;
       // 既有数据的核心区人口本来就高于 resCap 口径（老城密度远超新区基准），这些格子会因剩余容量为负而

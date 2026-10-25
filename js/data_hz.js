@@ -165,7 +165,7 @@
     cfg: {
       // 地价基准（元/㎡ 土地，开局年）：按本地建设成本的量级标定，理由见 TOD 与经济系统方案 §6.2。
       // 杭州 2000：市区居住地价 8,074–11,809 元/㎡（市规划和自然资源局地价监测）；外围（余杭、萧山未设区）取约 1,000
-      land: Object.assign({}, CM.CFG.land, { base: 1000, gradK: 1.3 }),
+      land: Object.assign({}, CM.CFG.land, { base: 1900, gradK: 1.3 }),
       W: 112, H: 88, START: { y: 2000, m: 1, d: 1, minute: 360 },
       growth: Object.assign({}, CM.CFG.growth, { popCurve: [[2000, 3.0e6], [2005, 3.5e6], [2010, 4.2e6], [2015, 4.8e6], [2020, 5.7e6], [2030, 6.4e6], [2050, 7.0e6], [2300, 7.5e6]], histEnd: 2020, jobsRatio: [[2000, 0.52], [2010, 0.56], [2020, 0.58], [2040, 0.6]] }),
       money: { code: 'CNY', unit: '元', wan: '万元', yi: '亿元', sym: '¥' },

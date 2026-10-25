@@ -58,7 +58,10 @@
     if (CFG.choice.impedance === 'time') { g.model.buildDemand(); g.model.solveNow(2); }
     // 地价是经营模式的派生量：开局先算一次，之后每月随城市与线网更新（见 monthGen）
     if (g.econ.caps.land) {
+      g.model.computeLandAccess((CM.LAND_LINK && CM.LAND_LINK.winMin) || 30);
+      g.city._accMulArr = g.model.landAccessMul;
       g.city.buildLandPrice(g.clock.y, g.model.net ? g.model.net.acc : null);
+      g.updateLandPriceK();
       g.applyDevJobs();
     }
     g.econ.startMonth(g.clock.y, g.clock.m);
@@ -233,10 +236,12 @@
     // 城市发展
     const acc = model.net ? model.net.acc : null;
     const econF = this.macro && CM.Macro ? CM.Macro.applyFactors(this) : null;
+    // 通勤可达性（T 分钟内可达岗位）：地价的可达项、容积率的可达项都读它
+    const farAcc = this.econ.caps.land && CM.LAND_LINK ? model.computeLandAccess((CM.LAND_LINK.winMin) || 30) : null;
     // 增长的可达项：经营模式用「可达岗位数」，其余模式仍用步行到站距离（数值不变）
     const GA = CM.GROWTH_ACCESS || {};
     const ja = GA.from === 'jobAccess' ? model.computeJobAccess(GA.minMin || 45) : null;
-    const gr = city.growMonth({ year: yr, monthIndex: this.ym(), zoneAccess: model.zoneAccessNorm, cellWalk: acc ? acc.cellWalk : null, coverage: acc ? acc.coverage : 0, econ: econF, jobAccess: ja });
+    const gr = city.growMonth({ year: yr, monthIndex: this.ym(), zoneAccess: model.zoneAccessNorm, cellWalk: acc ? acc.cellWalk : null, coverage: acc ? acc.coverage : 0, econ: econF, jobAccess: ja, accFar: farAcc, priceK: this.landPriceK || null });
     yield;
     if (gr.streetsChanged || roadsChanged) { if (roadsChanged) city.updateStreets(); city.buildGraphs(); yield; }
     // 编译与模型刷新分多步执行；this.compiled 与模型网络在同一步内一起替换
@@ -246,7 +251,10 @@
     this.compiled = C;
     // 地价（经营模式）：线网与城市都更新完之后重算，供拆迁计价与物业收入使用
     if (this.econ.caps.land) {
+      // 地价的可达项用上面算好的通勤可达性；算完再按「地价 / 中位」更新下个月的容积率惩罚
+      if (farAcc) city._accMulArr = farAcc;
       city.buildLandPrice(yr, model.net ? model.net.acc : null);
+      this.updateLandPriceK();
       this.accrueProperty(yr);
       this.accrueValueCapture(yr);
       // 接驳巴士的运营费按月摊销：它只与线路长度有关，不看客流，所以建早了就是纯支出
@@ -588,6 +596,20 @@
     }
     return g.syncDevMalls();
   }
+
+  // 容积率的地价惩罚：每格 = 1 / (1 + k × max(0, 地价/中位 − 1))。
+  // 含义是「同等可达性下，地价高的地方拆迁贵、审批难，不该再加容量」，也是次中心能出现的另一半原因。
+  Game.prototype.updateLandPriceK = function () {
+    const city = this.city, k = (CM.LAND_LINK && CM.LAND_LINK.farPriceK) || 0;
+    const p50 = city.landStat ? city.landStat.p50 : 0;
+    if (!(k > 0) || !(p50 > 0) || !city.landPrice) { this.landPriceK = null; return; }
+    const arr = new Float32Array(city.N);
+    for (let c = 0; c < city.N; c++) {
+      const rel = (city.landPrice[c] || 0) / p50;
+      arr[c] = 1 / (1 + k * Math.max(0, rel - 1));
+    }
+    this.landPriceK = arr;
+  };
 
   // 上盖商场的实际到访（人次/年）：由 OD 分配得出，模型未算完时为 0
   Game.prototype.mallVisits = function (s) {

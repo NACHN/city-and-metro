@@ -2164,7 +2164,7 @@
       "metroBoostMax": 0.06
     },
     "land": {
-      "base": 8000,
+      "base": 23000,
       "clearFactor": 1.4,
       "clearCapTunnel": 2,
       "gradK": 1.6,

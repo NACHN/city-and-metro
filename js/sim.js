@@ -997,6 +997,24 @@
     return out;
   };
 
+  // 「通勤可达性」乘子（每格）：T 分钟内可达岗位数 ÷ 全市最大，开方后线性映射到 [1, 1+accessGain]。
+  // 地价的可达项与容积率的可达项共用这一个量，保证「价格反映的东西」和「容积率奖励的东西」是同一件事。
+  // 每月算一次（O(Z²)），不进求解循环。
+  Model.prototype.computeLandAccess = function (winMin) {
+    const Z = this.Z, city = this.city;
+    const j = this.computeJobAccess(winMin || 30);
+    let mx = 0;
+    for (let z = 0; z < Z; z++) if (j[z] > mx) mx = j[z];
+    const gain = (CFG.land && CFG.land.accessGain) || 0.7;
+    const out = new Float32Array(city.N);
+    for (let c = 0; c < city.N; c++) {
+      const r = mx > 0 ? Math.sqrt(j[city.zoneOf(c)] / mx) : 0;
+      out[c] = 1 + gain * r;
+    }
+    this.landAccessMul = out;
+    return out;
+  };
+
   Model.prototype.buildMetro = function (C) {
     const N = C.stations.length, R = C.routes.length, mc = CFG.metro;
     const acc = this.computeAccess(C);
