@@ -133,7 +133,6 @@ function run(name, patches, after, withTimer, zone, decay, impMode, opt) {
   const simSrc = patches.reduce((s, f) => f(s), fs.readFileSync(path.join(root, 'js/sim.js'), 'utf8'));
   load(sb, 'js/sim.js', simSrc);
   for (const f of POST) load(sb, f);
-  if (impMode) console.log('  [检查] CFG.choice.impedance = ' + CM.CFG.choice.impedance + ' · Model 前');
   const model = new sb.CM.Model(city);
   model.setNetwork(compiled);
   if (after) after(CM, model, city);
