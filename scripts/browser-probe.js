@@ -11,33 +11,35 @@
   const T = function () { return performance.now(); };
   const fmt = function (v, u) { return v.toFixed(v < 10 ? 2 : 0) + (u || ' ms'); };
 
-  // 1) 求解一轮
-  let t0 = T(); model.solveNow(1); const one = T() - t0;
-  // 2) 连跑两轮（近似「改线后重新收敛」）
-  t0 = T(); model.solveNow(2); const two = T() - t0;
-
-  // 3) 内存（仅 Chrome / Edge 支持 performance.memory）
-  const m = performance.memory;
-  const mem = m ? (m.usedJSHeapSize / 1048576).toFixed(1) + ' MB（堆）· ' + (m.jsHeapSizeLimit / 1048576).toFixed(0) + ' MB 上限'
-                : '这个浏览器不暴露 performance.memory（Safari / Firefox 正常）';
-
-  // 4) 帧率：3 秒采样
-  let frames = 0, last = T(), worst = 0;
-  const start = T();
-  const tick = function () {
-    const now = T(); const dt = now - last; last = now;
-    if (frames > 2) worst = Math.max(worst, dt);
-    frames++;
-    if (now - start < 3000) requestAnimationFrame(tick);
-    else {
-      const fps = frames / ((now - start) / 1000);
-      console.log('%c《城市与地铁》性能探针', 'font-weight:bold;color:#1D9E75');
-      console.log('  地图：' + CM.mapId + ' · 小区 ' + model.Z + ' · 人口 ' + Math.round(model.city.totals().pop).toLocaleString());
-      console.log('  求解一轮：' + fmt(one) + ' · 连跑两轮：' + fmt(two));
-      console.log('  3 秒平均帧率：' + fps.toFixed(1) + ' fps（最长一帧 ' + fmt(worst) + '）');
-      console.log('  内存：' + mem);
-      console.log('  提示：如果「求解一轮」> 800 ms，或帧率 < 30，把上面三行发回给我');
-    }
+  // ① 先测「纯游玩」的帧率——不要先跑 solve，否则测到的是自己的阻塞
+  const sample = function (ms, done) {
+    let frames = 0, worst = 0, last = T(), t0 = T();
+    const tick = function () {
+      const now = T(); const dt = now - last; last = now;
+      if (frames > 2) worst = Math.max(worst, dt);
+      frames++;
+      if (now - t0 < ms) requestAnimationFrame(tick);
+      else done(frames / ((now - t0) / 1000), worst);
+    };
+    requestAnimationFrame(tick);
   };
-  requestAnimationFrame(tick);
+
+  sample(3000, function (fps, worst) {
+    // ② 再测求解耗时（这一段会阻塞，所以放在帧率采样之后）
+    let t0 = T(); model.solveNow(1); const one = T() - t0;
+    t0 = T(); model.solveNow(2); const two = T() - t0;
+    // ③ 再采一次帧率，这次包含「求解刚结束」的影响（GC / 重排）
+    sample(2000, function (fps2, worst2) {
+      const m = performance.memory;
+      const mem = m ? (m.usedJSHeapSize / 1048576).toFixed(1) + ' MB（堆）' : '该浏览器不暴露 performance.memory';
+      console.log('%c《城市与地铁》性能探针', 'font-weight:bold;color:#1D9E75');
+      console.log('  地图 ' + CM.mapId + ' · 小区 ' + model.Z + ' · 人口 ' + Math.round(model.city.totals().pop).toLocaleString() +
+        ' · OD 记录 ' + (model.od ? model.od.dest.length : 0));
+      console.log('  游玩帧率：' + fps.toFixed(1) + ' fps（最长一帧 ' + fmt(worst) + '）');
+      console.log('  求解一轮：' + fmt(one) + ' · 连跑两轮：' + fmt(two));
+      console.log('  求解后帧率：' + fps2.toFixed(1) + ' fps（最长一帧 ' + fmt(worst2) + '）');
+      console.log('  内存：' + mem);
+      console.log('  判读：① <45 fps 或最长帧 >50 ms → 渲染/月刷新有问题；② 求解 >800 ms → 求解太慢');
+    });
+  });
 })();
