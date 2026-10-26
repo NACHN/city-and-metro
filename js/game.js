@@ -62,8 +62,10 @@
     g.model.fare = g.econ.fare;
     g.tasks = new CM.Tasks();
     g.model.solveNow(2);
-    // 时间口径要先有一次求解把 skim 填满，重建需求才拿得到真实时间；否则会落到自由流兜底上
-    if (CFG.choice.impedance === 'time') { g.model.buildDemand(); g.model.solveNow(2); }
+    // 时间口径要先有一次求解把 skim 填满，重建需求才拿得到真实时间；否则会落到自由流兜底上。
+    // 这一次只需 1 轮：路网没变，只是把「按真实时间重建的需求」再过一遍，剩下的收敛交给后台循环
+    // （wake 之后 liveLoop 会继续跑到容差内），载入因此少一整轮（大图约 5 秒）。
+    if (CFG.choice.impedance === 'time') { g.model.buildDemand(); g.model.solveNow(1); }
     // 地价是经营模式的派生量：开局先算一次，之后每月随城市与线网更新（见 monthGen）
     if (g.econ.caps.land) {
       g.model.computeLandAccess((CM.LAND_LINK && CM.LAND_LINK.winMin) || 30);
@@ -963,7 +965,7 @@
     g.mapInit = s.mapInit || null;
     g.milestones = s.milestones || null;
     g.model.solveNow(2);
-    if (CFG.choice.impedance === 'time') { g.model.buildDemand(); g.model.solveNow(2); }
+    if (CFG.choice.impedance === 'time') { g.model.buildDemand(); g.model.solveNow(1); }   // 同上：只补一轮，余下的交给后台
     if (CM.Milestones) CM.Milestones.backfill(g);
     // 城市经济：有数据则恢复；1.7 及更早的存档（或数据不完整）从当前状态接入，不补造过去的记录，不改变已有资金与债务。
     // 接入失败时本局不启用经济模拟，原存档不受影响
