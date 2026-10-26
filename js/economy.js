@@ -25,7 +25,7 @@
   function Economy(mode, y, m, caps) {
     this.mode = mode;
     this.caps = caps || CM.modeCaps(mode);   // 能力标志：见 config.js 的 CM.SYSTEMS / CM.MODES
-    this.funds = this.caps.budget ? CFG.economy.startFunds : 0;   // 一般资金（拨款、票款等；运营、利息与还本只能从这里支付）
+    this.funds = this.caps.budget ? CFG.economy.startFunds * (this.caps.tuning && this.caps.tuning.fundsMul || 1) : 0;   // 一般资金（拨款、票款等；运营、利息与还本只能从这里支付）
     this.capex = 0;            // 建设专项资金：债券募集，只能用于地铁建设及改扩建
     this.bonds = [];           // 已发行的债券
     this.bondIssued = {};      // 每年已发行额 { 年份: { local, ct } }
@@ -51,6 +51,12 @@
 
   // 资金不受限 = 没有预算约束。保留这个别名，调用点不必关心具体模式名
   Economy.prototype.isFree = function () { return !this.caps.budget; };
+  // 数值档：预设的 tuning 里有的就用，没有就退回 base（旧模式表不带 tuning，行为不变）
+  Economy.prototype.tune = function (k, base) {
+    const t = this.caps && this.caps.tuning;
+    const v = t ? t[k] : undefined;
+    return (typeof v === 'number' && isFinite(v)) ? v : base;
+  };
   // 只检查新增的现金支出：零费用操作（如拆除既有设施）在负余额时也允许，便于止损
   Economy.prototype.canAfford = function (amount) { return this.isFree() || amount <= MONEY_EPS || this.funds >= amount; };
   Economy.prototype.spend = function (kind, amount) {
@@ -227,15 +233,18 @@
   Economy.prototype.checkFailure = function (y, protect) {
     if (this.isFree() || this.failed) return null;
     const E = CFG.economy;
-    const limit = E.debtLimit * this.costIndex(y);
+    const limit = E.debtLimit * this.tune('debtMul', 1) * this.costIndex(y);
     this.negMonths = this.funds < 0 ? this.negMonths + 1 : 0;
-    this.lowSatMonths = this.sat < E.satFail ? (protect ? this.lowSatMonths : this.lowSatMonths + 1) : 0;
+    const satLim = this.tune('satFail', E.satFail);
+    this.lowSatMonths = this.sat < satLim ? (protect ? this.lowSatMonths : this.lowSatMonths + 1) : 0;
     // 关掉「经营失败」：计数器照常维护（预警仍然有用），但永远不会判负
     if (this.caps && !this.caps.failure) return null;
     const reasons = [];
     if (this.funds < limit) reasons.push('资金低于负债下限（' + U.fmtMoney(this.funds) + '，下限 ' + U.fmtMoney(limit) + '）');
-    if (this.negMonths >= E.negMonthsLimit) reasons.push('连续 ' + this.negMonths + ' 个月负余额（上限 ' + E.negMonthsLimit + ' 个月）');
-    if (this.lowSatMonths >= E.satFailMonths) reasons.push('居民满意度连续 ' + this.lowSatMonths + ' 个月低于 ' + E.satFail + '，交通持续恶化');
+    const negLim = this.tune('negMonths', E.negMonthsLimit);
+    if (this.negMonths >= negLim) reasons.push('连续 ' + this.negMonths + ' 个月负余额（上限 ' + negLim + ' 个月）');
+    const satMonths = this.tune('satFailMonths', E.satFailMonths);
+    if (this.lowSatMonths >= satMonths) reasons.push('居民满意度连续 ' + this.lowSatMonths + ' 个月低于 ' + satLim + '，交通持续恶化');
     if (reasons.length) { this.failed = { reasons: reasons }; return this.failed; }
     return null;
   };
@@ -243,9 +252,11 @@
     if (this.isFree()) return [];
     const E = CFG.economy, out = [];
     const soft = !(this.caps && this.caps.failure);      // 本局不判失败：只预警
+    const negLim = this.tune('negMonths', E.negMonthsLimit), satLim = this.tune('satFail', E.satFail);
+    const satMonths = this.tune('satFailMonths', E.satFailMonths);
     const tail = function (n) { return soft ? '（本局不判失败）' : '（满 ' + n + ' 个月结束游戏）'; };
-    if (this.negMonths > 0) out.push({ level: this.negMonths >= E.negMonthsLimit * 0.6 ? 'danger' : 'warn', text: '财政预警：已连续 ' + this.negMonths + ' 个月负余额' + tail(E.negMonthsLimit) });
-    if (this.lowSatMonths > 0) out.push({ level: this.lowSatMonths >= E.satFailMonths * 0.6 ? 'danger' : 'warn', text: '交通预警：满意度已连续 ' + this.lowSatMonths + ' 个月低于 ' + E.satFail + tail(E.satFailMonths) });
+    if (this.negMonths > 0) out.push({ level: this.negMonths >= negLim * 0.6 ? 'danger' : 'warn', text: '财政预警：已连续 ' + this.negMonths + ' 个月负余额' + tail(negLim) });
+    if (this.lowSatMonths > 0) out.push({ level: this.lowSatMonths >= satMonths * 0.6 ? 'danger' : 'warn', text: '交通预警：满意度已连续 ' + this.lowSatMonths + ' 个月低于 ' + satLim + tail(satMonths) });
     return out;
   };
 
@@ -322,7 +333,7 @@
     return { rate: r, parts: parts };
   };
   Economy.prototype.bondRate = function (kind, y, term) { return this.bondQuote(kind, y, term).rate; };
-  Economy.prototype.bondQuota = function (kind, y) { const B = this.bondCfg(); return B ? B[kind].quotaMonths * this.baseGrant(y) * this.bondScale() : 0; };
+  Economy.prototype.bondQuota = function (kind, y) { const B = this.bondCfg(); return B ? B[kind].quotaMonths * this.baseGrant(y) * this.bondScale() * this.tune('bondMul', 1) : 0; };
   Economy.prototype.bondCap = function (kind, y) { const B = this.bondCfg(); return B ? B[kind].capMonths * this.baseGrant(y) * this.bondScale() : 0; };
   // 批次模式下债券只是「批次间周转」：额度与上限一起收紧，免得利息超过补贴能负担的水平
   Economy.prototype.bondScale = function () { return this.batchOn() ? ((this.batchCfg().bondFactor) || 1) : 1; };

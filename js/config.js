@@ -455,26 +455,26 @@
     sandbox: {
       id: 'sandbox', name: '沙盒', badge: 'b-teal', icon: 'sparkle',
       desc: '资金无限，经营压力全关；专注设计与建造。',
-      off: ['budget', 'batch', 'land', 'tod', 'bonds', 'failure', 'rewards', 'opsTasks', 'fareControl', 'timeCommute'],
+      off: ['budget', 'batch', 'land', 'tod', 'bonds', 'failure', 'rewards', 'opsTasks', 'fareControl', 'timeCommute', 'jobAccess'],
       tuning: { subsidyRate: 0 },
     },
     easy: {
       id: 'easy', name: '简单', badge: 'b-green', icon: 'smile',
       desc: '政府承担全部运营成本，只需操心建设与债务。',
-      off: ['batch', 'tod', 'fareControl'],
-      tuning: { subsidyRate: 1.0 },
+      off: ['batch', 'tod', 'fareControl', 'jobAccess'],
+      tuning: { subsidyRate: 1.0, fundsMul: 1.2, debtMul: 1.5, bondMul: 1.3, negMonths: 36, satFail: 20, satFailMonths: 12 },
     },
     normal: {
       id: 'normal', name: '一般', badge: 'b-blue', icon: 'flag',
       desc: '建设四年一批、运营补贴 70%，地价与上盖可用。',
-      off: ['tod', 'fareControl'],
-      tuning: { subsidyRate: 0.7 },
+      off: ['tod', 'fareControl', 'jobAccess'],
+      tuning: { subsidyRate: 0.7, fundsMul: 1.0, debtMul: 1.0, bondMul: 1.0, negMonths: 24, satFail: 25, satFailMonths: 12 },
     },
     hard: {
       id: 'hard', name: '困难', badge: 'b-orange', icon: 'bolt',
       desc: '补贴降到 50%，票价可自由调整，靠涨价自救。',
-      off: ['fareControl'],
-      tuning: { subsidyRate: 0.5 },
+      off: ['fareControl', 'jobAccess'],
+      tuning: { subsidyRate: 0.5, fundsMul: 0.85, debtMul: 0.8, bondMul: 0.8, negMonths: 18, satFail: 30, satFailMonths: 9 },
     },
     // 旧版口径：给「旧存档迁移」与「等价性校验」用，不出现在选择界面（不在 PRESET_ORDER 里）。
     // 除了 jobAccess 与 fareControl（这两个是本次拆开关时才有的行为),其余与旧 tycoon 相同。
@@ -488,7 +488,7 @@
       id: 'real', name: '真实', badge: 'b-red', icon: 'target',
       desc: '补贴 50% 但票价受管制（三年一次、最多 +1 元），增长也按就业可达。',
       off: [],
-      tuning: { subsidyRate: 0.5 },
+      tuning: { subsidyRate: 0.5, fundsMul: 0.8, debtMul: 0.7, bondMul: 0.7, negMonths: 12, satFail: 35, satFailMonths: 6 },
     },
   };
   // 由预设 + 玩家微调算出 caps。结构必须与旧 CM.MODES 的条目一致（budget/land/… ），

@@ -326,6 +326,8 @@
         item('地价与物业', c.land ? '开' : '关'),
         item('TOD 分成', c.tod ? '开' : '关'),
         item('经营失败', c.failure ? '开' : '关'),
+        item('初始资金', (c.tuning && c.tuning.fundsMul && c.tuning.fundsMul !== 1) ? '×' + c.tuning.fundsMul : '标准'),
+        item('负债上限', (c.tuning && c.tuning.debtMul && c.tuning.debtMul !== 1) ? '×' + c.tuning.debtMul : '标准'),
         item('票价', c.fareControl ? '受管制（三年一次、最多 +1 元）' : '可自由调整'),
         item('通勤口径', c.timeCommute ? '按时间' : '按距离'),
         item('增长', c.jobAccess ? '读就业可达' : '读步行到站'));
