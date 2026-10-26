@@ -182,6 +182,29 @@ def ring_area(ring):
 # geo 文件体积几乎等于顶点数，而玩家看不到差别。0.18 格 ≈ 45 m 的容差足够。
 SIMPLIFY_TOL = 0.18
 
+# 分级容差（格）。250 m 一格、1/64 格编码的前提下：
+#   主干道/快速路 0.025（6 m，约 1.5 倍编码精度）—— 内环、快速路的弯道放大了也要是弧，不能是折线；
+#   次干道 0.08（20 m）· 支路 0.12（30 m）—— 远景才看；
+#   水面岸线 0.10（25 m）—— 珠江岸线是玩家最容易看出"棱角"的地方；
+#   公园林地 0.25（60 m）—— 本来就成片。
+TOL_BY_ROAD_CLASS = {4: 0.025, 3: 0.025, 2: 0.08, 1: 0.12}
+TOL_LAYER = {"water": 0.08, "waterway": 0.08, "park": 0.25, "wood": 0.25, "reserve": 0.25, "admin": 0.10, "street": 0.20}
+
+# 投影：OSM 是经纬度，容差是「格」。**简化必须在格坐标里做**——
+# 早期版本直接对经纬度跑 RDP，0.025 就变成了 0.025° ≈ 2.8 km，
+# 于是每条路都被压成两个点（笔直的弦），内环路的弯道全成了折线。
+PROJ = {"lon0": 113.08, "lat0": 23.34, "kx": 409.6, "ky": 443.0}
+
+
+def to_cells(pts):
+    p = PROJ
+    return [((q[0] - p["lon0"]) * p["kx"], (p["lat0"] - q[1]) * p["ky"]) for q in pts]
+
+
+def to_lonlat(xy):
+    p = PROJ
+    return [[round(p["lon0"] + q[0] / p["kx"], 6), round(p["lat0"] - q[1] / p["ky"], 6)] for q in xy]
+
 
 def _dp(pts, lo, hi, tol, keep):
     """Ramer–Douglas–Peucker，只记录保留的下标。"""
@@ -321,16 +344,21 @@ class Collector(osmium.SimpleHandler):
         if not cls:
             return
         layer = cls["layer"]
+        if layer == "road":
+            tol = TOL_BY_ROAD_CLASS.get(cls.get("class"), SIMPLIFY_TOL)
+        else:
+            tol = TOL_LAYER.get(layer, SIMPLIFY_TOL)
         if layer in ("road", "rail", "street", "waterway"):
-            geom = {"type": "LineString", "coordinates": simplify(pts)}
+            geom = {"type": "LineString", "coordinates": to_lonlat(simplify(to_cells(pts), tol))}
         else:
             closed = pts[0] == pts[-1] and len(pts) >= 4
             if not closed:
                 return
-            ring = simplify_ring(pts)
+            xy = to_cells(pts)
+            ring = simplify_ring(xy, tol)
             if len(ring) < 4:   # 小多边形（矩形湖面等）简化后会退化成两条线，退回原环
-                ring = pts
-            geom = {"type": "Polygon", "coordinates": [ring]}
+                ring = xy
+            geom = {"type": "Polygon", "coordinates": [to_lonlat(ring)]}
         self._add(cls, tags, geom)
 
     def relation(self, r):
@@ -387,17 +415,20 @@ def collect(area_pbf, dest_geojson):
         if not outers:
             continue
         polys = []
+        tol_r = TOL_LAYER.get(cls["layer"], SIMPLIFY_TOL)
         for o in outers:
-            so = simplify_ring(o)
+            oxy = to_cells(o)
+            so = simplify_ring(oxy, tol_r)
             if len(so) < 4:
-                so = o
+                so = oxy
             holes = []
             for h in inners:
                 if not point_in_ring(h[0], o):
                     continue
-                sh = simplify_ring(h)
-                holes.append(sh if len(sh) >= 4 else h)
-            polys.append([so] + holes)
+                hxy = to_cells(h)
+                sh = simplify_ring(hxy, tol_r)
+                holes.append(sh if len(sh) >= 4 else hxy)
+            polys.append([to_lonlat(so)] + [to_lonlat(h) for h in holes])
         geom = ({"type": "Polygon", "coordinates": polys[0]} if len(polys) == 1
                 else {"type": "MultiPolygon", "coordinates": polys})
         props = {"layer": cls["layer"], "name": tags.get("name", "") or tags.get("name:zh", ""),
@@ -420,8 +451,11 @@ def main(argv):
     ap.add_argument("--pbf", default=os.path.join(ROOT, "maps", "_raw", "china.osm.pbf"))
     ap.add_argument("--bbox", required=True, help="south,west,north,east")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--proj", default="113.08,23.34,409.6,443", help="lon0,lat0,kx,ky（必须与 gen-geo 一致）")
     ap.add_argument("--stats-only", action="store_true")
     args = ap.parse_args(argv[1:])
+    lon0, lat0, kx, ky = (float(v) for v in args.proj.split(","))
+    PROJ.update({"lon0": lon0, "lat0": lat0, "kx": kx, "ky": ky})
     bbox = tuple(float(v) for v in args.bbox.split(","))
     os.makedirs(args.out, exist_ok=True)
     area = os.path.join(args.out, "area.osm.pbf")
