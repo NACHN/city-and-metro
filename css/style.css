@@ -209,6 +209,8 @@ kbd { font-family: inherit; font-size: 10px; padding: 0 5px; border-radius: 5px;
 .speed .sbtn .ico { width: 16px; height: 16px; }
 .speed .sbtn:hover, .jbtn:hover { color: var(--text); background: var(--hover); }
 .speed .sbtn:active, .jbtn:active { transform: scale(.92); }
+.speed .sgroup { display: flex; gap: 2px; }
+.speed .spdcycle { display: none; }
 .speed .sbtn.on { background: var(--surface-solid); color: var(--accent); box-shadow: var(--shadow-sm); }
 .speed .sbtn.pz.on { color: var(--warn); }
 .jbtn { font-weight: 600; font-size: 12px; }
@@ -1264,6 +1266,8 @@ button:focus-visible, [role="option"]:focus-visible, [role="tab"]:focus-visible,
   .dayring { width: 30px; height: 30px; }
   .dayring .ico { inset: 7px; width: 16px; height: 16px; }
   .speed .sbtn { height: 30px; min-width: 32px; padding: 0 6px; }
+  .speed .sgroup { display: none; }
+  .speed .spdcycle { display: grid; }
   /* 三个比例指标收进一个竖排 pill：每行「图标 + 数值 + 细进度条」，点开是四项面板入口 */
   .pill.mtile { display: none; }
   .pill.mstack { display: flex; height: auto; min-height: 38px; padding: 4px 7px; align-items: center; gap: 0; }

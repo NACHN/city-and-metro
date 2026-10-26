@@ -853,7 +853,7 @@
         const strip = self.lineStrip(net, lid, stripOrder(tp));
         box.appendChild(strip);
         box.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } },
-          '断面：实色为当前时段，背后半透明为全日最大；红色虚线是当前运力（发车 × 定员）。闪灯图上的竖线是该站可换乘的其它线路。'));
+          '断面：实色为当前时段，背后半透明为全日最大；红色虚线是最大运力（高峰时段的发车 × 定员），半透明超过它就说明高峰会挤。闪灯图上的竖线是该站可换乘的其它线路。'));
         return box;
       }, true, 'people'));
 
@@ -862,15 +862,15 @@
         if (!kpi.parentElement) return;        // 分区还没展开过（内容未构建）时不做无用的重绘
         const W = g.model.weights(g.clock.minute);
         const f = g.model.freqAt(ri0, W);
-        const capH = f * r0.cap;
-        const re = mnet.rideEdge[ri0];
-        let mx = 0; for (let q = 0; q < re.length; q++) mx = Math.max(mx, g.model.edgeLoadAt(re[q], W));
+        const peak = self.lineDayPeak(r0, ri0);       // 全天峰值与该时段运力
+        let mxDay = 0; for (let q = 0; q < peak.up.length; q++) mxDay = Math.max(mxDay, peak.up[q], peak.dn[q]);
+        const capDay = peak.cap;
         let fleet = 0; for (let p = 0; p < 4; p++) fleet = Math.max(fleet, Math.ceil(r0.cycleSec * g.model.live.per[p].freq[ri0] / 3600));
         kpi.replaceChildren.apply(kpi, [
           kpiItem('间隔', f > 0 ? U.fmtNum(60 / f, 1) + ' 分' : '停运', ''),
           kpiItem('配属', fleet + ' 列', ''),
-          kpiItem('最大断面', U.fmtInt(mx) + ' 人/时', capH > 0 && mx > capH ? 'bad' : ''),
-          kpiItem('满载率', capH > 0 ? U.fmtPct(mx / capH, 0) : '—', capH > 0 && mx > capH ? 'bad' : (mx / capH > 0.85 ? 'warn' : 'good')),
+          kpiItem('全日最大断面', U.fmtInt(mxDay) + ' 人/时', capDay > 0 && mxDay > capDay ? 'bad' : ''),
+          kpiItem('高峰满载', capDay > 0 ? U.fmtPct(mxDay / capDay, 0) : '—', capDay > 0 && mxDay > capDay ? 'bad' : (mxDay / capDay > 0.85 ? 'warn' : 'good')),
         ]);
         chartBox.replaceChildren(self.lineFlowChart(r0, ri0, W));
       };
@@ -1062,23 +1062,36 @@
     return host;
   };
 
-  // 断面客流：当前时段实色 + 全日最大半透明 + 运力虚线
+  // 全日峰值：四个时段里各区间断面的最大值，以及最大时段运力。
+  // 「不用把时间拨到高峰」这句话的成本就在这里——一次遍历 O(4×区间数)。
+  UI.prototype.lineDayPeak = function (r, ri) {
+    const g = this.g(), mnet = g.model.net, re = mnet.rideEdge[ri], n = r.segRefs.length;
+    const up = new Float32Array(n), dn = new Float32Array(n);
+    let cap = 0;
+    for (let p = 0; p < 4; p++) {
+      const P = g.model.live.per[p], L = P.load;
+      const c = (P.freq ? P.freq[ri] : 0) * r.cap;
+      if (c > cap) cap = c;
+      for (let k = 0; k < n; k++) {
+        const a = L[re[2 * k]], b = L[re[2 * k + 1]];
+        if (a > up[k]) up[k] = a;
+        if (b > dn[k]) dn[k] = b;
+      }
+    }
+    return { up: up, dn: dn, cap: cap };
+  };
+
+  // 断面客流：当前时段实色 + 全日最大半透明 + 最大运力虚线
   UI.prototype.lineFlowChart = function (r, ri, W) {
     const g = this.g(), mnet = g.model.net, re = mnet.rideEdge[ri], n = r.segRefs.length;
-    const up = [], dn = [], mUp = [], mDn = [];
+    const peak = this.lineDayPeak(r, ri), mUp = peak.up, mDn = peak.dn, cap = peak.cap;
+    const up = [], dn = [];
     let mx = 1;
     for (let k = 0; k < n; k++) {
       const a = g.model.edgeLoadAt(re[2 * k], W), b = g.model.edgeLoadAt(re[2 * k + 1], W);
-      let ma = a, mb = b;
-      for (let p = 0; p < 4; p++) {
-        const L = g.model.live.per[p].load;
-        if (L && L[re[2 * k]] > ma) ma = L[re[2 * k]];
-        if (L && L[re[2 * k + 1]] > mb) mb = L[re[2 * k + 1]];
-      }
-      up.push(a); dn.push(b); mUp.push(ma); mDn.push(mb);
-      mx = Math.max(mx, a, b, ma, mb);
+      up.push(a); dn.push(b);
+      mx = Math.max(mx, a, b, mUp[k], mDn[k]);
     }
-    const f = g.model.freqAt(ri, W), cap = f * r.cap;
     if (cap > mx) mx = cap;
     const Wd = 320, H = 104, mid = H / 2, bw = Wd / Math.max(1, n);
     const hOf = function (v) { return v / mx * (mid - 6); };
@@ -1108,7 +1121,7 @@
     for (let k = 0; k < n; k++) {
       const a = g.compiled.stations[r.stIdx[k]], b2 = g.compiled.stations[r.stIdx[k + 1]];
       const tip = (a && b2 ? a.name + ' → ' + b2.name : '区间 ' + (k + 1)) + '\n当前 上 ' + U.fmtInt(up[k]) + ' · 下 ' + U.fmtInt(dn[k]) + ' 人/时' +
-        '\n全日最大 ' + U.fmtInt(mUp[k]) + ' 人/时' + (cap > 0 ? '（满载 ' + U.fmtPct(mUp[k] / cap, 0) + '）' : '');
+        '\n全日最大 ' + U.fmtInt(mUp[k]) + ' 人/时' + (cap > 0 ? '（满载 ' + U.fmtPct(mUp[k] / cap, 0) + '，按最大运力）' : '');
       svg += '<rect class="hit" data-tip="' + U.esc(tip) + '" data-tip-now x="' + (k * bw).toFixed(1) + '" y="0" width="' + bw.toFixed(1) + '" height="' + H + '"/>';
     }
     svg += '</svg>';

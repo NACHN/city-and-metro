@@ -70,8 +70,17 @@
     const datePill = h('button', { class: 'pill daypill', 'data-tip': '日期、时段与城市发展', onclick: function () { self.openTop('date'); } }, ring, h('span', { class: 'tx' }, dateK, dateV));
     this.pills.date = { el: datePill, v: dateV, k: dateK };
     this.tbtns = {};
-    // 速度：一个按钮循环（暂停 → 1× → 3× → 8× → 暂停）。
-    // 原来四个按钮占约 140 px，窄屏放不下「+1 月 / +1 年」；收成一个按钮后，步进就能留在顶栏。
+    // 速度：宽屏用按钮组（一下点到位），窄屏用单按钮循环（省宽度给月/年步进）。
+    // 两个都建出来，由 CSS 按宽度切换——只在窄屏才需要「点击切换」这种妥协。
+    const spd = function (id, label, n, tip, key) {
+      const b = h('button', { class: 'sbtn' + (n === 0 ? ' pz' : ''), 'data-tip': tip, 'data-key': key, onclick: function () { if (n === 0) self.togglePause(); else self.setSpeed(n); } }, n === 0 ? ic('pause') : label);
+      self.tbtns[id] = b; return b;
+    };
+    const speedGroup = h('span', { class: 'sgroup' },
+      spd('pause', '', 0, '暂停 / 继续', '空格'),
+      spd('s1', '1×', 1, '正常速度', '1'),
+      spd('s2', '3×', 2, '3 倍速', '2'),
+      spd('s3', '8×', 3, '8 倍速', '3'));
     const spdBtn = h('button', { class: 'sbtn spdcycle', 'data-tip': '时间速度：点击切换（暂停 / 1× / 3× / 8×）', 'data-key': '空格', onclick: function () { self.cycleSpeed(); } }, ic('pause'));
     self.tbtns.speed = spdBtn;
     const jmp = function (id, label, n, tip) { const b = h('button', { class: 'jbtn', 'data-tip': tip, onclick: function () { self.jump(n); } }, label); self.tbtns[id] = b; return b; };
@@ -116,7 +125,7 @@
       h('div', { class: 'cluster glass citybar' },
         h('div', { class: 'brand' }, h('img', { src: 'img/logo-white.png', alt: '城市与地铁' })),
         datePill,
-        h('div', { class: 'speed' }, spdBtn),
+        h('div', { class: 'speed' }, speedGroup, spdBtn),
         h('div', { class: 'jumps' }, jmp('month', '+1月', 1, '推进 1 个月'), jmp('year', '+1年', 12, '推进 1 年（结束后显示变化）'))),
       h('div', { class: 'spacer' }),
       h('div', { class: 'cluster glass metrics' },
@@ -681,7 +690,14 @@
       this.toolInd.classList.add('ready');
     }
     const sp = g ? g.speed : 0;
-    // 速度按钮：暂停时显示 ▶，运行时显示当前倍率；点一下切换到下一档
+    // 宽屏按钮组：暂停键在运行时显示「暂停」、暂停时显示「继续」，当前档位高亮
+    const pz = this.tbtns.pause;
+    if (pz._paused !== (sp === 0)) { pz._paused = sp === 0; pz.innerHTML = ''; pz.appendChild(ic(sp === 0 ? 'play' : 'pause')); pz.setAttribute('data-tip', sp === 0 ? '继续' : '暂停'); }
+    pz.classList.toggle('on', sp === 0);
+    this.tbtns.s1.classList.toggle('on', sp === 1);
+    this.tbtns.s2.classList.toggle('on', sp === 2);
+    this.tbtns.s3.classList.toggle('on', sp === 3);
+    // 窄屏循环按钮：暂停时显示 ▶，运行时显示当前倍率
     const sb = this.tbtns.speed;
     if (sb._sp !== sp) {
       sb._sp = sp;

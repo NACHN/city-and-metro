@@ -56,7 +56,13 @@
     { id: 'run', title: '让时间走起来',
       body: '按空格或点击 ▶ 开始，再试试 3× 速度。列车数由系统按站数、站距与客流自动配置；早高峰（7–9 点）乘客最多。',
       hint: '让游戏时间走过 3 小时。',
-      target: function () { return g.speed <= 1 ? ui.tbtns.speed : null; },
+      target: function () {
+        if (g.speed > 1) return null;
+        // 宽屏用按钮组，窄屏只有一个循环按钮——引导要指向当前可见的那个
+        const wide = window.innerWidth > 760;
+        if (!wide) return ui.tbtns.speed;
+        return g.speed === 0 ? ui.tbtns.pause : ui.tbtns.s2;
+      },
       enter: function () { if (g.tutorial.runT0 == null) g.tutorial.runT0 = absMin(g.clock); ctx.t0 = g.tutorial.runT0; },   // 计时起点随进度保存，读档后不重新计时
       check: function () { return absMin(g.clock) - ctx.t0 >= 180; } },
     { id: 'inspect', title: '查看车站与线路',
