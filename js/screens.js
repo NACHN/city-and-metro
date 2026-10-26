@@ -132,14 +132,19 @@
     const fmtDate = function (sl) { return sl.date[0] + '年' + sl.date[1] + '月'; };
     const buildDetail = function () {
       const mp = CM.MAPS[sel], games = CM.Save.list(sel), latest = CM.Save.latest(sel), y0 = mp.cfg.START.y;
-      const start = function (mode) {
+      const startTutorial = function () {
         snd('build');
-        if (mp.tutorial) CM.newGame({ map: sel, mode: 'free', tutorial: true, name: '新手教程 · ' + mp.data.city });
-        else CM.newGame({ map: sel, mode: mode, name: CM.modeName(mode) + ' · ' + mp.data.city + ' ' + y0 });
+        CM.newGame({ map: sel, mode: 'free', tutorial: true, name: '新手教程 · ' + mp.data.city });
       };
-      const modeBtn = function (mode, icon, badge, title, desc, primary) {
-        return h('button', { class: 'map-mode' + (primary ? ' primary' : ''), onclick: function () { start(mode); } },
-          h('span', { class: 'badge ' + badge }, ic(icon)), h('span', { class: 'grow' }, h('b', null, title), h('small', null, desc)), ic('chev', 16));
+      // 地图页只负责选图；难度与系统开关放到第二步
+      const next = function () {
+        snd('open');
+        self.showSetup(sel);
+      };
+      const nextBtn = function (primary) {
+        return h('button', { class: 'map-mode' + (primary ? ' primary' : ''), onclick: next },
+          h('span', { class: 'badge b-blue' }, ic('flag')), h('span', { class: 'grow' }, h('b', null, '下一步：选择难度'),
+            h('small', null, '沙盒 / 简单 / 一般 / 困难 / 真实，可再逐项调系统开关')), ic('chev', 16));
       };
       const hero = h('div', { class: 'msel-hero' },
         h('img', { alt: '', src: CM.mapThumb(sel, theme) || '' }),
@@ -151,7 +156,8 @@
       // 要点：范围、起始、人口、货币等；真实城市另列开局时地图范围的经济规模（城市经济模拟的起点，估算）
       // 「模式」这一行从能力表推导（mp.modes），数据文件里不再逐图维护
       const fl = (mp.facts || []).filter(function (f) { return f[0] !== '模式'; }).slice();
-      if (mp.modes && mp.modes.length) fl.push(['模式', mp.modes.map(function (id) { return CM.modeName(id); }).join(' / ') + (mp.tutorial ? '（不限资金）' : '')]);
+      if (mp.tutorial) fl.push(['难度', '沙盒（教程固定）']);
+      else fl.push(['难度', '沙盒 / 简单 / 一般 / 困难 / 真实，下一步可选']);
       const mc = mp.cfg.macro && mp.cfg.macro !== 'auto' ? mp.cfg.macro : null;
       if (mc && mc.gdp0) { const mo = mp.cfg.money, v = mc.gdp0; fl.push(['开局 GDP', '约 ' + (v >= 1e8 ? (v / 1e8).toFixed(2) + ' 万' + mo.yi : U.fmtMoney(v, 0, mo))]); }
       const facts = h('div', { class: 'msel-facts' }, fl.map(function (f) { return h('div', null, h('span', null, f[0]), h('b', { title: f[1] }, f[1])); }));
@@ -164,13 +170,9 @@
         return h('div', { class: 'msel-ev' + (k === 0 ? ' start' : '') }, h('b', null, String(e[0])), h('i'), h('span', null, e[1]));
       }));
       const acts = h('div', { class: 'map-actions' });
-      if (mp.tutorial) acts.appendChild(modeBtn('free', 'play', 'b-teal', '开始教程', '从头开始 12 个引导任务（不限资金）', true));
-      else {
-        acts.appendChild(modeBtn('challenge', 'trophy', 'b-gold', '经营挑战', '新游戏 · 初始资金 ' + U.fmtMoney(mp.cfg.economy.startFunds, undefined, mp.cfg.money) + '，拨款随城市经济变化', true));
-        // 经营模式：支持哪些模式由能力表算出（config.js 的 CM.MODES[*].needs），数据文件里不再逐图声明
-        if ((mp.modes || []).indexOf('tycoon') >= 0) acts.appendChild(modeBtn('tycoon', 'coin', 'b-violet', '经营模式', '新游戏 · 地价与物业、四年一批的建设资金、按运营成本补贴；票价与 TOD 决定线网能不能自己站住', false));
-        acts.appendChild(modeBtn('free', 'sparkle', 'b-teal', '自由建造', '新游戏 · 资金不限，任务仅供参考', false));
-      }
+      if (mp.tutorial) acts.appendChild(h('button', { class: 'map-mode primary', onclick: startTutorial },
+        h('span', { class: 'badge b-teal' }, ic('play')), h('span', { class: 'grow' }, h('b', null, '开始教程'), h('small', null, '从头开始 12 个引导任务（沙盒规则）')), ic('chev', 16)));
+      else acts.appendChild(nextBtn(true));
       acts.appendChild(h('button', { class: 'map-mode sub', disabled: latest ? null : true, 'data-tip': latest ? latest.name + ' · ' + fmtDate(latest) : null, onclick: function () { if (latest) self.loadSlot(latest.slotId); } },
         h('span', { class: 'badge b-blue' }, ic('clock')), h('span', { class: 'grow' }, h('b', null, mp.tutorial ? '继续教程' : '继续游戏'), h('small', null, latest ? latest.name + ' · ' + fmtDate(latest) : '该地图还没有存档')), ic('chev', 16)));
       acts.appendChild(h('button', { class: 'map-mode sub', onclick: function () { self.showSaveManager(false, sel); } },
@@ -221,6 +223,129 @@
     drawDetail(); drawList();
     this.openScreen(card, back, 'msel-screen');
     requestAnimationFrame(function () { card.focus({ preventScroll: true }); const it = items[sel]; if (it) it.scrollIntoView({ block: 'nearest' }); });
+  };
+
+  // ======================== 第二步：难度与系统开关 ========================
+  // 地图选完之后进入这里：五张预设卡 + 可展开的系统开关。
+  // 预设只是「一组开关 + 一组数值」，所以卡片和开关改的是同一份状态（this.setup）。
+  UI.prototype.showSetup = function (mapId) {
+    const self = this;
+    const mp = CM.MAPS[mapId] || CM.MAPS.gz;
+    const y0 = mp.cfg.START.y;
+    // 城市经济（macro）是资金类系统的前置：没有它就没有拨款与失败判定
+    const ecoOk = !mp.tutorial && !!mp.cfg.macro;
+    if (!this.setup || this.setup.map !== mapId) {
+      this.setup = { map: mapId, preset: ecoOk ? 'normal' : 'sandbox', sys: {}, adv: false };
+    }
+    const st = this.setup;
+    if (!ecoOk) st.preset = 'sandbox';
+    const caps = function () { return CM.capsFor(st.preset, st.sys); };
+
+    const start = function () {
+      snd('build');
+      CM.newGame({ map: mapId, preset: st.preset, systems: Object.keys(st.sys).length ? st.sys : null,
+        name: CM.presetName(st.preset) + ' · ' + (mp.data.city || mp.name) + ' ' + y0 });
+    };
+
+    const card = h('div', { class: 'card setup' });
+
+    /* ---- 头部 ---- */
+    const head = h('div', { class: 'setup-head' },
+      h('button', { class: 'iconbtn', 'data-tip': '返回选地图', onclick: function () { self.showMapSelect(mapId); } }, ic('back')),
+      h('div', { class: 'grow' }, h('h2', null, '选择难度'),
+        h('div', { class: 'setup-sub' }, (mp.title || mp.name) + ' · ' + y0 + ' 年起 · ' + (mp.data.city || '') + ' · ' + (mp.tutorial ? '教程' : (ecoOk ? '可开经营系统' : '本图只有沙盒')))),
+      h('button', { class: 'iconbtn', 'data-tip': '关闭', 'data-key': 'Esc', onclick: function () { self.closeScreen(); self.showStart(); } }, ic('close')));
+    card.appendChild(head);
+
+    /* ---- 预设卡 ---- */
+    const grid = h('div', { class: 'preset-grid' });
+    const sumBox = h('div', { class: 'setup-sum' });
+    const advBox = h('div', { class: 'setup-adv' });
+    const drawPresets = function () {
+      grid.innerHTML = '';
+      for (const id of CM.PRESET_ORDER) {
+        const P = CM.PRESETS[id];
+        const on = st.preset === id;
+        const blocked = !ecoOk && id !== 'sandbox';
+        grid.appendChild(h('button', {
+          class: 'preset' + (on ? ' on' : '') + (blocked ? ' off' : ''),
+          disabled: blocked ? true : null,
+          onclick: function () { if (blocked) return; st.preset = id; st.sys = {}; snd('soft'); drawAll(); },
+        },
+          h('span', { class: 'badge ' + P.badge }, ic(P.icon)),
+          h('b', null, P.name),
+          h('small', null, P.desc),
+          blocked ? h('small', { class: 'muted' }, '本图不支持') : null));
+      }
+    };
+
+    /* ---- 系统开关 ---- */
+    const drawAdv = function () {
+      advBox.innerHTML = '';
+      const c = caps();
+      const groupName = { world: '城市与出行', money: '钱与经营', other: '其他' };
+      const toggleHead = h('button', { class: 'setup-advh', onclick: function () { st.adv = !st.adv; drawAdv(); } },
+        ic('chev', 14, 'chev' + (st.adv ? ' open' : '')),
+        h('b', null, '高级：系统开关'),
+        h('span', { class: 'tiny muted' }, '共 ' + CM.SYSTEMS.length + ' 项，改动会覆盖当前预设'));
+      advBox.appendChild(toggleHead);
+      if (!st.adv) return;
+      const box = h('div', { class: 'setup-sysbox' });
+      for (const grp of ['world', 'money', 'other']) {
+        const list = CM.SYSTEMS.filter(function (s) { return s.group === grp; });
+        if (!list.length) continue;
+        box.appendChild(h('div', { class: 'setup-grph' }, groupName[grp] || grp));
+        for (const sy of list) {
+          const on = !!c[sy.id];
+          const needOff = (sy.needs || []).some(function (n) { return !c[n]; });
+          const dead = sy.locked || sy.impl === false || needOff;
+          const sw = h('button', {
+            class: 'switch' + (on ? ' on' : ''), role: 'switch', 'aria-checked': on ? 'true' : 'false',
+            disabled: dead ? true : null,
+            'data-tip': dead ? (sy.locked ? '底层能力，不可关闭' : (sy.impl === false ? '开发中' : '依赖的系统已关闭')) : '点击切换',
+            onclick: function () {
+              if (dead) return;
+              st.sys[sy.id] = !on;
+              snd('soft'); drawAll();
+            },
+          }, h('i'));
+          box.appendChild(h('div', { class: 'setup-sys' + (dead ? ' dead' : '') },
+            h('div', { class: 'tx' }, h('b', null, sy.name + (sy.locked ? '（常开）' : '')), h('small', null, sy.desc)), sw));
+        }
+      }
+      advBox.appendChild(box);
+    };
+
+    /* ---- 影响摘要：把开关翻译成一句话 ---- */
+    const drawSum = function () {
+      sumBox.innerHTML = '';
+      const c = caps();
+      const item = function (k, v) { return h('span', null, h('em', null, k), h('b', null, v)); };
+      sumBox.append(
+        item('运营补贴', c.subsidyRate > 0 ? Math.round(c.subsidyRate * 100) + '% 的成本' : (c.budget ? '无' : '不适用（资金不限）')),
+        item('建设资金', !c.budget ? '不限' : (c.batch ? '四年一批' : '按月拨款')),
+        item('地价与物业', c.land ? '开' : '关'),
+        item('TOD 分成', c.tod ? '开' : '关'),
+        item('经营失败', c.failure ? '开' : '关'),
+        item('票价', c.fareControl ? '受管制（三年一次、最多 +1 元）' : '可自由调整'),
+        item('通勤口径', c.timeCommute ? '按时间' : '按距离'),
+        item('增长', c.jobAccess ? '读就业可达' : '读步行到站'));
+    };
+
+    const goLabel = h('span', null, '开始游戏 · ' + CM.presetName(st.preset));
+    const foot = h('div', { class: 'setup-foot' },
+      h('button', { class: 'btn sm ghost', onclick: function () { self.showMapSelect(mapId); } }, '返回'),
+      h('div', { class: 'grow' }),
+      h('button', { class: 'btn primary startgo', onclick: start }, ic('play'), goLabel));
+
+    const drawAll = function () {
+      drawPresets(); drawSum(); drawAdv();
+      goLabel.textContent = '开始游戏 · ' + CM.presetName(st.preset);
+    };
+    card.append(grid, sumBox, advBox, foot);
+    drawAll();
+
+    this.openScreen(card, function () { self.showMapSelect(mapId); }, 'setup-screen');
   };
 
   // ======================== 开局简报 ========================

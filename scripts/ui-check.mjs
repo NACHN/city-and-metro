@@ -40,6 +40,20 @@ try {
   // 指标栈展开不应抛错
   ui.showMetricMenu(ui.mstack.el);
   console.log(ui.dropdown ? '✓ 指标菜单可打开（4 项入口）' : '✗ 指标菜单未打开');
+
+  // 开局第二步（难度与系统开关）：预设卡、摘要、高级开关都要能建起来
+  ui.showSetup('gz');
+  const presets = (ui.setup && ui.setup.preset) || null;
+  console.log(presets ? '✓ 难度页已渲染 · 默认预设 ' + CM.presetName(presets) + '（' + presets + '）' : '✗ 难度页状态缺失');
+  console.log(CM.PRESET_ORDER.length === 5 ? '✓ 五档预设：' + CM.PRESET_ORDER.map(function (id) { return CM.PRESETS[id].name; }).join(' / ') : '✗ 预设数量异常');
+  const caps = CM.capsFor('normal'), capsSandbox = CM.capsFor('sandbox');
+  console.log(caps.budget && caps.land && caps.batch ? '✓ 一般：资金/地价/批次都开' : '✗ 一般的开关不对');
+  console.log(!capsSandbox.budget && !capsSandbox.land ? '✓ 沙盒：资金与地价都关' : '✗ 沙盒的开关不对');
+  const capsReal = CM.capsFor('real');
+  console.log(capsReal.fareControl && capsReal.tod && capsReal.jobAccess ? '✓ 真实：票价管制 / TOD / 就业可达 全开' : '✗ 真实的开关不对');
+  const off = CM.capsFor('normal', { land: false });
+  console.log(!off.land && !off.tod ? '✓ 依赖闭包：关掉地价，TOD 自动关' : '✗ 依赖闭包失效');
+  console.log(CM.capsFor('sandbox').bus ? '✓ 接驳巴士不可关（locked）' : '✗ 接驳被关掉了');
 } catch (e) {
   console.log('✗ UI 构造失败：' + e.message);
   console.log(String(e.stack).split('\n').slice(1, 4).join('\n'));

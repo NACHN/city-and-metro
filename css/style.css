@@ -490,6 +490,48 @@ table.tbl th:first-child, table.tbl td:first-child { text-align: left; }
 :root[data-theme="dark"] #screen.start { background: linear-gradient(90deg, rgba(15, 23, 36, 0.96) 0%, rgba(15, 23, 36, 0.86) 24%, rgba(15, 23, 36, 0.35) 44%, rgba(15, 23, 36, 0) 62%); }
 .card { background: var(--surface-solid); border-radius: 18px; box-shadow: 0 24px 60px rgba(36, 66, 104, 0.2); padding: 24px 26px; width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow-y: auto; animation: cardIn .38s var(--spring); border: 1px solid var(--line); }
 .card.wide { width: min(860px, calc(100vw - 32px)); }
+
+/* ================= 开局第二步：难度与系统开关 ================= */
+.card.setup { width: min(780px, calc(100vw - 24px)); padding: 18px 20px 16px; }
+.setup-head { display: flex; align-items: center; gap: 10px; }
+.setup-head h2 { margin: 0; font-size: 18px; }
+.setup-sub { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+.preset-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.preset {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px 10px 12px;
+  text-align: left; background: var(--surface-2); border: 1px solid var(--line); border-radius: 13px; cursor: pointer;
+  transition: border-color .15s var(--ease), background .15s var(--ease), transform .2s var(--spring);
+}
+.preset:hover:not([disabled]) { border-color: var(--line-strong); transform: translateY(-1px); }
+.preset.on { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent) inset; }
+.preset[disabled] { opacity: .45; cursor: default; }
+.preset .badge { width: 26px; height: 26px; border-radius: 8px; }
+.preset .badge .ico { width: 15px; height: 15px; }
+.preset b { font-size: 13px; }
+.preset small { font-size: 10.5px; line-height: 1.5; color: var(--muted); }
+.setup-sum { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; padding: 10px 12px; background: var(--surface-2); border-radius: 11px; font-size: 11.5px; }
+.setup-sum span { display: inline-flex; align-items: baseline; gap: 5px; }
+.setup-sum em { font-style: normal; color: var(--muted); }
+.setup-sum b { color: var(--text); font-weight: 650; }
+.setup-adv { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.setup-advh { display: flex; align-items: center; gap: 7px; width: 100%; border: 0; background: transparent; padding: 4px 0; cursor: pointer; color: var(--text); text-align: left; font-size: 12px; }
+.setup-advh .chev { transition: transform .2s var(--ease); color: var(--muted); }
+.setup-advh .chev.open { transform: rotate(90deg); }
+.setup-advh span.tiny { margin-left: auto; }
+.setup-sysbox { margin-top: 6px; }
+.setup-grph { font-size: 10.5px; color: var(--faint); margin: 10px 0 2px; letter-spacing: .04em; }
+.setup-sys { display: flex; align-items: flex-start; gap: 12px; padding: 7px 0; border-bottom: 1px dashed var(--line); }
+.setup-sys:last-child { border-bottom: 0; }
+.setup-sys .tx { flex: 1; min-width: 0; }
+.setup-sys b { font-size: 12px; font-weight: 600; }
+.setup-sys small { display: block; font-size: 10.5px; color: var(--muted); margin-top: 2px; line-height: 1.5; }
+.setup-sys.dead { opacity: .5; }
+.setup-foot { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.setup-foot .startgo { height: 36px; padding: 0 16px; font-size: 13px; }
+@media (max-width: 720px) {
+  .preset-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .card.setup { padding: 16px 14px 14px; }
+}
 @keyframes cardIn { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
 .card h1 { font-size: 28px; margin: 0 0 4px; letter-spacing: 2px; }
 .card h2 { font-size: 19px; margin: 0 0 12px; display: flex; align-items: center; gap: 10px; color: var(--text); }
