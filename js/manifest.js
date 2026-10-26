@@ -17,6 +17,7 @@
   CM.MAP_MANIFEST = [
     { id: 'tutorial', geo: null, data: 'tutorial', climate: 'mild' },
     { id: 'gz', geo: 'gz', data: 'gz', climate: 'mild' },
+    { id: 'gz2', geo: 'gz2', data: 'gz2', climate: 'mild' },
     { id: 'hz', geo: 'hz', data: 'hz', climate: 'cold' },
     { id: 'hk', geo: 'hk', data: 'hk', climate: 'mild' },
     { id: 'tp', geo: 'tp', data: 'tp', climate: 'mild' },

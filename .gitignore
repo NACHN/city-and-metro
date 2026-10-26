@@ -25,3 +25,6 @@ node_modules/
 
 # Agent workspace (local memory and session data)
 .workbuddy/
+
+# 地图原始数据（OSM 提取、切图产物）：体积大且可重新下载，不入库
+maps/_raw/
