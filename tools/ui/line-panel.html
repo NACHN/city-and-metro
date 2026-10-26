@@ -123,7 +123,7 @@
   .tl-pax.hot { color: var(--text); }
   /* 换乘分岔：从站点**正上**方竖直伸出，多条换乘并列排开 */
   .tl-stubzone { position: relative; height: 12px; width: 100%; }
-  .tl-stub { position: absolute; bottom: 0; width: 2.5px; height: 11px; border-radius: 1px; transform: translateX(-50%); }
+  .tl-stub { position: absolute; bottom: 0; width: 3px; height: 11px; border-radius: 0; transform: translateX(-50%); }
   .tl-node { width: 9px; height: 9px; border-radius: 50%; background: var(--panel); border: 2.5px solid var(--lc); flex: none; }
   .tl-node.xf { background: var(--lc); }
   .tl-name { writing-mode: vertical-rl; text-orientation: upright; height: 54px; margin-top: 5px; font-size: 10.5px; line-height: 1.15; letter-spacing: .02em; color: var(--text2); white-space: nowrap; overflow: hidden; }
@@ -517,7 +517,8 @@
       // 换乘：竖直伸出的短线，多条并列（以站点为中心左右排开）
       const trs = s.tr || [];
       const stubs = trs.map(function (t, i) {
-        const off = trs.length === 1 ? 0 : (i - (trs.length - 1) / 2) * 6;
+        // 紧贴排列：间距 = 线宽，多线换乘像闪灯图上的并列灯条，中间不留缝
+        const off = (i - (trs.length - 1) / 2) * 3;
         return '<i class="tl-stub" style="left:calc(50% + ' + off + 'px);background:' + t.color + '"></i>';
       }).join('');
       col.innerHTML =
