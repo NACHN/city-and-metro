@@ -6,18 +6,40 @@
 import fs from 'node:fs'; import path from 'node:path'; import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const mk = (tag) => ({
-  tagName: (tag || 'div').toUpperCase(), children: [], style: { setProperty() {}, removeProperty() {} }, dataset: {}, attrs: {},
-  className: '', textContent: '', innerHTML: '', disabled: false, value: '', clientWidth: 1200, scrollWidth: 800, offsetWidth: 100, offsetLeft: 0, scrollTop: 0,
-  classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
-  appendChild(c) { this.children.push(c); return c; }, append(...cs) { for (const c of cs) if (c) this.children.push(c); },
-  insertBefore(c) { this.children.push(c); return c; }, remove() {}, appendChild2() {},
-  setAttribute(k, v) { this.attrs[k] = v; }, getAttribute(k) { return this.attrs[k]; }, hasAttribute(k) { return k in this.attrs; },
-  addEventListener() {}, removeEventListener() {}, focus() {}, blur() {},
-  querySelector() { return mk(); }, querySelectorAll() { return []; },
-  getBoundingClientRect() { return { left: 0, top: 0, width: 100, height: 40, right: 100, bottom: 40 }; },
-  getContext() { return null; }, contains() { return false; }, replaceChildren() {},
+// 画布上下文桩：属性可写、方法都是空操作（选地图页会用 canvas 画缩略图）
+const CTX2D = new Proxy({}, {
+  get(t, k) { return (k in t) ? t[k] : function () {}; },
+  set(t, k, v) { t[k] = v; return true; },
 });
+const mk = (tag) => {
+  const el = {
+    tagName: (tag || 'div').toUpperCase(), children: [], style: { setProperty() {}, removeProperty() {} }, dataset: {}, attrs: {},
+    className: '', textContent: '', disabled: false, value: '', clientWidth: 1200, scrollWidth: 800, offsetWidth: 100, offsetLeft: 0, scrollTop: 0,
+    classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
+    appendChild(c) { this.children.push(c); return c; }, append(...cs) { for (const c of cs) if (c) this.children.push(c); },
+    insertBefore(c) { this.children.push(c); return c; }, remove() {}, appendChild2() {},
+    setAttribute(k, v) { this.attrs[k] = v; }, getAttribute(k) { return this.attrs[k]; }, hasAttribute(k) { return k in this.attrs; },
+    addEventListener() {}, removeEventListener() {}, focus() {}, blur() {},
+    querySelector() { return mk(); }, querySelectorAll() { return []; },
+    getBoundingClientRect() { return { left: 0, top: 0, width: 100, height: 40, right: 100, bottom: 40 }; },
+    getContext() { return CTX2D; }, contains() { return false; },
+    // 真实 DOM 里 innerHTML='' 与 replaceChildren(…)/textContent='' 都会清空子节点；
+    // 桩如果只是挂个字段，子树就会一直叠加，走查时数出来的节点数是假的。
+    replaceChildren(...cs) { this.children.length = 0; for (const c of cs) if (c) this.children.push(c); },
+    scrollIntoView() {}, closest() { return null; }, toDataURL() { return ''; },
+  };
+  Object.defineProperty(el, 'innerHTML', {
+    get() { return el._html || ''; },
+    set(v) { el._html = v; if (v === '') el.children.length = 0; },
+    enumerable: true, configurable: true,
+  });
+  Object.defineProperty(el, 'textContent', {
+    get() { return el._text || ''; },
+    set(v) { el._text = v; el.children.length = 0; },
+    enumerable: true, configurable: true,
+  });
+  return el;
+};
 globalThis.window = globalThis; globalThis.self = globalThis; globalThis.innerWidth = 1440; globalThis.innerHeight = 900; globalThis.addEventListener = function () {}; globalThis.removeEventListener = function () {};
 globalThis.document = { createElement: mk, createElementNS: (n, t) => mk(t), createTextNode: (t) => mk('text'), addEventListener() {}, documentElement: { style: { setProperty() {} }, dataset: {}, classList: { add() {}, remove() {}, toggle() {} } }, body: mk('body'), querySelector() { return null; }, getElementById() { return mk(); }, activeElement: null };
 globalThis.matchMedia = () => ({ matches: false, addEventListener() {} });
@@ -54,6 +76,24 @@ try {
   const off = CM.capsFor('normal', { land: false });
   console.log(!off.land && !off.tod ? '✓ 依赖闭包：关掉地价，TOD 自动关' : '✗ 依赖闭包失效');
   console.log(CM.capsFor('sandbox').bus ? '✓ 接驳巴士不可关（locked）' : '✗ 接驳被关掉了');
+
+  // 选地图页：底部动作要是一行三个（继续 / 读取 / 下一步）
+  try {
+    ui.showMapSelect('gz');
+    let acts = [];
+    // 只认按钮本身：行容器 class 是 map-actions，按 token 精确匹配才不会把它算进来
+    const hasTok = function (n, tok) { return (n.className || '').split(/\s+/).indexOf(tok) >= 0; };
+    const walk = function (n) {
+      if (!n || !n.children) return;
+      if (hasTok(n, 'map-act')) acts.push(n.className);
+      for (const c of n.children) walk(c);
+    };
+    walk(ui.screen);
+    const prim = acts.filter(function (c) { return c.split(/\s+/).indexOf('primary') >= 0; }).length;
+    console.log(acts.length === 3 && prim === 1 ? '✓ 选地图页底部三个动作（继续 / 读取 / 下一步）' : '✗ 选地图页动作数不对：' + acts.length);
+  } catch (e) {
+    console.log('✗ 选地图页：' + e.message);
+  }
 } catch (e) {
   console.log('✗ UI 构造失败：' + e.message);
   console.log(String(e.stack).split('\n').slice(1, 4).join('\n'));

@@ -38,8 +38,10 @@
     // 新体系：opts.preset + opts.systems → caps；旧入口只给 mode 时 caps 为空，走 CM.modeCaps
     g.preset = opts.preset || null;
     g.systems = opts.systems ? Object.assign({}, opts.systems) : null;
-    g.tune = opts.tune ? Object.assign({}, opts.tune) : null;
-    g.caps = g.preset ? CM.capsFor(g.preset, g.systems, g.tune) : null;
+    // 注意：不能叫 g.tune —— 那会盖住 Game.prototype.tune（调运营的方法），
+    // 使得接驳车加减之类一调用就 "g.tune is not a function"。存档里仍写 meta.tune。
+    g.tuneOver = opts.tune ? Object.assign({}, opts.tune) : null;
+    g.caps = g.preset ? CM.capsFor(g.preset, g.systems, g.tuneOver) : null;
     applyImpedance(g);   // 必须在 new CM.Model 之前：Model 构造时就会建一次需求表
     g.seed = opts.seed || (CFG.START.y * 10000 + 101);
     if (opts.tutorial) g.tutorial = { step: 0, done: [], started: Date.now() };
@@ -900,7 +902,7 @@
     return {
       meta: { gameId: this.id, name: this.name, mode: this.mode,
         preset: this.preset || undefined, systems: this.preset ? (this.systems || undefined) : undefined,
-        tune: this.preset && this.tune ? this.tune : undefined,
+        tune: this.preset && this.tuneOver ? this.tuneOver : undefined,
         seed: this.seed, createdAt: this.createdAt, gameVersion: CFG.GAME_VERSION, map: this.mapId || 'gz', mapVersion: (CM.MAPS[this.mapId || 'gz'] || {}).mapVersion || 1, scenario: (CM.MAPS[this.mapId || 'gz'] || {}).scenario || '', mapFp: (CM.MAPS[this.mapId || 'gz'] || {}).fp || '' },
       clock: Object.assign({}, this.clock),
       city: this.city.serialize(),
@@ -924,8 +926,8 @@
     g.id = m.gameId; g.name = m.name; g.mode = m.mode; g.seed = m.seed; g.createdAt = m.createdAt;
     g.preset = m.preset || null;
     g.systems = m.systems || null;
-    g.tune = m.tune || null;
-    g.caps = g.preset ? CM.capsFor(g.preset, g.systems, g.tune) : null;
+    g.tuneOver = m.tune || null;
+    g.caps = g.preset ? CM.capsFor(g.preset, g.systems, g.tuneOver) : null;
     applyImpedance(g);   // 同样要在 new CM.Model / buildDemand 之前
     g.mapId = m.map || 'gz';   // 调用前 CM.useMap 已切换到该地图
     if (s.tutorial) g.tutorial = s.tutorial;

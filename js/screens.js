@@ -141,10 +141,9 @@
         snd('open');
         self.showSetup(sel);
       };
-      const nextBtn = function (primary) {
-        return h('button', { class: 'map-mode' + (primary ? ' primary' : ''), onclick: next },
-          h('span', { class: 'badge b-blue' }, ic('flag')), h('span', { class: 'grow' }, h('b', null, '下一步：选择难度'),
-            h('small', null, '沙盒 / 简单 / 一般 / 困难 / 真实，可再逐项调系统开关')), ic('chev', 16));
+      // 一行三个动作：继续 → 读取 → 下一步。原来是三个竖排大块，占两行还挤。
+      const actBtn = function (icon, label, tip, disabled, onclick, cls) {
+        return h('button', { class: 'map-act ' + (cls || ''), 'data-tip': tip, disabled: disabled ? true : null, onclick: onclick }, ic(icon), h('span', null, label));
       };
       const hero = h('div', { class: 'msel-hero' },
         h('img', { alt: '', src: CM.mapThumb(sel, theme) || '' }),
@@ -168,14 +167,16 @@
       const tl = h('div', { class: 'msel-tl' }, hl.map(function (e, k) {
         return h('div', { class: 'msel-ev' + (k === 0 ? ' start' : '') }, h('b', null, String(e[0])), h('i'), h('span', null, e[1]));
       }));
-      const acts = h('div', { class: 'map-actions' });
-      if (mp.tutorial) acts.appendChild(h('button', { class: 'map-mode primary', onclick: startTutorial },
-        h('span', { class: 'badge b-teal' }, ic('play')), h('span', { class: 'grow' }, h('b', null, '开始教程'), h('small', null, '从头开始 12 个引导任务（沙盒规则）')), ic('chev', 16)));
-      else acts.appendChild(nextBtn(true));
-      acts.appendChild(h('button', { class: 'map-mode sub', disabled: latest ? null : true, 'data-tip': latest ? latest.name + ' · ' + fmtDate(latest) : null, onclick: function () { if (latest) self.loadSlot(latest.slotId); } },
-        h('span', { class: 'badge b-blue' }, ic('clock')), h('span', { class: 'grow' }, h('b', null, mp.tutorial ? '继续教程' : '继续游戏'), h('small', null, latest ? latest.name + ' · ' + fmtDate(latest) : '该地图还没有存档')), ic('chev', 16)));
-      acts.appendChild(h('button', { class: 'map-mode sub', onclick: function () { self.showSaveManager(false, sel); } },
-        h('span', { class: 'badge b-slate' }, ic('folder')), h('span', { class: 'grow' }, h('b', null, '读取存档'), h('small', null, games.length ? games.length + ' 个进度 · 可导入存档文件' : '暂无存档 · 可导入存档文件')), ic('chev', 16)));
+      const acts = h('div', { class: 'map-actions row' },
+        actBtn('clock', mp.tutorial ? '继续教程' : '继续游戏',
+          latest ? latest.name + ' · ' + fmtDate(latest) : '该地图还没有存档',
+          !latest, function () { if (latest) self.loadSlot(latest.slotId); }),
+        actBtn('folder', '读取存档',
+          games.length ? games.length + ' 个进度 · 可导入存档文件' : '暂无存档 · 可导入存档文件',
+          false, function () { self.showSaveManager(false, sel); }),
+        actBtn(mp.tutorial ? 'play' : 'flag', mp.tutorial ? '开始教程' : '下一步',
+          mp.tutorial ? '从头开始 12 个引导任务（沙盒规则）' : '沙盒 / 简单 / 一般 / 困难 / 真实，可再逐项调系统开关与数值',
+          false, mp.tutorial ? startTutorial : next, 'primary'));
       // 详情按区块分组：概况（介绍与要点）、地图特色、大事年表；底部为本图操作区
       const block = function (icon, badge, title, kids, cls) { return h('section', { class: 'msel-block ' + (cls || '') }, h('div', { class: 'msel-bh' }, h('span', { class: 'badge ' + badge }, ic(icon, 15)), h('b', null, title)), kids); };
       const progress = games.length ? games.length + ' 个进度 · 最近 ' + (latest ? fmtDate(latest) : '—') : (mp.tutorial ? '还没有开始教程' : '还没有进度');
