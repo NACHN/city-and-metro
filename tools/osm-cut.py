@@ -41,7 +41,7 @@ STREET_KINDS = {"footway", "path", "pedestrian", "steps", "cycleway", "bridleway
 RAIL_KINDS = {"rail", "subway", "light_rail", "monorail", "narrow_gauge", "tram"}
 # 水系折线的默认宽度（格）。对照广州小图：真实折线多在 0.05–0.09 格（12–22 m）——
 # 大江大河在 OSM 里是 natural=water 多边形，折线只负责窄河涌，所以这里不能按「河宽 600 m」给。
-WATERWAY_DEFAULT_WIDTH = {"river": 0.09, "canal": 0.07, "stream": 0.05, "ditch": 0.03, "drain": 0.03}
+WATERWAY_DEFAULT_WIDTH = {"river": 0.35, "canal": 0.25, "stream": 0.08, "ditch": 0.04, "drain": 0.04}
 
 PARK_KINDS = ("park", "garden", "playground", "recreation_ground", "common")
 WOOD_LANDUSE = ("forest", "wood", "scrub", "meadow", "orchard")
@@ -98,12 +98,23 @@ def classify(tags):
         return {"layer": "water"}
     ww = tags.get("waterway")
     if ww in WATERWAY_DEFAULT_WIDTH:
-        w = tags.get("width")
-        try:
-            w = float(str(w).replace("m", "").strip()) / 250.0 if w else None
-        except ValueError:
-            w = None
-        w = min(max(w or WATERWAY_DEFAULT_WIDTH[ww], 0.02), 1.2)   # 标签给的宽度也夹住，避免单个错标把整张图淹掉
+        w = None
+        raw = tags.get("width")
+        if raw:
+            try:
+                w = float(str(raw).replace("m", "").strip()) / 250.0
+            except ValueError:
+                w = None
+        if w is None:
+            # OSM 里珠江下游的分汊（白坭水道、虎门水道、黄埔水道…）大多是 waterway=river 的**线**，
+            # 没有 width 标签，但打着 ship/boat 通航标记 —— 按通航等级给宽度，才不至于把珠江画成发丝。
+            if tags.get("ship") == "yes":
+                w = 3.2      # 800 m，可通海轮的主航道
+            elif tags.get("boat") == "yes":
+                w = 1.5      # 375 m，可通内河船
+            else:
+                w = WATERWAY_DEFAULT_WIDTH[ww]
+        w = min(max(w, 0.02), 12.0)   # 上限 3 km，避免单个错标把整张图淹掉
         return {"layer": "waterway", "width": round(w, 3)}
     if tags.get("leisure") in PARK_KINDS:
         return {"layer": "park"}

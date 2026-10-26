@@ -68,7 +68,26 @@ CM.Geo.waterLines.forEach((l) => line(l.p, [150, 192, 224], Math.max(l.w / 2, 0.
 CM.Geo.rail.forEach((r) => line(r.p, [90, 90, 90], 0.25));
 const RC = { 1: [200, 196, 190], 2: [176, 160, 140], 3: [222, 178, 78], 4: [236, 124, 52] };
 const ways = city.roadWays || [];
+// 虚线段：与 render.js 里隧道的画法对应（on/off 以格为单位）
+const dashFlat = (p, c, w, on = 0.24, off = 0.14) => {
+  let acc = 0;
+  for (let i = 0; i + 3 < p.length; i += 2) {
+    const x0 = p[i], y0 = p[i + 1], x1 = p[i + 2], y1 = p[i + 3];
+    const len = Math.hypot(x1 - x0, y1 - y0);
+    if (len < 1e-6) continue;
+    const n = Math.max(1, Math.ceil(len * 6));
+    for (let k = 0; k <= n; k++) {
+      const t = k / n;
+      if ((acc + t * len) % (on + off) > on) continue;
+      for (let a = -w; a <= w; a += 0.5) for (let b = -w; b <= w; b += 0.5) put(x0 + (x1 - x0) * t + a / S, y0 + (y1 - y0) * t + b / S, c);
+    }
+    acc += len;
+  }
+};
+// 桥：先描一圈浅色边，再画路面；隧道：虚线（与 render.js 的处理对应）
+ways.forEach((w) => { if (!city.roadsBuilt[w.g]) return; const gr = city.roadGroups[w.g]; if (!(gr.flags & 1) || (gr.flags & 2)) return; line(w.p, [96, 108, 130], gr.cls >= 3 ? 1.4 : 0.9); });
 ways.forEach((w) => { if (!city.roadsBuilt[w.g]) return; const gr = city.roadGroups[w.g]; line(w.p, RC[gr.cls] || [180, 180, 180], gr.cls >= 3 ? 0.8 : 0.45); });
+ways.forEach((w) => { if (!city.roadsBuilt[w.g]) return; const gr = city.roadGroups[w.g]; if (!(gr.flags & 2)) return; dashFlat(w.p, [70, 110, 170], gr.cls >= 3 ? 1.0 : 0.6); });
 // 4) 未开放片区（半透明灰）
 for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
   const c = j * W + i, rg = city.regions[city.region[c]];

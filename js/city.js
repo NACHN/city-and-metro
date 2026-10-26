@@ -429,7 +429,7 @@
       if (g.sim) continue;
       const y = yearOfName(g.name, g.flags, g.ways[0]);
       // 只为名称与年份表完全一致的道路/桥梁播报通车（匝道、辅路、出入口不单独播报；已有历史事件的不重复）
-      if (y != null) { g.year = y; g.notable = y > CFG.START.y && !(g.flags & 4) && (D.roadYears[g.name] != null || D.bridgeYears[g.name] != null) && !D.events.some(function (e) { return e.title.indexOf(g.name) >= 0; }); continue; }
+      if (y != null) { g.year = y; g.yearFromTable = true; g.notable = y > CFG.START.y && !(g.flags & 4) && (D.roadYears[g.name] != null || D.bridgeYears[g.name] != null) && !D.events.some(function (e) { return e.title.indexOf(g.name) >= 0; }); continue; }
       let water = 0;
       if (g.flags & 3) for (const p of g.ways) for (let k = 0; k + 3 < p.length; k += 2) if (self.crossesRiver(p[k], p[k + 1], p[k + 2], p[k + 3])) water++;
       if (water >= 2 && (g.flags & 3)) { g.year = D.bridgeDefaultYear; continue; }
@@ -437,6 +437,28 @@
       const c = self.cellAt(p[m], p[m + 1]);
       const rg = c >= 0 ? self.regions[self.region[c]] : D.defaultRegion;
       g.year = rg.scenic || rg.open == null ? CFG.START.y : Math.max(CFG.START.y, rg.open);
+    }
+    // 同名道路（含桥梁、隧道分段）通车年份取齐：一条路是按整条开通的，分段各自估年会出现
+    // 「一段 2000 年通车、相邻一段 2005 年通车」，画出来就是一条高速断成几截。
+    // 名称表 / 跨江桥梁表里写了年份的，以表为准推给这条路的全部分段；
+    // 都没有表可依的，取各段里最晚的那一年（宁可晚一点，也不要半条路）。
+    {
+      const tableYear = new Map(), latest = new Map();
+      for (const g of groups) {
+        if (g.sim || !g.name) continue;
+        if (g.yearFromTable) {
+          const y = tableYear.get(g.name);
+          if (y == null || g.year < y) tableYear.set(g.name, g.year);
+        } else {
+          const y = latest.get(g.name);
+          if (y == null || g.year > y) latest.set(g.name, g.year);
+        }
+      }
+      for (const g of groups) {
+        if (g.sim || !g.name) continue;
+        const y = g.yearFromTable ? tableYear.get(g.name) : (tableYear.get(g.name) != null ? tableYear.get(g.name) : latest.get(g.name));
+        if (y != null && g.year !== y) { g.year = y; g.notable = false; }
+      }
     }
     // 填海土地上的道路：不早于该处填海成陆的年份（道路有三成以上的点在填海范围内，或桥梁接到填海土地上）
     const rf = this.reclaimFeats(false);

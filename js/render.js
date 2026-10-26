@@ -30,7 +30,7 @@
         0: [[226, 231, 237], [218, 225, 233]],
       },
       shadow2d: 'rgba(70,100,140,0.10)', bldStroke: 'rgba(100,130,170,0.16)', parkTree: 'rgba(125,180,125,0.5)',
-      road: { local: '#ffffff', localCase: '#dee5ee', coll: '#ffffff', collCase: '#d0dbe7', art: '#ffffff', artCase: '#bfccdc', exp: '#f8fafd', expCase: '#a9b9cd', expLine: 'rgba(170,186,208,0.55)', bridgeCase: '#93a3b9', tunnel: 'rgba(140,156,178,0.45)', rail: '#ffffff', railCase: '#a5b1c2' },
+      road: { local: '#ffffff', localCase: '#dee5ee', coll: '#ffffff', collCase: '#d0dbe7', art: '#ffffff', artCase: '#bfccdc', exp: '#f8fafd', expCase: '#a9b9cd', expLine: 'rgba(170,186,208,0.55)', bridgeCase: '#93a3b9', tunnel: 'rgba(114,134,162,0.78)', rail: '#ffffff', railCase: '#a5b1c2' },
       lockFill: 'rgba(226,233,241,0.62)', lockHatch: 'rgba(150,166,188,0.2)',
       ink: '#1c2c45', halo: 'rgba(255,255,255,0.92)', district: '#58708f', landmarkInk: '#36557d', roadInk: '#7a8ca6', lockInk: '#7a889e',
       stFill: '#ffffff', stInter: '#25334a', isoShadow: 'rgba(80,110,150,0.10)', roofOld: [[226, 232, 240], [214, 222, 232]], roofInd: [222, 228, 236],
@@ -58,7 +58,7 @@
         0: [[62, 68, 80], [58, 64, 76]],
       },
       shadow2d: 'rgba(0,0,0,0.32)', bldStroke: 'rgba(140,170,210,0.14)', parkTree: 'rgba(70,130,100,0.55)',
-      road: { local: '#2b384b', localCase: '#162030', coll: '#324157', collCase: '#131c2a', art: '#3d4f68', artCase: '#0f1723', exp: '#4b6080', expCase: '#0e1520', expLine: 'rgba(150,180,220,0.3)', bridgeCase: '#080d15', tunnel: 'rgba(110,130,160,0.4)', rail: '#5a6678', railCase: '#0c121b' },
+      road: { local: '#2b384b', localCase: '#162030', coll: '#324157', collCase: '#131c2a', art: '#3d4f68', artCase: '#0f1723', exp: '#4b6080', expCase: '#0e1520', expLine: 'rgba(150,180,220,0.3)', bridgeCase: '#080d15', tunnel: 'rgba(138,162,198,0.72)', rail: '#5a6678', railCase: '#0c121b' },
       lockFill: 'rgba(8,12,20,0.5)', lockHatch: 'rgba(110,128,156,0.16)',
       ink: '#e6edf7', halo: 'rgba(12,18,28,0.88)', district: '#8ea2bd', landmarkInk: '#a9c4e8', roadInk: '#8d9db3', lockInk: '#95a3b7',
       stFill: '#ffffff', stInter: '#0e1622', isoShadow: 'rgba(0,0,0,0.28)', roofOld: [[78, 90, 108], [70, 80, 98]], roofInd: [72, 82, 98],
@@ -712,7 +712,24 @@
     const path = (arr) => { const p = new Path2D(); for (const w of arr) p.addPath(this.featurePath(w, false)); return p; };
     const bridgePath = (arr) => { const p = new Path2D(); for (const w of arr) if (city.roadGroups[w.g].flags & 1) p.addPath(this.featurePath(w, false)); return p; };
     const P1 = path(lay[1]), P2 = path(lay[2]), P3 = path(lay[3]), P4 = path(lay[4]), PL = path(links), PT = path(tunnels);
+    const B2 = bridgePath(lay[2]), B3 = bridgePath(lay[3]), B4 = bridgePath(lay[4]);
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    // 桥梁先描一圈浅色：跨在水面上的桥面需要一条边才读得出来（原来只把路缘换成更深的颜色，
+    // 暗色主题下等于没有），这里用墨色/浅色描边当护栏与护岸。
+    ctx.strokeStyle = TH.ink; ctx.globalAlpha = 0.32;
+    ctx.lineWidth = Math.max(0.1, px * 3.2); ctx.stroke(B2); ctx.stroke(B3);
+    ctx.lineWidth = Math.max(0.14, px * 3.9); ctx.stroke(B4);
+    ctx.globalAlpha = 1;
+    // 隧道：虚线段拉开、加一条细中心线，保证「路是通的，只是在地下」，而不是断在半路
+    if (tunnels.length) {
+      ctx.strokeStyle = RD.tunnel; ctx.lineWidth = Math.max(0.06, px * 2.0);
+      ctx.setLineDash([0.24, 0.14]); ctx.stroke(PT);
+      if (lvl >= 16) {
+        ctx.strokeStyle = TH.ink; ctx.globalAlpha = 0.5; ctx.lineWidth = Math.max(0.012, px * 0.45);
+        ctx.setLineDash([0.09, 0.3]); ctx.stroke(PT); ctx.globalAlpha = 1;
+      }
+      ctx.setLineDash([]);
+    }
     // 路缘（桥梁加深）
     ctx.strokeStyle = RD.localCase; ctx.lineWidth = Math.max(0.05, px * 2.2); ctx.stroke(st);
     ctx.lineWidth = Math.max(0.045, px * 1.8); ctx.stroke(P1);
@@ -721,8 +738,8 @@
     ctx.strokeStyle = RD.expCase; ctx.lineWidth = Math.max(0.065, px * 2.4); ctx.stroke(PL);
     ctx.lineWidth = Math.max(0.16, px * 4.2); ctx.stroke(P4);
     ctx.strokeStyle = RD.bridgeCase;
-    ctx.lineWidth = Math.max(0.12, px * 3.6); ctx.stroke(bridgePath(lay[3])); ctx.stroke(bridgePath(lay[2]));
-    ctx.lineWidth = Math.max(0.17, px * 4.4); ctx.stroke(bridgePath(lay[4]));
+    ctx.lineWidth = Math.max(0.12, px * 3.6); ctx.stroke(B3); ctx.stroke(B2);
+    ctx.lineWidth = Math.max(0.17, px * 4.4); ctx.stroke(B4);
     // 路面
     ctx.strokeStyle = RD.local; ctx.lineWidth = Math.max(0.03, px * 1.1); ctx.stroke(st);
     ctx.lineWidth = Math.max(0.022, px * 0.85); ctx.stroke(P1);
@@ -730,7 +747,6 @@
     ctx.strokeStyle = RD.art; ctx.lineWidth = Math.max(0.085, px * 2.3); ctx.stroke(P3);
     ctx.strokeStyle = RD.exp; ctx.lineWidth = Math.max(0.04, px * 1.4); ctx.stroke(PL);
     ctx.lineWidth = Math.max(0.12, px * 3); ctx.stroke(P4);
-    if (tunnels.length) { ctx.strokeStyle = RD.tunnel; ctx.lineWidth = Math.max(0.05, px * 1.6); ctx.setLineDash([0.12, 0.08]); ctx.stroke(PT); ctx.setLineDash([]); }
     if (lvl >= 32 && lay[4].length) { ctx.strokeStyle = RD.expLine; ctx.lineWidth = px; ctx.stroke(P4); }
     // 尚未填海成陆的区域盖回水面：伸向新土地的道路、桥梁与铁路在成陆前不显示
     if (anyRc) { ctx.fillStyle = GROUND.water; ctx.fill(rpth, 'nonzero'); }
