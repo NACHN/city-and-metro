@@ -30,10 +30,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROAD_CLASS = {
     "motorway": 4, "motorway_link": 4, "trunk": 4, "trunk_link": 4,
     "primary": 3, "primary_link": 3,
-    "secondary": 2, "secondary_link": 2,
-    "tertiary": 1, "tertiary_link": 1, "residential": 1, "unclassified": 1,
-    "living_street": 1, "service": 1, "road": 1,
+    "secondary": 2, "secondary_link": 2, "tertiary": 2, "tertiary_link": 2,
+    "residential": 1, "unclassified": 1, "living_street": 1, "road": 1,
 }
+# 250 m 一格下没意义的道路：厂区/小区内部车道、停车位通道、机耕道。数量巨大（广州图上 1.7 万条），
+# 既画不出来也改变不了拓扑，直接丢掉。
+ROAD_DROP = {"service", "track", "driveway", "parking_aisle", "raceway", "busway"}
 # 步行网：决定 15 分钟步行接驳能不能走（geo.streets）
 STREET_KINDS = {"footway", "path", "pedestrian", "steps", "cycleway", "bridleway", "corridor"}
 RAIL_KINDS = {"rail", "subway", "light_rail", "monorail", "narrow_gauge", "tram"}
@@ -84,6 +86,8 @@ def classify(tags):
     if hw:
         if hw in ROAD_CLASS:
             return {"layer": "road", "class": ROAD_CLASS[hw]}
+        if hw in ROAD_DROP:
+            return None
         if hw in STREET_KINDS:
             return {"layer": "street"}
         return None

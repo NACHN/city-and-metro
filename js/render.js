@@ -697,21 +697,25 @@
         st.moveTo(p[q], p[q + 1]); st.lineTo(p[q + 2], p[q + 3]);
       }
     }
-    // 主要道路（已通车）
+    // 主要道路（已通车）。四档都要建：等级 1（支路）在真实地图里数量最多，
+    // 以前没有一张图用到，lay 里缺这一档就会在 lay[cls].push 处抛错，
+    // 一抛错整帧的底图（含后面的水面与铁路）都画不出来 —— 看起来就是「一格一格的马赛克」。
     const ways = city.roadWayBk ? Geo.query(city.roadWayBk, X0 - 0.5, Y0 - 0.5, X1 + 0.5, Y1 + 0.5) : [];
-    const lay = { 2: [], 3: [], 4: [] }, links = [], tunnels = [];
+    const lay = { 1: [], 2: [], 3: [], 4: [] }, links = [], tunnels = [];
     for (const k of ways) {
       const w = city.roadWays[k];
       if (!city.roadsBuilt[w.g]) continue;
       const gr = city.roadGroups[w.g];
-      if (gr.flags & 2) tunnels.push(w); else if (gr.flags & 4) links.push(w); else lay[gr.cls].push(w);
+      const bucket = lay[gr.cls] || lay[1];
+      if (gr.flags & 2) tunnels.push(w); else if (gr.flags & 4) links.push(w); else bucket.push(w);
     }
     const path = (arr) => { const p = new Path2D(); for (const w of arr) p.addPath(this.featurePath(w, false)); return p; };
     const bridgePath = (arr) => { const p = new Path2D(); for (const w of arr) if (city.roadGroups[w.g].flags & 1) p.addPath(this.featurePath(w, false)); return p; };
-    const P2 = path(lay[2]), P3 = path(lay[3]), P4 = path(lay[4]), PL = path(links), PT = path(tunnels);
+    const P1 = path(lay[1]), P2 = path(lay[2]), P3 = path(lay[3]), P4 = path(lay[4]), PL = path(links), PT = path(tunnels);
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     // 路缘（桥梁加深）
     ctx.strokeStyle = RD.localCase; ctx.lineWidth = Math.max(0.05, px * 2.2); ctx.stroke(st);
+    ctx.lineWidth = Math.max(0.045, px * 1.8); ctx.stroke(P1);
     ctx.strokeStyle = RD.collCase; ctx.lineWidth = Math.max(0.085, px * 2.8); ctx.stroke(P2);
     ctx.strokeStyle = RD.artCase; ctx.lineWidth = Math.max(0.12, px * 3.4); ctx.stroke(P3);
     ctx.strokeStyle = RD.expCase; ctx.lineWidth = Math.max(0.065, px * 2.4); ctx.stroke(PL);
@@ -721,6 +725,7 @@
     ctx.lineWidth = Math.max(0.17, px * 4.4); ctx.stroke(bridgePath(lay[4]));
     // 路面
     ctx.strokeStyle = RD.local; ctx.lineWidth = Math.max(0.03, px * 1.1); ctx.stroke(st);
+    ctx.lineWidth = Math.max(0.022, px * 0.85); ctx.stroke(P1);
     ctx.strokeStyle = RD.coll; ctx.lineWidth = Math.max(0.055, px * 1.7); ctx.stroke(P2);
     ctx.strokeStyle = RD.art; ctx.lineWidth = Math.max(0.085, px * 2.3); ctx.stroke(P3);
     ctx.strokeStyle = RD.exp; ctx.lineWidth = Math.max(0.04, px * 1.4); ctx.stroke(PL);

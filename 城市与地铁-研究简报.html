@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>《城市与地铁》研究简报 · v2.0.0</title>
+<style>
+  :root{
+    --bg:#0d1218; --bg2:#121a23; --panel:#151e28; --panel2:#1a2531;
+    --line:#243140; --line2:#2e3f52;
+    --tx:#e6edf3; --tx2:#b6c2cf; --mut:#8593a3;
+    --ac:#4aa8ff; --ac2:#2bd4a8; --warm:#f0b54a; --red:#e5645c; --pur:#a78bfa;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:
+      radial-gradient(1100px 600px at 12% -8%, #17324d 0%, transparent 60%),
+      radial-gradient(900px 500px at 92% 4%, #133a35 0%, transparent 55%),
+      var(--bg);
+    color:var(--tx);
+    font:16px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:64px 28px 100px}
+  header.hero{border-bottom:1px solid var(--line);padding-bottom:36px;margin-bottom:48px}
+  .eyebrow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:12.5px;letter-spacing:.08em;color:var(--mut);text-transform:uppercase}
+  .pill{border:1px solid var(--line2);border-radius:999px;padding:3px 10px;color:var(--tx2);letter-spacing:0;text-transform:none;font-size:12px}
+  .pill.on{border-color:#2b5f8a;background:#12283a;color:#9fd0ff}
+  h1{font-size:clamp(30px,4.2vw,46px);line-height:1.2;margin:20px 0 14px;letter-spacing:-.02em;font-weight:680}
+  h1 small{display:block;font-size:.42em;font-weight:500;color:var(--mut);letter-spacing:.04em;margin-top:14px}
+  .lede{font-size:18.5px;color:var(--tx2);max-width:82ch}
+  .lede b{color:var(--tx)}
+  .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-top:34px}
+  .metric{background:var(--panel);padding:18px 18px 16px}
+  .metric .k{font-size:11.5px;color:var(--mut);letter-spacing:.06em}
+  .metric .v{font-size:26px;font-weight:640;margin-top:6px;letter-spacing:-.02em}
+  .metric .v span{font-size:13px;color:var(--mut);font-weight:400;letter-spacing:0;margin-left:4px}
+  section{margin:0 0 60px}
+  h2{display:flex;align-items:baseline;gap:14px;font-size:25px;font-weight:660;letter-spacing:-.01em;margin:0 0 8px}
+  h2 .no{font:600 12px/1 var(--mono);color:var(--ac);border:1px solid #2b5f8a;background:#102536;border-radius:6px;padding:5px 7px;transform:translateY(-4px)}
+  h3{font-size:17.5px;margin:30px 0 10px;color:var(--tx);font-weight:640}
+  p{margin:12px 0}
+  .sub{color:var(--mut);font-size:14.5px;margin:0 0 24px;max-width:80ch}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  @media(max-width:860px){.grid2,.grid3{grid-template-columns:1fr}}
+  .card{background:linear-gradient(180deg,var(--panel) 0%,var(--bg2) 100%);border:1px solid var(--line);border-radius:14px;padding:20px 22px}
+  .card h4{margin:0 0 8px;font-size:15px;letter-spacing:.01em}
+  .card p{margin:6px 0;font-size:14.5px;color:var(--tx2)}
+  .card .tag{font:500 11px/1 var(--mono);color:var(--mut);letter-spacing:.06em}
+  table{width:100%;border-collapse:collapse;margin:18px 0;font-size:14.5px}
+  th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:12px;letter-spacing:.07em;color:var(--mut);font-weight:600;text-transform:uppercase;background:#111a23}
+  tbody tr:hover{background:#131d27}
+  td.num{font-family:var(--mono);font-size:13.5px;white-space:nowrap;color:var(--tx2)}
+  .callout{border-left:3px solid var(--ac);background:#0f1d2a;border-radius:0 12px 12px 0;padding:14px 18px;margin:20px 0;font-size:15px;color:var(--tx2)}
+  .callout.warn{border-left-color:var(--warm);background:#231c10}
+  .callout.bad{border-left-color:var(--red);background:#251414}
+  .callout.good{border-left-color:var(--ac2);background:#0e2320}
+  .callout b{color:var(--tx)}
+  ul,ol{margin:12px 0;padding-left:22px;color:var(--tx2)}
+  li{margin:7px 0}
+  li b{color:var(--tx)}
+  code{font-family:var(--mono);font-size:.87em;background:#1b2735;border:1px solid var(--line);border-radius:5px;padding:1px 5px;color:#cfe3f7}
+  /* pipeline */
+  .pipe{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:24px 0 8px}
+  @media(max-width:900px){.pipe{grid-template-columns:1fr 1fr}}
+  .node{position:relative;background:var(--panel2);border:1px solid var(--line2);border-radius:12px;padding:14px 14px 12px}
+  .node .n{font:600 11px/1 var(--mono);color:var(--ac);letter-spacing:.08em}
+  .node .t{font-weight:640;margin:7px 0 4px;font-size:15px}
+  .node .d{font-size:12.8px;color:var(--mut);line-height:1.55}
+  .node::after{content:"→";position:absolute;right:-13px;top:50%;transform:translateY(-50%);color:#3d5a75;font-size:15px}
+  .pipe .node:last-child::after{content:""}
+  @media(max-width:900px){.node::after{display:none}}
+  /* bars */
+  .bars{margin:16px 0 4px}
+  .bar{display:grid;grid-template-columns:132px 1fr 62px;align-items:center;gap:12px;margin:8px 0;font-size:13px}
+  .bar .lb{color:var(--tx2);font-family:var(--mono);font-size:12.5px}
+  .bar .tr{background:#101821;border:1px solid var(--line);border-radius:5px;height:15px;overflow:hidden}
+  .bar .fl{height:100%;border-radius:4px 0 0 4px;background:linear-gradient(90deg,#2b6da8,#4aa8ff)}
+  .bar .fl.g{background:linear-gradient(90deg,#1f7f68,#2bd4a8)}
+  .bar .fl.w{background:linear-gradient(90deg,#8a6520,#f0b54a)}
+  .bar .vl{text-align:right;color:var(--mut);font-family:var(--mono);font-size:12px}
+  /* scores */
+  .score{display:grid;grid-template-columns:1fr 220px 46px;gap:14px;align-items:center;margin:11px 0;font-size:14.5px}
+  .score .tr{height:8px;background:#101821;border:1px solid var(--line);border-radius:99px;overflow:hidden}
+  .score .fl{height:100%;background:linear-gradient(90deg,#2b6da8,#4aa8ff);border-radius:99px}
+  .score .num{font-family:var(--mono);text-align:right;color:var(--tx)}
+  @media(max-width:700px){.score{grid-template-columns:1fr 110px 44px}}
+  .kicker{font-size:12px;letter-spacing:.1em;color:var(--mut);text-transform:uppercase;margin-bottom:6px}
+  .quote{font-size:17px;color:var(--tx);border-left:2px solid var(--line2);padding-left:16px;margin:18px 0;font-style:normal}
+  footer{border-top:1px solid var(--line);padding-top:24px;color:var(--mut);font-size:13px}
+  .src{font-family:var(--mono);font-size:12px;color:#6f8093}
+  .flowback{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px;font-size:12.5px;color:var(--mut)}
+  .flowback .lb{font-family:var(--mono)}
+  .arrowline{flex:1;height:1px;background:linear-gradient(90deg,#2b5f8a,transparent);min-width:40px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="eyebrow">
+    <span class="pill on">产品 + 技术研究</span>
+    <span class="pill">v2.0.0</span>
+    <span class="pill">2026-10-22 上线</span>
+    <span class="pill">单人浏览器游戏</span>
+  </div>
+  <h1>《城市与地铁》：把一座真实城市<br>当成交通模型的实验场
+    <small>研究范围：产品定位、玩法结构、模拟内核、工程质量与改进空间 · 结论基于源码与文档静态分析</small>
+  </h1>
+  <p class="lede">它不是《Mini Metro》那种抽象拼图，也不是《NIMBY Rails》那种硬核沙盘。它把<b>真实城市的 OSM 地理</b>、<b>接近交通规划实务的线形约束</b>（曲线半径、坡度、站距、保护建筑）和<b>一套真的会跑的重力模型 + Logit + BPR/MSA 交通仿真</b>塞进了一个不需要安装、不需要账号的网页里。它的野心不在画面，而在"你画的每一笔都会改变几十万人的出行选择"这件事本身成立。</p>
+
+  <div class="metrics">
+    <div class="metric"><div class="k">代码规模</div><div class="v">133,117<span>行</span></div></div>
+    <div class="metric"><div class="k">逻辑代码</div><div class="v">2.9<span>万行</span></div></div>
+    <div class="metric"><div class="k">地理数据</div><div class="v">4.65<span>MB</span></div></div>
+    <div class="metric"><div class="k">地图</div><div class="v">6<span>张</span></div></div>
+    <div class="metric"><div class="k">验收条目</div><div class="v">122<span>+24</span></div></div>
+    <div class="metric"><div class="k">开发周期</div><div class="v">7<span>天 / 11 版</span></div></div>
+  </div>
+</header>
+
+<section>
+  <h2><span class="no">01</span>它到底是个什么游戏</h2>
+  <p class="sub">一句话：<b>以地铁规划为唯一动词的城市模拟经营游戏。</b>玩家不做调度、不排班、不买车、不修路——只决定"站在哪、线怎么画、票卖多少钱"。</p>
+
+  <div class="grid3">
+    <div class="card">
+      <div class="tag">玩家负责</div>
+      <h4>规划与定价</h4>
+      <p>选址建站（小/中/大型）、绘线（普通线/环线/支线）、选择地下/地面/高架、跨江走桥还是隧道、拆迁、批量改线、设置全网统一票价。</p>
+    </div>
+    <div class="card">
+      <div class="tag">系统负责</div>
+      <h4>城市与运营</h4>
+      <p>居民出行选择、道路交通、城市发展与新区开放、列车自动配车与发车频率、票款结算、运营成本、财政拨款、GDP 与历史事件。</p>
+    </div>
+    <div class="card">
+      <div class="tag">玩家不负责</div>
+      <h4>被刻意砍掉的部分</h4>
+      <p>公交换乘、普通铁路运营、道路手建、站内场景、多人、云存档、完整移动端适配——全部明确写在"不在范围内"。</p>
+    </div>
+  </div>
+
+  <h3>产品坐标：夹在三个成熟品类之间</h3>
+  <table>
+    <thead><tr><th>参照</th><th>它做的事</th><th>本作的选择</th></tr></thead>
+    <tbody>
+      <tr><td><b>Mini Metro</b></td><td>抽象节点与线条，纯关卡式，无地理、无经济</td><td>保留"画线"的直觉快感，但把每条线放进真实地形里</td></tr>
+      <tr><td><b>NIMBY Rails</b></td><td>真实经纬度 1:1 世界，极硬核，UI 与美术近乎为零</td><td>同样要真实地理，但用 250 m 格网 + 简化八方向线形把门槛压下来</td></tr>
+      <tr><td><b>Cities: Skylines</b></td><td>3D 城市建造，地铁只是子系统，重资产重画面</td><td>反过来：地铁是唯一主角，城市是背景与反馈源，零安装网页运行</td></tr>
+      <tr><td><b>Transport Fever</b></td><td>多方式联运与经营，强调度</td><td>只做地铁一种方式，把调度自动化，复杂度全部投向"规划决策"</td></tr>
+    </tbody>
+  </table>
+  <div class="callout"><b>定位判断：</b>这是一款"中等硬核"的城市交通沙盒——比 Mini Metro 深得多，比 NIMBY Rails 好上手得多，比 Skylines 便宜得多（免费网页、6 MB 逻辑代码）。它的真实竞品其实是"纸上规划"的欲望：地铁迷想在自己熟悉的城市里画一张线网，并且看到它被数据检验。</div>
+</section>
+
+<section>
+  <h2><span class="no">02</span>核心循环：所有设计都围绕一条反馈链</h2>
+  <p class="sub">游戏把"观察 → 规划 → 预测 → 运营 → 城市变化"做成了一条闭合链路。理解这条链，就理解了它的 90% 功能。</p>
+
+  <div class="pipe">
+    <div class="node"><div class="n">01 观察</div><div class="t">八个分析图层</div><div class="d">人口密度、住宅与就业、设施需求、道路拥堵、出行方向、地铁覆盖、车站客流、服务缺口</div></div>
+    <div class="node"><div class="n">02 规划</div><div class="t">草案态</div><div class="d">建站绘线先进入草案，实时显示费用、冲突（站距/曲率/坡度/保护建筑）与预测</div></div>
+    <div class="node"><div class="n">03 预测</div><div class="t">同条件对照</div><div class="d">用正式网 vs 草案网跑两遍完整模型，给出客流、通勤时间、拥堵变化，分工作日/周末</div></div>
+    <div class="node"><div class="n">04 运营</div><div class="t">即时建成</div><div class="d">无施工期，确认即通车；系统按断面需求自动配车、定发车频率，目标满载率 85%</div></div>
+    <div class="node"><div class="n">05 反馈</div><div class="t">城市与财政</div><div class="d">客流改变道路拥堵 → 拥堵与覆盖改变交通效率 → 影响 GDP、拨款与融资利率 → 再影响下一轮规划</div></div>
+  </div>
+  <div class="flowback"><span class="lb">↑ 外循环：时间推进（1×/3×/8×、跳月、跳年）驱动人口、新区、地标、填海、历史事件</span><span class="arrowline"></span></div>
+
+  <h3>为什么"预测"是这套设计的重心</h3>
+  <p>大多数经营游戏给的是"建了就会好的"因果；这款游戏明确写了反向条款：<code>AC-10</code> 要求"明显绕行、换乘不便、过度拥挤或高票价的地铁方案，必须能出现吸引力不足、居民继续开车的结果"。也就是说，<b>它允许多修地铁而不改善交通</b>。这条约束把游戏从"堆资源"变成了"读懂需求"。</p>
+  <p>支撑它的是三件具体的工程事：预测不扣款、不改正式客流；月份/地形/道路/票价任一变化即让旧预测失效；预测与实时求解使用隔离的缓冲区，互不污染。</p>
+</section>
+
+<section>
+  <h2><span class="no">03</span>模拟内核：这是全作最硬的 30%</h2>
+  <p class="sub">这套模型不是"看起来像"，而是按交通规划教科书的骨架搭的：四阶段法（需求生成 → 方式划分 → 交通分配）+ 运力供给迭代。</p>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="tag">STEP 1 · 需求</div>
+      <h4>生产约束的重力模型</h4>
+      <p>起点总量只由居住人口与出行率决定，目的地按吸引量与距离衰减分配。吸引力来自 1 km² 交通小区（720 个）的用地、人口、岗位，以及 191 处独立建模的重要设施（火车站、机场、大学、医院、商圈、CBD、景点、场馆、会展）。</p>
+      <p><b>关键设计：</b>设施只改变"去哪"，不凭空增加出行总量；只有购物与休闲在可达性改善时产生有上限的新增出行（每分钟 +0.6%，单 OD 上限 10%/15%）。</p>
+    </div>
+    <div class="card">
+      <div class="tag">STEP 2 · 方式划分</div>
+      <h4>Logit 广义成本</h4>
+      <p>比较汽车与地铁的完整门到门成本：步行接驳（上限 1125 m / 15 分钟）、候车、乘车、换乘惩罚（站内 4 分钟 / 站外 6 分钟）、拥挤、票价，以及汽车的时间价值、油费、停车费与载客率。</p>
+      <p><b>参数随年代演化：</b>时间价值从 1990 年 2.5 元/小时升到 2020 年 42 元/小时，小汽车载客率从 3.4 人降到 1.45 人——这是"1990 年自行车城市"和"2020 年堵车城市"手感不同的根源。</p>
+    </div>
+    <div class="card">
+      <div class="tag">STEP 3 · 分配</div>
+      <h4>BPR + MSA</h4>
+      <p>车流按 BPR 函数（a=0.15, b=4）反馈到路段行程时间，用 MSA（λ=0.4）逐轮平滑收敛。道路分四级：支路/次干道/主干道/快速路，各有单向通行能力与自由流速度，且通行能力随年代整体提升（1990→2020 约 2.9 倍）。</p>
+      <p><b>口径分离：</b>拥堵图层是"流量/容量"，全城拥堵指数是"实际/自由流旅行时间按车公里加权"，两者不混用。</p>
+    </div>
+    <div class="card">
+      <div class="tag">STEP 4 · 供给</div>
+      <h4>运力自动匹配</h4>
+      <p>按站数、站距、周转时间与最大断面需求，取"最低服务水平"与"需求频率"的较大值并平滑迭代；编组受沿线最小站台限制，上限 30 列/小时。拥挤诊断区分"车站处理能力不足"和"区间运力不足"。</p>
+      <p><b>代价：</b>玩家永远不需要排班——省心，但也砍掉了运营层面的全部决策。</p>
+    </div>
+  </div>
+
+  <h3>时间维度：6 种目的 × 2 种日型 × 4 个时段</h3>
+  <p>通勤、上学、购物、医疗、旅游休闲、枢纽接驳各自有一套去程/返程的时段分布与周末倍数（周末购物 1.55×、休闲 2.1×、通勤 0.32×）。整套模型要解 8 套时段方案（工作日 4 + 周末 4），且两套都必须在后台保持收敛，实时画面按当天日期切换。</p>
+  <div class="callout good"><b>一个容易被忽略的历史细节：</b>它按史实实现了"周六是否上班/上课"——中国内地 1994 年起隔周双休、1995 年 5 月全面双休，台湾 1998–2001、日本与香港逐步实行。在 1990 年的广州，周六通勤量接近工作日，周末模型因此不同。这种颗粒度在国内同类作品里很少见。</div>
+
+  <h3>工程实现：为 60 fps 让路的数值代码</h3>
+  <ul>
+    <li><b>全程 TypedArray + 手写二叉堆</b>做最短路树（<code>roadTree</code>），热循环里把数组一次性读入局部变量，注释写明"与逐次调用结果完全相同"——典型的"优化但不改数值"纪律。</li>
+    <li><b>Generator 时间切片</b>：需求生成每 16 个起点 <code>yield</code> 一次，求解按 <code>solverBudgetMs = 5</code> 毫秒让出主线程，跳月/跳年也走同一套生成器。</li>
+    <li><b>收敛检测</b>：连续两轮迭代结果完全一致才停止重算（<code>settled</code>），不用误差阈值偷懒，因此"暂停后继续"不会悄悄改变数值。</li>
+    <li><b>双缓冲隔离</b>：实时与预测各有一套 skim 存储，预测取消不会污染正在运行的画面。</li>
+  </ul>
+  <div class="callout"><b>评价：</b>这部分代码的专业度明显高于一般独立游戏。它不是"模拟得像"，而是有明确的模型选择、参数出处标注（估算/史实/模拟三档），以及"结果可解释"的设计要求（预测必须说明原因，不能用零值伪造）。</div>
+</section>
+
+<section>
+  <h2><span class="no">04</span>经营层：从地铁账本一路传导到 GDP</h2>
+  <p class="sub">v1.8 引入的宏观经济不是装饰，它把"地铁好不好"翻译成了"这座城市富不富"，再翻译成"你下个月能拿到多少拨款"。</p>
+
+  <table>
+    <thead><tr><th>环节</th><th>规则（简化）</th><th>设计意图</th></tr></thead>
+    <tbody>
+      <tr><td>GDP</td><td>地图内岗位 × 每岗位产出 × 生产率趋势 × <b>交通效率</b> × 经济周期 × 事件冲击</td><td>地铁只能通过"交通效率"这一项影响经济，且系数被限定在 0.94–1.08</td></tr>
+      <tr><td>交通效率</td><td>覆盖、分担率、通勤时间、拥堵相对开局的变化，按全年平均以 60% 速度逐年计入</td><td>拥堵改善按地铁分担率提高的比例计入，防止把道路自然扩容算成地铁功劳</td></tr>
+      <tr><td>财政收入</td><td>名义 GDP × 本城财政比重 ×（1 + 0.4~0.6 × 经济偏离）</td><td>GDP ≠ 财政 ≠ 地铁资金，三层明确切开</td></tr>
+      <tr><td>拨款</td><td>基础额度 × 财力系数（0.70–1.30，每年 1 月更新并平滑）× 满意度 × 任务修正</td><td>让"经营"有滞后与惯性，不能靠一年暴涨翻身</td></tr>
+      <tr><td>融资</td><td>地方债 / 城投债，3 或 6 年，发行时锁定利率；额度 = 基础月拨款 × 6/4 倍，本金上限 30/18 倍</td><td>募集进"专项账户"只能建设，运营与偿债只能走"一般账户"</td></tr>
+      <tr><td>失败</td><td>连续 24 个月负余额、低于随物价调整的 −20 亿下限，或满意度连续 12 个月 &lt; 25</td><td>允许长期亏损，失败是"缓慢窒息"而非"一夜暴毙"</td></tr>
+    </tbody>
+  </table>
+
+  <div class="grid2">
+    <div class="card"><div class="tag">做得好的</div><h4>两账户 + 债券账本</h4><p>专项与一般资金分离、逐券记录期次与实付、欠本继续占额度、逾期 6 个月停发债、读档不重复扣息——这套记账的严谨程度超过了很多商业经营游戏。分城利率（1990 广州 8.5%，2000 杭州 4.5%）也有真实年代感。</p></div>
+    <div class="card"><div class="tag">可以更好的</div><h4>经济反馈太"温和"</h4><p>交通效率区间只有 ±8%，且改善部分还要打折计入。结果是：无论你把线网画得多好，GDP 曲线都长得差不多。<b>反馈存在但不够"响"</b>，玩家很难从数字上获得"我改变了这座城市"的强快感——这与它宣称的核心体验有落差。</p></div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="no">05</span>内容体量：六张地图，一套规则</h2>
+  <p class="sub">扩展路径很克制：不为每张图新增规则，只换地理、年代、货币与经营参数。这是正确的复用方式，但也让地图制作成本极高。</p>
+
+  <table>
+    <thead><tr><th>地图</th><th>年代</th><th>格网 / 范围</th><th>模拟人口</th><th>货币</th><th>难度</th><th>主题</th></tr></thead>
+    <tbody>
+      <tr><td>青湾（虚构）</td><td>2000</td><td class="num">48×40 / 12×10 km</td><td class="num">42 万</td><td>—</td><td>1</td><td>12 步独立教程、无限资金</td></tr>
+      <tr><td>广州</td><td>1990</td><td class="num">120×96 / 30×24 km</td><td class="num">300 万</td><td>CNY</td><td>2</td><td>珠江两岸、27 片区逐年开放、33 处地标</td></tr>
+      <tr><td>杭州</td><td>2000</td><td class="num">112×88 / 28×22 km</td><td class="num">300 万</td><td>CNY</td><td>2</td><td>西湖与钱塘江、风景区禁建</td></tr>
+      <tr><td>香港</td><td>1970</td><td class="num">80×80 / 20×20 km</td><td class="num">345 万</td><td>HKD</td><td>3</td><td>山地海港、9 组填海、新市镇</td></tr>
+      <tr><td>台北</td><td>1990</td><td class="num">104×88 / 26×22 km</td><td class="num">500 万</td><td>TWD</td><td>3</td><td>三河盆地、松山机场限地下、1994/1999 新区</td></tr>
+      <tr><td>东京</td><td>1950</td><td class="num">96×88 / 24×22 km</td><td class="num">540 万</td><td>JPY</td><td>4</td><td>接管银座线 18 站、12 组填海、高速增长</td></tr>
+    </tbody>
+  </table>
+
+  <h3>真实性的处理方式，是这款游戏最值得学习的地方</h3>
+  <p>它把"真实"分成了五个明确标注的层级，并且在游戏内数据页、文档、甚至验收条目里反复强调：</p>
+  <table>
+    <thead><tr><th>层级</th><th>内容</th><th>标注</th></tr></thead>
+    <tbody>
+      <tr><td>真实地理</td><td>水系、道路、铁路、公园、街道边界、地名——OSM + ODbL</td><td>「真实地理」</td></tr>
+      <tr><td>史实参考</td><td>桥梁通车年、地标落成年、区域开放年、历史任务</td><td>「史实参考」</td></tr>
+      <tr><td>合理估算</td><td>1990 年人口就业分布、出行率、时间价值、造价</td><td>「估算」</td></tr>
+      <tr><td>模型生成</td><td>2020 年后增长、客流、拥堵、财政结果</td><td>「模拟」</td></tr>
+      <tr><td>纯虚构</td><td>青湾的一切</td><td>「虚构」</td></tr>
+    </tbody>
+  </table>
+  <div class="callout warn"><b>代价：</b>真实地理意味着"历史包袱"。1990 年的广州只有 300 万人、珠江横亘、只能靠几座桥过江——前 20 分钟能建的地方很少。真实带来辨识度，也带来开局空间的狭窄。这是"拟真城市"题材绕不开的取舍。</div>
+</section>
+
+<section>
+  <h2><span class="no">06</span>工程架构：执行力很强，但欠了一套现代前端骨架</h2>
+  <p class="sub">先看体积分布——一个有意思的事实：<b>78% 的 JavaScript 行数是地理数据，真正的逻辑代码只有约 2.9 万行。</b></p>
+
+  <div class="bars">
+    <div class="bar"><div class="lb">geo_*.js ×5</div><div class="tr"><div class="fl g" style="width:100%"></div></div><div class="vl">4.65 MB</div></div>
+    <div class="bar"><div class="lb">render.js</div><div class="tr"><div class="fl" style="width:4.5%"></div></div><div class="vl">209 KB</div></div>
+    <div class="bar"><div class="lb">ui.js</div><div class="tr"><div class="fl" style="width:3%"></div></div><div class="vl">139 KB</div></div>
+    <div class="bar"><div class="lb">pages.js</div><div class="tr"><div class="fl" style="width:2.9%"></div></div><div class="vl">135 KB</div></div>
+    <div class="bar"><div class="lb">sim.js</div><div class="tr"><div class="fl" style="width:1.75%"></div></div><div class="vl">81 KB</div></div>
+    <div class="bar"><div class="lb">netmap.js</div><div class="tr"><div class="fl" style="width:1.36%"></div></div><div class="vl">63 KB</div></div>
+    <div class="bar"><div class="lb">metro.js</div><div class="tr"><div class="fl" style="width:1.31%"></div></div><div class="vl">61 KB</div></div>
+    <div class="bar"><div class="lb">city.js</div><div class="tr"><div class="fl" style="width:1.29%"></div></div><div class="vl">60 KB</div></div>
+    <div class="bar"><div class="lb">stats.js</div><div class="tr"><div class="fl" style="width:1.24%"></div></div><div class="vl">58 KB</div></div>
+    <div class="bar"><div class="lb">其余 28 个模块</div><div class="tr"><div class="fl" style="width:13%"></div></div><div class="vl">~600 KB</div></div>
+  </div>
+
+  <h3>做得漂亮的地方</h3>
+  <div class="grid2">
+    <div class="card"><div class="tag">职责切分</div><h4>模块边界基本干净</h4><p>city（城市生成）· facility（设施）· sim（交通模型）· macro（宏观经济）· economy（财政）· metro（网络与几何）· game（时钟与结算）· save（序列化）· render / agents / netmap / soundscape（表现）——单看文件名就能猜出职责，没有出现"万能工具模块"。</p></div>
+    <div class="card"><div class="tag">生命周期</div><h4>切图是个真问题，它认真处理了</h4><p><code>useMap</code> 保留了 <code>CM.DATA</code> 的对象身份，只清空字段再填入新图数据，避免旧引用失效；同时替换 GEO、覆盖配置、重建索引、清缓存。跨图串数据的 bug 在同类项目里非常常见。</p></div>
+    <div class="card"><div class="tag">存档</div><h4>比大多数独立游戏严谨</h4><p>IndexedDB 存正文、localStorage 存索引、不可用时自动回退；每局两个轮换自动槽 + 12 个手动槽；版本/校验/备份/迁移失败不覆盖原档；连"慢写入不能覆盖新改名"都写进了验收。</p></div>
+    <div class="card"><div class="tag">构建</div><h4>零依赖，但会自检</h4><p><code>build.mjs</code> 只用 Node 内置模块：复制资源、生成 404 与安全响应头、遍历 HTML 引用确认文件存在、拒绝符号链接、拒绝把 .md 或隐藏文件发布出去。54 个文件 / 11.96 MB，一条命令完成。</p></div>
+  </div>
+
+  <h3>四个真实的技术债</h3>
+  <table>
+    <thead><tr><th>问题</th><th>证据</th><th>影响</th></tr></thead>
+    <tbody>
+      <tr><td><b>首屏加载全部地图</b></td><td><code>index.html</code> 顺序加载 40 个脚本，5 份 geo 数据（4.65 MB）一次性解析，只有一张图会被用到</td><td>弱机与移动端首屏明显偏慢，内存常驻 6 MB 的 JS 结构</td></tr>
+      <tr><td><b>无构建产物优化</b></td><td>不压缩、不合并、文件名无内容哈希；<code>_headers</code> 对全部资源设 <code>max-age=0, must-revalidate</code></td><td>每次访问要校验 54 个资源；升级后用户必然回源</td></tr>
+      <tr><td><b>全局命名空间 + 加载顺序即依赖</b></td><td>所有模块是 IIFE 挂到 <code>window.CM</code>；<code>CFG</code> 被 <code>useMap</code> 原地改写</td><td>无法静态分析依赖，任何模块都能改全局状态；重构与测试都很痛</td></tr>
+      <tr><td><b>零自动化测试</b></td><td>仓库无 <code>package.json</code>、无 test 目录、无 lint/tsconfig；122 条 AC 靠人工与"验证后清理"的临时脚本</td><td>7 天 11 个版本的迭代速度下，回归风险持续累积</td></tr>
+    </tbody>
+  </table>
+  <div class="callout bad"><b>最大风险不是性能，是回归。</b>部署说明里多次出现"未覆盖：移动真机、数小时连续运行内存曲线、全部 12 步教程、所有建设组合"。对一个数值系统如此复杂的游戏，靠发布前手工跑一遍是撑不住长期迭代的——而它已经有了一次"换乘站外框重复"这类纯渲染回归（v2.0 上线当天紧急修复）。</div>
+</section>
+
+<section>
+  <h2><span class="no">07</span>设计评价：一个优秀的模拟器，一个偏保守的游戏</h2>
+  <p class="sub">把"模拟质量"和"游戏性"分开看，会得到一个有意思的结论：它的模型深度远超它的决策多样性。</p>
+
+  <h3>评分（研究者主观判断，10 分制）</h3>
+  <div class="score"><div>模拟深度 · 四阶段法 + 六目的 + 日型 + 运力迭代</div><div class="tr"><div class="fl" style="width:85%"></div></div><div class="num">8.5</div></div>
+  <div class="score"><div>真实性与考据 · 五级标注、填海、铁路阻隔、年代风貌</div><div class="tr"><div class="fl" style="width:85%"></div></div><div class="num">8.5</div></div>
+  <div class="score"><div>完成度与打磨 · 存档、许可、部署、文档、兼容</div><div class="tr"><div class="fl" style="width:85%"></div></div><div class="num">8.5</div></div>
+  <div class="score"><div>规划手感 · 草案/撤销/批量/拆除预览/线网图</div><div class="tr"><div class="fl" style="width:80%"></div></div><div class="num">8.0</div></div>
+  <div class="score"><div>玩法张力 · 中后期决策维度偏少</div><div class="tr"><div class="fl" style="width:65%"></div></div><div class="num">6.5</div></div>
+  <div class="score"><div>工程可维护性 · 全局命名空间 / 无测试 / 首屏</div><div class="tr"><div class="fl" style="width:65%"></div></div><div class="num">6.5</div></div>
+  <div class="score"><div>上手成本 · 功能密度高，教程好但面板多</div><div class="tr"><div class="fl" style="width:62%"></div></div><div class="num">6.0</div></div>
+
+  <div class="grid2" style="margin-top:26px">
+    <div class="card"><div class="tag">强项</div><h4>反馈闭环是真的</h4><p>预测基于同一城市状态跑两遍完整模型，工作日/周末分开，连"新增出行"都单列。</p><p>线形约束（350 m 站距、250 m 最小曲率半径、3% 坡度、站台前后 70 m 直线段）让"画线"有了专业感。</p><p>视觉克制：不画路灯、不画行道树、取消地下虚线外廓——这些"少画"的决定反而提高了可读性。</p></div>
+    <div class="card"><div class="tag">短板</div><h4>决策维度不够宽</h4><p><b>无工期</b>：确认即通车，等于拿掉了"先修哪段、钱够不够、什么时候回本"的核心张力。</p><p><b>无调度</b>：自动配车 + 统一票价单滑块，运营层没有任何可玩空间（没有快慢车、区间车、票制、站内商业）。</p><p><b>失败太宽松</b>：24 个月负余额才失败，中期几乎没有"要完蛋了"的压力。</p></div>
+  </div>
+
+  <div class="quote">它更像一张"会回答问题的规划桌"，而不是一场"会惩罚你的经营赛"。这既是它的独特性，也是它最容易让玩家在第 3 小时合上页面的原因。</div>
+</section>
+
+<section>
+  <h2><span class="no">08</span>如果要继续做，按投入产出比排序</h2>
+  <p class="sub">下面的建议按"改动成本 ÷ 体验收益"排序，前两项属于该立刻做的工程债。</p>
+
+  <table>
+    <thead><tr><th>优先级</th><th>建议</th><th>怎么做</th><th>收益</th></tr></thead>
+    <tbody>
+      <tr><td><b>P0</b></td><td>地图按需加载</td><td>把 5 份 <code>geo_*.js</code> 改为动态 <code>import()</code> 或 <code>fetch</code> JSON，选图后再注入；首屏只留广州或教程</td><td>首屏解析量从 6 MB 降到 ~1.5 MB，弱机与移动端体感立竿见影</td></tr>
+      <tr><td><b>P0</b></td><td>最小回归护栏</td><td>固定种子 + 固定线网，把"两个月推进后的城市/交通/财政哈希"做成 20 行脚本，纳入 CI；渲染层加 4 个 SVG 快照比对</td><td>防住已发生过的那类回归，成本极低（部署说明里其实已经有这套方法的雏形）</td></tr>
+      <tr><td><b>P1</b></td><td>引人工期与分期</td><td>线路按区段给 6–36 个月工期，期间只产生成本不产生客流；允许"先通一段"</td><td>把"先修哪一段"变成真正的决策，投入产出比最高的玩法增量</td></tr>
+      <tr><td><b>P1</b></td><td>运营层加一个维度</td><td>二选一即可：①快慢车/越行（对长线收益极大）；②分区票制或高峰加价</td><td>让中后期仍有操作空间，且直接复用现有运力模型</td></tr>
+      <tr><td><b>P2</b></td><td>让经济反馈更"响"</td><td>把交通效率区间从 0.94–1.08 放宽，或让长期优秀线网解锁新区/大额专项债</td><td>强化"我改变了城市"的成就感</td></tr>
+      <tr><td><b>P2</b></td><td>地图指纹升级</td><td><code>mapFp</code> 从"要素数量"改为几何内容哈希</td><td>避免地图数据修订后旧档静默错位</td></tr>
+      <tr><td><b>P3</b></td><td>渐进模块化</td><td>只对 sim/economy 这类纯逻辑先上 ESM + 类型标注，UI 层保持现状</td><td>为测试与长期维护铺路，不必大重写</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2><span class="no">09</span>结论</h2>
+  <div class="callout good" style="font-size:16.5px">
+    <b>《城市与地铁》最值得称道的不是它做了六座城市，而是它敢让玩家"修错"。</b>它用一套真实的四阶段交通模型，把"地铁修得好不好"变成可被数据反驳的问题——绕行、换乘差、票价高，居民就继续开车。<br><br>
+    它的问题也不在技术，而在<b>游戏化程度</b>：模拟足够深，决策维度却偏窄；反馈存在，但不够响。<b>它已经是一个优秀的交通模拟器（8.5/10 的模型），还需要再往"游戏"走一步（6.5/10 的张力）。</b>
+  </div>
+
+  <h3>适合谁</h3>
+  <table>
+    <thead><tr><th>玩家</th><th>体验</th></tr></thead>
+    <tbody>
+      <tr><td>地铁 / 城市交通爱好者</td><td>强烈推荐。在自己熟悉的城市里画线，并被真实地理与客流检验，这种体验目前几乎无处可替代</td></tr>
+      <tr><td>模拟经营玩家</td><td>推荐，但预期要调整：它更像"规划工具"而非"经营游戏"，前 2 小时最爽</td></tr>
+      <tr><td>休闲玩家</td><td>建议只走青湾 12 步教程（约 15 分钟），能完整体验核心乐趣且不被面板淹没</td></tr>
+      <tr><td>研究者 / 开发者</td><td>很好的样本：2.9 万行手写逻辑做出四阶段模型 + 时间切片 + 分块渲染，且文档（PRD 605 行 / 122 条验收）本身就是一份少见的完整设计档案</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2><span class="no">10</span>方法与证据</h2>
+  <p class="sub">本报告为静态研究：通读 4 份文档（PRD / 地图指南 / 部署说明 / README，共 1,026 行）、主要模块源码，执行构建脚本，做依赖与体积统计。<b>未进行实际游玩与帧率实测</b>，性能结论来自代码结构与构建产物，非运行测量。</p>
+  <table>
+    <thead><tr><th>结论</th><th>证据位置</th></tr></thead>
+    <tbody>
+      <tr><td>四阶段模型与参数</td><td class="src">js/sim.js（1,424 行）、js/config.js（choice / trips / road）、PRD §4</td></tr>
+      <tr><td>时间切片与收敛</td><td class="src">js/sim.js:1091 step()、:1111 solveNow()、:1083 收敛注释</td></tr>
+      <tr><td>经济传导链</td><td class="src">js/macro.js（504 行）、js/economy.js（646 行）、PRD §6 ECON-01~08</td></tr>
+      <tr><td>六图配置与难度</td><td class="src">js/maps.js、js/data_*.js（difficulty 1–4）、地图设计指南 §1</td></tr>
+      <tr><td>全局命名空间与加载顺序</td><td class="src">index.html（40 个 script）、各模块 IIFE 挂 window.CM、js/maps.js:60 useMap()</td></tr>
+      <tr><td>构建与发布</td><td class="src">scripts/build.mjs、部署说明 §2–3；实测 54 文件 / 11,959,424 B</td></tr>
+      <tr><td>无自动化测试</td><td class="src">仓库根目录无 package.json / test / lint / tsconfig</td></tr>
+    </tbody>
+  </table>
+  <footer>
+    <p>研究简报 · 《城市与地铁》v2.0.0 · 生成于 2026-10-23<br>
+    游戏版权归 VinsonFung 所有，仅限非商业使用；地理数据来自 OpenStreetMap 贡献者（ODbL 1.0）。本报告为独立分析文档，不含游戏代码。</p>
+  </footer>
+</section>
+
+</div>
+</body>
+</html>
