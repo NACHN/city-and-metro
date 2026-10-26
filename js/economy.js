@@ -20,9 +20,11 @@
   Economy.BUILD_KINDS = BUILD_KINDS;
   Economy.MONEY_EPS = MONEY_EPS;
 
-  function Economy(mode, y, m) {
+  // caps 可选：新体系下由 CM.capsFor(preset, systems) 算好传进来；
+  // 不传则退回旧模式表（CM.modeCaps），保证旧存档与旧入口行为不变。
+  function Economy(mode, y, m, caps) {
     this.mode = mode;
-    this.caps = CM.modeCaps(mode);   // 能力标志：见 config.js 的 CM.MODES
+    this.caps = caps || CM.modeCaps(mode);   // 能力标志：见 config.js 的 CM.SYSTEMS / CM.MODES
     this.funds = this.caps.budget ? CFG.economy.startFunds : 0;   // 一般资金（拨款、票款等；运营、利息与还本只能从这里支付）
     this.capex = 0;            // 建设专项资金：债券募集，只能用于地铁建设及改扩建
     this.bonds = [];           // 已发行的债券
@@ -100,8 +102,9 @@
   // 总量与逐年发放相当，但节奏从挤牙膏变成「一批开工若干个工地」——这是现实中地铁建设的真实节奏。
   // 配比 k 随城市成熟递减，所以后期的盘子跟着财政收入一起涨，能支撑一批几十公里。
   Economy.prototype.batchCfg = function () { return CFG.batch || null; };
-  // 只在经营模式生效：free / challenge 的拨款口径一个字都不改
-  Economy.prototype.batchOn = function () { return !!(CFG.batch && this.caps && this.caps.land); };
+  // 建设批次（客补模式）：独立开关，不再依赖「有没有地价」。
+  // 旧模式表已显式写入 batch（tycoon=true、其余=false），所以行为与之前一致。
+  Economy.prototype.batchOn = function () { return !!(CFG.batch && this.caps && this.caps.batch); };
   Economy.prototype.isBatchYear = function (y) { const B = this.batchCfg(); return !!(B && ((y - CFG.START.y) % (B.years || 4)) === 0); };
   // 票款自给率（近 12 个月票款 ÷ 运营成本）：下一批盘子的大小由它决定
   Economy.prototype.selfSufficiency = function () {
@@ -113,6 +116,8 @@
   // 补贴率（难度）：政府承担多少运营成本。轻松 70% / 标准 50% / 现实 35%。
   // 补贴额 = 运营成本 × 补贴率 × 满意度系数，所以客均成本高时补得多、成熟后自然回落。
   Economy.prototype.subsidyRate = function () {
+    // 新体系：补贴率由难度预设直接给出（0–1，按运营成本计）；旧模式表不带这个字段，继续读 CFG 的三档
+    if (this.caps && typeof this.caps.subsidyRate === 'number') return this.caps.subsidyRate;
     const B = this.batchCfg();
     if (!B) return 0;
     return (B.subsidyRate && B.subsidyRate[this.subsidyLevel]) || (B.subsidyRate && B.subsidyRate.standard) || 0.5;
@@ -424,8 +429,8 @@
       capex: this.capex, bonds: this.bonds, bondIssued: this.bondIssued, overdue: this.overdue, overdueParts: this.overdueParts || null, overdueMonths: this.overdueMonths, flow: this.flow, bondSeq: this.bondSeq, svc: this._svc == null ? null : this._svc,
       fisc: this.fisc || null, subsidy: this.batchOn() ? (this.subsidyLevel || 'standard') : undefined };
   };
-  Economy.restore = function (s) {
-    const e = new Economy(s.mode, s.cur.y, s.cur.m);
+  Economy.restore = function (s, caps) {
+    const e = new Economy(s.mode, s.cur.y, s.cur.m, caps);
     Object.assign(e, { funds: s.funds, fare: Economy.normFare(s.fare), cur: s.cur, ledger: s.ledger || [], sat: s.sat, mods: s.mods || [], negMonths: s.negMonths || 0, lowSatMonths: s.lowSatMonths || 0, failed: s.failed || null, satFactors: s.satFactors || null, lastDay: s.lastDay || null,
       capex: s.capex || 0, bonds: s.bonds || [], bondIssued: s.bondIssued || {}, overdue: s.overdue || 0, overdueParts: s.overdueParts || null, overdueMonths: s.overdueMonths || 0, flow: s.flow || [], bondSeq: s.bondSeq || 1, subsidyLevel: s.subsidy || 'standard' });
     e._svc = s.svc == null ? null : s.svc;

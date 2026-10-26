@@ -426,12 +426,97 @@
   // needs 决定「这张图能不能开这个模式」，作为能力判断写在这里，不再逐图往数据文件里抄一行清单。
   // 真实城市才有城市经济（macro），所以带预算与拨款的模式只对它们开放；虚构地图（新手教程）只有自由建造。
   // 个别地图要例外时在数据里写 noModes: ['tycoon']，仍然不需要复制整张清单。
+  // ====================== 系统开关与难度预设 ======================
+  // 难度不再是「模式」标签，而是「开了哪些系统 + 这些系统的参数」。
+  //   CM.SYSTEMS  每个系统一个开关（id / 名称 / 说明 / 组 / 依赖 / 是否可关）
+  //   CM.PRESETS  预设 = 一部分开关关掉 + 一组数值档
+  //   CM.capsFor(preset, overrides)  →  caps（与旧 CM.modeCaps 同结构，26 处调用点不用改）
+  // needs：父系统关掉时，依赖它的系统自动关（例如没有地价就没有 TOD 分成）。
+  // locked：底层能力，不可关（接驳巴士是「最后一公里」任务的兜底，见灵隐寺这类任务）。
+  CM.SYSTEMS = [
+    { id: 'budget', group: 'money', name: '有限资金', desc: '关掉＝资金无限（沙盒）。拨款、债券、利息、失败判定都依赖它。' },
+    { id: 'batch', group: 'money', name: '建设批次', desc: '建设资金四年一批、运营按成本补贴；关掉则改为按月拨款、按城市财政比例。', needs: ['budget'] },
+    { id: 'land', group: 'money', name: '地价与物业', desc: '地价、上盖开发、拆迁成本、容积率联动。关掉后城市不再有土地经济。', needs: ['budget'] },
+    { id: 'tod', group: 'money', name: 'TOD 增值分成', desc: '站点周边地价上涨按比例分给运营方。', needs: ['land'] },
+    { id: 'bonds', group: 'money', name: '债券融资', desc: '可以发地方债与城投债为建设筹资。', needs: ['budget'] },
+    { id: 'failure', group: 'money', name: '经营失败', desc: '资金触底、债务逾期、满意度长期过低会结束游戏。', needs: ['budget'] },
+    { id: 'rewards', group: 'money', name: '任务奖励', desc: '完成任务获得拨款与满意度加成；关掉后任务只剩提示。', needs: ['budget'] },
+    { id: 'opsTasks', group: 'money', name: '运营任务', desc: '按客流与运营状况自动生成的任务。', needs: ['budget'] },
+    { id: 'fareControl', group: 'money', name: '票价管制', desc: '票价由政府定价：三年才能调一次、单次最多 +1 元。', needs: ['budget'] },
+    { id: 'timeCommute', group: 'world', name: '通勤时间口径', desc: '出行按广义时间衰减；关掉则按直线距离（长距离快线会被低估）。' },
+    { id: 'jobAccess', group: 'world', name: '增长读就业可达', desc: '住宅增长看 45 分钟可达岗位；关掉只看步行到站与临街。' },
+    { id: 'bus', group: 'world', name: '接驳巴士', desc: '底层能力，始终开启：给「最后一公里」这类任务兜底。', locked: true },
+    { id: 'fleet', group: 'other', name: '车型与车队', desc: '车型选择与车辆购置（开发中）。', impl: false },
+  ];
+  // 预设：off 里列出的系统关掉，其余按默认开；tuning 是数值档。
+  // 补贴率是实测定的：全系统打开时 0.5 已经要很小心地排建设节奏，所以 0.5 归「困难」。
+  CM.PRESET_ORDER = ['sandbox', 'easy', 'normal', 'hard', 'real'];
+  CM.PRESETS = {
+    sandbox: {
+      id: 'sandbox', name: '沙盒', badge: 'b-teal', icon: 'sparkle',
+      desc: '资金无限，经营压力全关；专注设计与建造。',
+      off: ['budget', 'batch', 'land', 'tod', 'bonds', 'failure', 'rewards', 'opsTasks', 'fareControl', 'timeCommute'],
+      tuning: { subsidyRate: 0 },
+    },
+    easy: {
+      id: 'easy', name: '简单', badge: 'b-green', icon: 'smile',
+      desc: '政府承担全部运营成本，只需操心建设与债务。',
+      off: ['batch', 'tod', 'fareControl'],
+      tuning: { subsidyRate: 1.0 },
+    },
+    normal: {
+      id: 'normal', name: '一般', badge: 'b-blue', icon: 'flag',
+      desc: '建设四年一批、运营补贴 70%，地价与上盖可用。',
+      off: ['tod', 'fareControl'],
+      tuning: { subsidyRate: 0.7 },
+    },
+    hard: {
+      id: 'hard', name: '困难', badge: 'b-orange', icon: 'bolt',
+      desc: '补贴降到 50%，票价可自由调整，靠涨价自救。',
+      off: ['fareControl'],
+      tuning: { subsidyRate: 0.5 },
+    },
+    real: {
+      id: 'real', name: '真实', badge: 'b-red', icon: 'target',
+      desc: '补贴 50% 但票价受管制（三年一次、最多 +1 元），增长也按就业可达。',
+      off: [],
+      tuning: { subsidyRate: 0.5 },
+    },
+  };
+  // 由预设 + 玩家微调算出 caps。结构必须与旧 CM.MODES 的条目一致（budget/land/… ），
+  // 这样 26 处 econ.caps.* 的调用点一个字都不用改。
+  CM.capsFor = function (presetId, overrides) {
+    const P = CM.PRESETS[presetId] || CM.PRESETS.normal;
+    const off = {};
+    for (const id of (P.off || [])) off[id] = true;
+    const caps = { preset: P.id, tuning: P.tuning || {} };
+    const set = function (s) {
+      const want = s.locked ? true : !off[s.id];
+      caps[s.id] = want && (s.impl === false ? false : true);
+    };
+    for (const s of CM.SYSTEMS) set(s);
+    if (overrides) for (const k in overrides) if (k in caps && typeof overrides[k] === 'boolean') caps[k] = overrides[k];
+    // 依赖闭包：父系统关掉，子系统的开关失效（改两次以覆盖链式依赖）
+    for (let pass = 0; pass < 2; pass++) {
+      for (const s of CM.SYSTEMS) {
+        if (!caps[s.id]) continue;
+        for (const n of (s.needs || [])) if (!caps[n]) caps[s.id] = false;
+      }
+    }
+    for (const s of CM.SYSTEMS) if (s.locked) caps[s.id] = true;
+    caps.grants = !!caps.budget;          // 兼容旧字段
+    caps.subsidyRate = (P.tuning && typeof P.tuning.subsidyRate === 'number') ? P.tuning.subsidyRate : null;
+    return caps;
+  };
+  CM.presetName = function (id) { const P = CM.PRESETS[id]; return P ? P.name : '自定义'; };
+
   CM.MODES = {
-    free: { id: 'free', name: '自由建造', budget: false, grants: false, bonds: false, failure: false, rewards: false, opsTasks: false, land: false, fleet: false, needs: function () { return true; } },
-    challenge: { id: 'challenge', name: '经营挑战', budget: true, grants: true, bonds: true, failure: true, rewards: true, opsTasks: true, land: false, fleet: false, needs: function (m) { return !m.tutorial; } },
+    free: { id: 'free', name: '自由建造', budget: false, grants: false, bonds: false, failure: false, rewards: false, opsTasks: false, land: false, fleet: false, batch: false, bus: true, needs: function () { return true; } },
+    challenge: { id: 'challenge', name: '经营挑战', budget: true, grants: true, bonds: true, failure: true, rewards: true, opsTasks: true, land: false, fleet: false, batch: false, bus: true, needs: function (m) { return !m.tutorial; } },
     // timeCommute：出行分布按「广义时间」而不是直线距离衰减（见 CFG.choice.impedance）。
     // 只在经营模式打开：挑战模式与自由建造保持原口径，数值与指纹不变。
-    tycoon: { id: 'tycoon', name: '经营模式', budget: true, grants: true, bonds: true, failure: true, rewards: true, opsTasks: true, land: true, fleet: true, timeCommute: true, needs: function (m) { return !m.tutorial && !!m.cfg.macro; } },
+    // batch 原本隐含在 land 里（batchOn 曾读 caps.land），这里显式写出来——这是 P1 的等价重构关键点
+    tycoon: { id: 'tycoon', name: '经营模式', budget: true, grants: true, bonds: true, failure: true, rewards: true, opsTasks: true, land: true, fleet: true, batch: true, bus: true, timeCommute: true, needs: function (m) { return !m.tutorial && !!m.cfg.macro; } },
   };
   CM.modeCaps = function (mode) { return CM.MODES[mode] || CM.MODES.challenge; };
   CM.modeName = function (mode) { return (CM.MODES[mode] || CM.MODES.challenge).name; };

@@ -22,7 +22,7 @@
   // 阻抗口径：由模式能力表决定（CM.MODES[*].timeCommute）。CFG.choice 是随地图切换的共享对象，
   // 所以每次开局都显式设一次，避免上一次开局的设置残留到这一局。
   function applyImpedance(g) {
-    const caps = g.econ && g.econ.caps ? g.econ.caps : CM.modeCaps(g.mode);
+    const caps = g.caps || (g.econ && g.econ.caps ? g.econ.caps : CM.modeCaps(g.mode));
     CFG.choice.impedance = caps.timeCommute ? 'time' : 'distance';
     // 增长的可达项暂时保持 'walk'：实测把增长权重换成「可达岗位数」会让城市更分散（见 开发进度 §9.3），
     // 所以在找到更好的口径之前不打开。要试验时把 CM.GROWTH_ACCESS.from 设成 'jobAccess' 即可。
@@ -33,7 +33,11 @@
     g.id = U.uid('g');
     g.mapId = CM.mapId || 'gz';   // 当前地图（CM.useMap 已切换好数据）
     g.name = opts.name || ((D.city || '广州') + ' ' + CFG.START.y);
-    g.mode = opts.mode;
+    g.mode = opts.mode || opts.preset || 'normal';
+    // 新体系：opts.preset + opts.systems → caps；旧入口只给 mode 时 caps 为空，走 CM.modeCaps
+    g.preset = opts.preset || null;
+    g.systems = opts.systems ? Object.assign({}, opts.systems) : null;
+    g.caps = g.preset ? CM.capsFor(g.preset, g.systems) : null;
     applyImpedance(g);   // 必须在 new CM.Model 之前：Model 构造时就会建一次需求表
     g.seed = opts.seed || (CFG.START.y * 10000 + 101);
     if (opts.tutorial) g.tutorial = { step: 0, done: [], started: Date.now() };
@@ -49,7 +53,7 @@
     g.mapInit = buildInitialNetwork(g);   // 开局既有地铁（东京 1950 年等），只在新建时生成一次，随存档保存
     g.compiled = M.compile(g.net, g.city);
     g.model.setNetwork(g.compiled);
-    g.econ = new CM.Economy(g.mode, g.clock.y, g.clock.m);
+    g.econ = new CM.Economy(g.mode, g.clock.y, g.clock.m, g.caps);
     g.econ.revOf = function (yy) { return g.fiscalRev(yy); };
     g.model.fare = g.econ.fare;
     g.tasks = new CM.Tasks();
@@ -890,7 +894,9 @@
   // ---------------- 存档 ----------------
   Game.prototype.serialize = function () {
     return {
-      meta: { gameId: this.id, name: this.name, mode: this.mode, seed: this.seed, createdAt: this.createdAt, gameVersion: CFG.GAME_VERSION, map: this.mapId || 'gz', mapVersion: (CM.MAPS[this.mapId || 'gz'] || {}).mapVersion || 1, scenario: (CM.MAPS[this.mapId || 'gz'] || {}).scenario || '', mapFp: (CM.MAPS[this.mapId || 'gz'] || {}).fp || '' },
+      meta: { gameId: this.id, name: this.name, mode: this.mode,
+        preset: this.preset || undefined, systems: this.preset ? (this.systems || undefined) : undefined,
+        seed: this.seed, createdAt: this.createdAt, gameVersion: CFG.GAME_VERSION, map: this.mapId || 'gz', mapVersion: (CM.MAPS[this.mapId || 'gz'] || {}).mapVersion || 1, scenario: (CM.MAPS[this.mapId || 'gz'] || {}).scenario || '', mapFp: (CM.MAPS[this.mapId || 'gz'] || {}).fp || '' },
       clock: Object.assign({}, this.clock),
       city: this.city.serialize(),
       net: this.net,
@@ -911,6 +917,9 @@
     const g = new Game();
     const m = s.meta;
     g.id = m.gameId; g.name = m.name; g.mode = m.mode; g.seed = m.seed; g.createdAt = m.createdAt;
+    g.preset = m.preset || null;
+    g.systems = m.systems || null;
+    g.caps = g.preset ? CM.capsFor(g.preset, g.systems) : null;
     applyImpedance(g);   // 同样要在 new CM.Model / buildDemand 之前
     g.mapId = m.map || 'gz';   // 调用前 CM.useMap 已切换到该地图
     if (s.tutorial) g.tutorial = s.tutorial;
@@ -933,7 +942,7 @@
     g.net = s.net;
     g.compiled = M.compile(g.net, g.city);
     g.model.setNetwork(g.compiled);
-    g.econ = CM.Economy.restore(s.econ);
+    g.econ = CM.Economy.restore(s.econ, g.caps);
     g.econ.revOf = function (yy) { return g.fiscalRev(yy); };
     // 上盖商场重建后再建一次需求表，让它们在第一次求解前就作为目的地节点存在
     if (restoreDevMalls(g)) { g.model.buildZones(); g.model.buildDemand(); }

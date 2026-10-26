@@ -42,6 +42,8 @@ const mapArg = arg('maps', 'gz,tutorial,hz,hk,tk,tp');
 const modeArg = arg('modes', null);
 // 阻抗口径（CFG.choice.impedance）：默认按 config.js 的 'distance'；用 --impedance=time 验证时间口径
 const impArg = arg('impedance', null);
+// 难度预设（config.js 的 CM.PRESETS）：用 --preset=normal 之类替代 --modes，走新的开关体系
+const presetArg = arg('preset', null);
 
 globalThis.window = globalThis;
 globalThis.self = globalThis;
@@ -63,6 +65,8 @@ const log = (...a) => { if (!jsonOnly) console.log(...a); };
 // gameVersion 是元数据（升版本号不该动基线），与模拟结果无关；其余字段全部参与指纹
 const NONDET = new Set(['id', 'gameId', 'createdAt', 'savedAt', 'name', 'gameVersion']);
 function normalize(v) {
+  // 注意：不能把 preset / systems 放进 NONDET——replacer 返回 null 会把 key 留下来，
+  // 旧存档里这两个字段是 undefined（写不进去），一进 NONDET 就变成 "preset":null，指纹全变。
   return JSON.stringify(v, (k, x) => (NONDET.has(k) ? null : x));
 }
 
@@ -84,7 +88,8 @@ function advanceMonth(g) {
 function runMap(mapId, mode) {
   CM.useMap(mapId);
   if (impArg) CM.CFG.choice.impedance = impArg;
-  const g = CM.Game.create({ map: mapId, mode: mode, name: 'smoke' });
+  const g = presetArg ? CM.Game.create({ map: mapId, preset: presetArg, name: 'smoke' })
+    : CM.Game.create({ map: mapId, mode: mode, name: 'smoke' });
   g.model.solveNow(2);
   let days = 0;
   for (let i = 0; i < months; i++) days += advanceMonth(g);
@@ -93,7 +98,7 @@ function runMap(mapId, mode) {
   const body = normalize(g.serialize());
   const row = {
     map: mapId,
-    mode: mode,
+    mode: presetArg || mode,
     at: g.clock.y + '-' + String(g.clock.m).padStart(2, '0'),
     days: days,
     pop: Math.round(t.pop),
@@ -124,7 +129,8 @@ const rows = [];
 for (const mapId of mapArg.split(',').map((s) => s.trim()).filter(Boolean)) {
   const mp = CM.MAPS[mapId];
   if (!mp) { log('跳过未知地图：' + mapId); continue; }
-  const modes = modeArg ? modeArg.split(',').map((s) => s.trim()).filter(Boolean) : (mp.modes || ['challenge']);
+  const modes = presetArg ? [presetArg]
+    : (modeArg ? modeArg.split(',').map((s) => s.trim()).filter(Boolean) : (mp.modes || ['challenge']));
   for (const mode of modes) {
     const t0 = Date.now();
     try {
