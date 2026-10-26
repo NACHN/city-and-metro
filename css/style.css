@@ -170,6 +170,14 @@ kbd { font-family: inherit; font-size: 10px; padding: 0 5px; border-radius: 5px;
 .pill.money2 .mrow.zero .mv { color: var(--faint); font-weight: 600; }
 :root[data-theme="dark"] .pill.money2 .mrow.cap .mv { color: #f0bd4a; }
 #hudTop.lt1080 .pill.money2 .mk { display: none; }
+/* 比例型指标的细进度条（只在窄屏显示，见媒体查询） */
+.pbar { display: none; height: 3px; border-radius: 2px; background: var(--surface-3); overflow: hidden; margin-top: 3px; }
+.pbar i { display: block; height: 100%; width: 0; border-radius: 2px; background: var(--accent); transition: width .3s var(--ease); }
+.pbar.good i { background: var(--good); }
+.pbar.warn i { background: var(--warn); }
+.pbar.bad i { background: var(--bad); }
+/* 窄屏指标栈：默认隐藏，见手机媒体查询 */
+.pill.mstack { display: none; }
 .pill.flash-good { animation: flashGood 1s var(--ease); }
 .pill.flash-bad { animation: flashBad 1s var(--ease); }
 @keyframes flashGood { 0% { background: var(--good-soft); } 100% { background: transparent; } }
@@ -205,7 +213,7 @@ kbd { font-family: inherit; font-size: 10px; padding: 0 5px; border-radius: 5px;
 #hudTop.lt1400 .pill.opt2 { display: none; }
 #hudTop.lt1260 .pill.opt3 { display: none; }
 #hudTop.lt1080 .pill.opt4, #hudTop.lt1080 .daypill .k { display: none; }
-#hudTop.lt960 .jumps, #hudTop.lt960 .pill .k { display: none; }
+#hudTop.lt960 .pill .k { display: none; }
 #hudTop.lt820 .pill.opt5, #hudTop .pill.squeezed { display: none; }
 
 /* ---------- 左侧：视图与图层 ---------- */
@@ -530,6 +538,7 @@ table.tbl th:first-child, table.tbl td:first-child { text-align: left; }
 /* ---------- 下拉菜单 ---------- */
 .dropdown { position: fixed; z-index: 45; background: var(--surface-solid); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 6px; min-width: 220px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow-y: auto; overscroll-behavior: contain; animation: cardIn .2s var(--ease); }
 .dropdown button { display: flex; width: 100%; border: 0; background: transparent; padding: 9px 10px; border-radius: 9px; cursor: pointer; text-align: left; gap: 10px; align-items: center; }
+.dropdown.pop { min-width: 200px; }
 .dropdown button.dd-narrow { display: none; }
 @media (max-width: 760px) { .dropdown button.dd-narrow { display: flex; } }
 .dropdown button .ico { width: 17px; height: 17px; color: var(--muted); }
@@ -1240,6 +1249,17 @@ button:focus-visible, [role="option"]:focus-visible, [role="tab"]:focus-visible,
   .dayring { width: 30px; height: 30px; }
   .dayring .ico { inset: 7px; width: 16px; height: 16px; }
   .speed .sbtn { height: 30px; min-width: 32px; padding: 0 6px; }
+  /* 三个比例指标收进一个竖排 pill：每行「图标 + 数值 + 细进度条」，点开是四项面板入口 */
+  .pill.mtile { display: none; }
+  .pill.mstack { display: flex; height: auto; min-height: 38px; padding: 4px 7px; align-items: center; gap: 0; }
+  .pill.mstack .tx { gap: 1px; }
+  .pill.mstack .mrow { display: flex; align-items: center; gap: 4px; line-height: 1.2; white-space: nowrap; }
+  .pill.mstack .mi { display: inline-flex; }
+  .pill.mstack .mi .ico { width: 11px; height: 11px; color: var(--muted); }
+  .pill.mstack .mv { font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); }
+  .pill.mstack .pbar { display: block; width: 24px; margin-top: 0; }
+  /* 图层说明在手机上删掉，只留色标与图例项 */
+  #legendCard .legend .note { display: none; }
   .cluster.metrics { flex: 1 1 0; padding: 3px; }
   .cluster.actions { padding: 3px; }
   .hbtn { width: 36px; height: 38px; }

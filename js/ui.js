@@ -70,10 +70,10 @@
     const datePill = h('button', { class: 'pill daypill', 'data-tip': '日期、时段与城市发展', onclick: function () { self.openTop('date'); } }, ring, h('span', { class: 'tx' }, dateK, dateV));
     this.pills.date = { el: datePill, v: dateV, k: dateK };
     this.tbtns = {};
-    const spd = function (id, label, n, tip, key) {
-      const b = h('button', { class: 'sbtn' + (n === 0 ? ' pz' : ''), 'data-tip': tip, 'data-key': key, onclick: function () { if (n === 0) self.togglePause(); else self.setSpeed(n); } }, n === 0 ? ic('pause') : label);
-      self.tbtns[id] = b; return b;
-    };
+    // 速度：一个按钮循环（暂停 → 1× → 3× → 8× → 暂停）。
+    // 原来四个按钮占约 140 px，窄屏放不下「+1 月 / +1 年」；收成一个按钮后，步进就能留在顶栏。
+    const spdBtn = h('button', { class: 'sbtn spdcycle', 'data-tip': '时间速度：点击切换（暂停 / 1× / 3× / 8×）', 'data-key': '空格', onclick: function () { self.cycleSpeed(); } }, ic('pause'));
+    self.tbtns.speed = spdBtn;
     const jmp = function (id, label, n, tip) { const b = h('button', { class: 'jbtn', 'data-tip': tip, onclick: function () { self.jump(n); } }, label); self.tbtns[id] = b; return b; };
     // 右上操作按钮
     this.hbtns = {};
@@ -95,16 +95,34 @@
     }, h('span', { class: 'badge b-gold' }, ic('coin')), h('span', { class: 'tx' }, mGen.el, mCap.el));
     this.pills.money = { el: moneyPill, v: mGen.v, capexV: mCap.v, capexRow: mCap.el, genRow: mGen.el };
 
+    // 窄屏指标栈：三个比例指标竖排在一个 pill 里（图标 + 数值 + 细进度条）。
+    // 点它展开原始的四项入口（分担率 / 拥堵 / 满意度 / 人口），各自打开对应的指标面板。
+    const mRow = function (icon) {
+      const fill = h('i');
+      const bar = h('span', { class: 'pbar' }, fill);
+      const v = h('b', { class: 'mv' }, '—');
+      const row = h('span', { class: 'mrow' }, h('span', { class: 'mi' }, ic(icon)), v, bar);
+      return { row: row, v: v, bar: bar, fill: fill };
+    };
+    const mSt = { share: mRow('metro'), cong: mRow('car'), sat: mRow('smile') };
+    const stackEl = h('button', {
+      class: 'pill mstack', 'data-tip': '分担率 · 拥堵 · 满意度 · 点击展开指标面板',
+      onclick: function () { self.showMetricMenu(stackEl); },
+    }, h('span', { class: 'tx' }, mSt.share.row, mSt.cong.row, mSt.sat.row));
+    mSt.el = stackEl;
+    this.mstack = mSt;
+
     this.top = h('header', { id: 'hudTop', class: 'hud hidden' },
       h('div', { class: 'cluster glass citybar' },
         h('div', { class: 'brand' }, h('img', { src: 'img/logo-white.png', alt: '城市与地铁' })),
         datePill,
-        h('div', { class: 'speed' }, spd('pause', '', 0, '暂停 / 继续', '空格'), spd('s1', '1×', 1, '正常速度', '1'), spd('s2', '3×', 2, '3 倍速', '2'), spd('s3', '8×', 3, '8 倍速', '3')),
+        h('div', { class: 'speed' }, spdBtn),
         h('div', { class: 'jumps' }, jmp('month', '+1月', 1, '推进 1 个月'), jmp('year', '+1年', 12, '推进 1 年（结束后显示变化）'))),
       h('div', { class: 'spacer' }),
       h('div', { class: 'cluster glass metrics' },
-        moneyPill, pill('econ', '经济增长', 'trend', 'b-violet', 'opt2'), pill('pop', '人口', 'people', 'b-blue', 'opt2'), pill('share', '地铁分担率', 'metro', 'b-teal', 'opt3'),
-        pill('cong', '拥堵指数', 'car', 'b-orange', 'opt5'), pill('sat', '满意度', 'smile', 'b-green', 'opt4')),
+        moneyPill, stackEl, pill('econ', '经济增长', 'trend', 'b-violet', 'opt2'), pill('pop', '人口', 'people', 'b-blue', 'opt2'),
+        // 这三个在手机上收进左侧的竖排指标栈（.mstack），宽屏仍是独立 pill
+        pill('share', '地铁分担率', 'metro', 'b-teal', 'mtile'), pill('cong', '拥堵指数', 'car', 'b-orange', 'mtile'), pill('sat', '满意度', 'smile', 'b-green', 'mtile')),
       h('div', { class: 'cluster glass actions' },
         hb('search', 'search', '搜索车站、线路、道路、区域', function () { self.openSearch(); }, '/'),
         taskBtn,
@@ -112,6 +130,7 @@
         hb('theme', 'moon', '深色模式', function () { self.toggleTheme(); }, 'N'),
         hb('settings', 'gear', '设置', function () { self.showSettings(); }),
         hb('menu', 'menu', '菜单', function (e) { self.showMenu(e.currentTarget); })));
+
     // 窄屏（手机）顶栏只保留常用按钮：深浅模式与设置改在菜单中
     this.hbtns.theme.classList.add('wide-only'); this.hbtns.settings.classList.add('wide-only');
     // 左侧：视图（2D / 2.5D / 地下 / 线路图）与图层（一个按钮，弹出图层列表）
@@ -245,6 +264,12 @@
     const self = this; requestAnimationFrame(function () { self.fitHud(); if (self.dropdown && self.dropdown._place) self.dropdown._place(); });
   };
   // 指标栏放不下时，按优先级从低到高收起（经济 → 满意度 → 分担率 → 人口 → 拥堵）
+  // 比例型指标的进度条：frac 0–1，cls 决定颜色（good / warn / bad）
+  UI.prototype.setBar = function (p, frac, cls) {
+    if (!p || !p.fill) return;
+    p.fill.style.width = Math.round(U.clamp(frac, 0, 1) * 100) + '%';
+    if (p._barCls !== cls) { p._barCls = cls; p.bar.className = 'pbar' + (cls ? ' ' + cls : ''); }
+  };
   UI.prototype.fitHud = function () {
     const m = this.top.querySelector('.cluster.metrics'); if (!m || !m.clientWidth) return;
     for (const k of ['econ', 'sat', 'share', 'pop', 'cong']) {
@@ -448,9 +473,19 @@
       return '<span class="trend ' + ((betterUp ? dlt > 0 : dlt < 0) ? 'good' : 'bad') + '">' + (dlt > 0 ? '▲' : '▼') + '</span>';
     };
     c.share.v.innerHTML = U.fmtPct(d.metroShare || 0) + ' ' + trend(d.metroShare || 0, prev && prev.share, true, true);
+    if (this.mstack) {
+      const m = this.mstack;
+      m.share.v.textContent = U.fmtPct(d.metroShare || 0);
+      this.setBar(m.share, d.metroShare || 0, '');
+    }
     if (!this._congT || performance.now() - this._congT > 900) { this._congT = performance.now(); this._cong = g.model.cityCongAt(W); }
     const cg = this._cong;
     c.cong.v.innerHTML = cg.toFixed(2) + ' <small>' + (cg < 1.25 ? '畅通' : (cg < 1.6 ? '缓行' : '拥堵')) + '</small>';
+    if (this.mstack) {
+      const m = this.mstack;
+      m.cong.v.textContent = cg.toFixed(2);
+      this.setBar(m.cong, cg / 2, cg < 1.25 ? 'good' : (cg < 1.6 ? 'warn' : 'bad'));
+    }
     c.cong.badge.className = 'badge ' + (cg < 1.25 ? 'b-green' : (cg < 1.6 ? 'b-orange' : 'b-red'));
     // 城市经济：最近一年的实际增速（尚无完整年度时为本年预测）与经济环境；教程等未启用的地图不显示
     const hasEco = !!(g.macro && CM.Macro);
@@ -465,6 +500,11 @@
     }
     const sat = g.econ.sat;
     c.sat.v.innerHTML = Math.round(sat) + ' ' + trend(sat, prev && prev.sat, true);
+    if (this.mstack) {
+      const m = this.mstack;
+      m.sat.v.textContent = Math.round(sat);
+      this.setBar(m.sat, sat / 100, sat >= 60 ? 'good' : (sat >= 40 ? 'warn' : 'bad'));
+    }
     const sk = sat >= 60 ? 'smile' : (sat >= 40 ? 'meh' : 'frown');
     if (c.sat.ico !== sk) { c.sat.ico = sk; c.sat.badge.className = 'badge ' + (sk === 'smile' ? 'b-green' : (sk === 'meh' ? 'b-orange' : 'b-red')); c.sat.badge.innerHTML = ''; c.sat.badge.appendChild(ic(sk)); }
     const n = g.tasks.active.length;
@@ -484,6 +524,8 @@
       if (on && kind === 'finance') on = (top.id === 'econ') === (k === 'econ');
       c[k].el.classList.toggle('on', on);
     }
+    // 窄屏指标栈：打开任一指标面板时高亮
+    if (this.mstack) this.mstack.el.classList.toggle('on', !!top && top.kind === 'metric' && ['share', 'cong', 'sat', 'pop'].indexOf(top.id) >= 0);
     this.hbtns.tasks.classList.toggle('on', !!top && top.kind === 'tasks');
   };
   function fmtHM(t) { if (!t) return ''; const d = new Date(t); return U.pad2(d.getHours()) + ':' + U.pad2(d.getMinutes()); }
@@ -639,13 +681,15 @@
       this.toolInd.classList.add('ready');
     }
     const sp = g ? g.speed : 0;
-    // 暂停键：运行时显示「暂停」，暂停时显示「继续」并以琥珀色提示
-    const pz = this.tbtns.pause;
-    if (pz._paused !== (sp === 0)) { pz._paused = sp === 0; pz.innerHTML = ''; pz.appendChild(ic(sp === 0 ? 'play' : 'pause')); pz.setAttribute('data-tip', sp === 0 ? '继续' : '暂停'); }
-    pz.classList.toggle('on', sp === 0);
-    this.tbtns.s1.classList.toggle('on', sp === 1);
-    this.tbtns.s2.classList.toggle('on', sp === 2);
-    this.tbtns.s3.classList.toggle('on', sp === 3);
+    // 速度按钮：暂停时显示 ▶，运行时显示当前倍率；点一下切换到下一档
+    const sb = this.tbtns.speed;
+    if (sb._sp !== sp) {
+      sb._sp = sp;
+      sb.innerHTML = '';
+      sb.appendChild(sp === 0 ? ic('play') : h('span', null, (CFG.time.speeds[sp - 1] || 1) + '×'));
+      sb.setAttribute('data-tip', sp === 0 ? '已暂停 · 点击继续' : (CFG.time.speeds[sp - 1] + '× 速度 · 点击切换下一档'));
+      sb.classList.toggle('pz', sp === 0);
+    }
     this.tbtns.d2.classList.toggle('on', this.R.cam.view === 0);
     this.tbtns.iso.classList.toggle('on', this.R.cam.view === 1);
     this.tbtns.under.classList.toggle('on', this.R.cam.tu === 1);
@@ -661,6 +705,12 @@
     const was = g.speed;
     g.setSpeed(s); this.renderToolbar();
     if (s === 0 && was > 0 && !this.isSaved()) this.scheduleAutosave();   // 暂停时自动保存当前进度
+  };
+  // 时间速度：0（暂停）→ 1× → 3× → 8× → 回到暂停
+  UI.prototype.cycleSpeed = function () {
+    const g = this.g(); if (!g || g.jumping) return;
+    const n = (CFG.time.speeds || []).length;
+    this.setSpeed(g.speed >= n ? 0 : g.speed + 1);
   };
   UI.prototype.togglePause = function () { const g = this.g(); if (!g) return; this.setSpeed(g.speed > 0 ? 0 : (this.prevSpeed || 1)); };
   UI.prototype.setView = function (iso) { if (this.R.cam.view !== (iso ? 1 : 0)) snd('swoosh'); this.R.setView(iso); this.renderToolbar(); };
@@ -1646,6 +1696,43 @@
   };
 
   // ======================== 菜单与全屏界面 ========================
+  // 下拉浮层的通用定位：贴住锚点，窗口不够高时自身滚动
+  UI.prototype.placeDd = function (dd, anchor) {
+    const r = anchor.getBoundingClientRect(), vw = window.innerWidth, vh = window.innerHeight;
+    const top = Math.max(8, Math.min(r.bottom + 8, vh / 2));
+    dd.style.top = top + 'px';
+    dd.style.maxHeight = Math.max(0, vh - top - 8) + 'px';
+    const x = r.left < vw / 2 ? r.left : r.right - dd.offsetWidth;
+    dd.style.left = Math.max(8, Math.min(x, vw - dd.offsetWidth - 8)) + 'px';
+  };
+  UI.prototype.closeDdOnOutside = function () {
+    const self = this;
+    setTimeout(function () {
+      const close = function (e) { if (self.dropdown && !self.dropdown.contains(e.target)) { self.dropdown.remove(); self.dropdown = null; } window.removeEventListener('pointerdown', close, true); };
+      window.addEventListener('pointerdown', close, true);
+    }, 0);
+  };
+  // 指标栈展开：四项入口，与宽屏顶栏的四个 pill 一一对应
+  UI.prototype.showMetricMenu = function (anchor) {
+    const self = this;
+    if (this.dropdown) { this.dropdown.remove(); this.dropdown = null; if (this._popAnchor === anchor) { this._popAnchor = null; return; } }
+    this._popAnchor = anchor;
+    const item = function (icon, label, key) {
+      return h('button', { onclick: function () { self.dropdown.remove(); self.dropdown = null; self.openTop(key); } },
+        ic(icon), h('span', { class: 'grow' }, label), ic('chev', 13, 'chev'));
+    };
+    const dd = h('div', { class: 'dropdown pop' },
+      h('div', { class: 'dd-head' }, h('b', null, '城市指标'), h('div', { class: 'tiny muted' }, '点击任一项查看详情')),
+      item('metro', '地铁分担率', 'share'),
+      item('car', '拥堵指数', 'cong'),
+      item('smile', '满意度', 'sat'),
+      item('people', '人口', 'pop'));
+    document.body.appendChild(dd);
+    this.dropdown = dd;
+    dd._place = function () { self.placeDd(dd, anchor); };
+    dd._place();
+    this.closeDdOnOutside();
+  };
   UI.prototype.showMenu = function (anchor) {
     const self = this;
     if (this.dropdown) { this.dropdown.remove(); this.dropdown = null; return; }
@@ -1659,6 +1746,8 @@
       h('hr'),
       g && CM.DATA.briefing ? item('briefing', '开局简报', function () { self.showBriefing(); }) : null,
       g ? item('book', '城市纪事', function () { self.openStats('milestones'); }) : null,
+      // 窄屏顶栏不显示「经济增长」，从菜单直接进财政与经济（概览里含增速与周期）
+      g && !g.econ.isFree() ? item('wallet', '财政与经济', function () { self.openTop('money'); }) : null,
       item('help', '操作说明', function () { self.openPage('help', null, { root: true }); }),
       item('megaphone', '更新公告', function () { self.showNews(); }),
       // 窄屏（手机）顶栏收起了深浅模式与设置按钮，在菜单里提供
@@ -1669,19 +1758,9 @@
     document.body.appendChild(dd);
     this.dropdown = dd;
     // 矮窗口内保留菜单自身的滚动区域；窗口或界面缩放后重新跟随菜单按钮定位。
-    dd._place = function () {
-      const r = anchor.getBoundingClientRect(), vw = window.innerWidth, vh = window.innerHeight;
-      const top = Math.max(8, Math.min(r.bottom + 8, vh / 2));
-      dd.style.top = top + 'px';
-      dd.style.maxHeight = Math.max(0, vh - top - 8) + 'px';
-      const x = r.left < vw / 2 ? r.left : r.right - dd.offsetWidth;
-      dd.style.left = Math.max(8, Math.min(x, vw - dd.offsetWidth - 8)) + 'px';
-    };
+    dd._place = function () { self.placeDd(dd, anchor); };
     dd._place();
-    setTimeout(function () {
-      const close = function (e) { if (self.dropdown && !self.dropdown.contains(e.target)) { self.dropdown.remove(); self.dropdown = null; } window.removeEventListener('pointerdown', close, true); };
-      window.addEventListener('pointerdown', close, true);
-    }, 0);
+    this.closeDdOnOutside();
   };
 
   // ======================== 收藏与搜索 ========================
