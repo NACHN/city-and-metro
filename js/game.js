@@ -488,7 +488,7 @@
     if (this.draft.liveSnap) return { ok: false, reason: '请先松开鼠标或结束当前拖动，再确认建设' };
     if (!ev.changed) return { ok: false, reason: '草案没有变化' };
     if (ev.conflicts.length) return { ok: false, reason: '存在 ' + ev.conflicts.length + ' 处冲突，需先解决' };
-    if (!this.econ.canAffordBuild(ev.total)) return { ok: false, reason: '资金不足：需要 ' + U.fmtMoney(ev.total) + '，当前一般资金 ' + U.fmtMoney(this.econ.funds) + (this.econ.capex > 0.5 ? ' + 建设专项资金 ' + U.fmtMoney(this.econ.capex) : '') };
+    if (!this.econ.canAffordBuild(ev.total)) return { ok: false, reason: '资金不足：需要 ' + U.fmtMoney(ev.total) + '，可用流动资金 ' + U.fmtMoney(this.econ.funds) + ' + 建设专项 ' + U.fmtMoney(this.econ.capex) };
     if (this.jumping || this.pending) return { ok: false, reason: '正在结算，请稍候' };
     return { ok: true };
   };

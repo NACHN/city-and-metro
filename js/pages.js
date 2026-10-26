@@ -1399,7 +1399,7 @@
     if (free) el.appendChild(h('div', { class: 'fin-free' }, h('span', { class: 'badge b-teal' }, CM.icon('sparkle')), h('div', null, h('b', null, '自由建造 · 资金不限'), h('small', null, '建设不受资金限制，没有拨款、债务与经营失败；票款、运营成本与城市经济照常计算，供参考。'))));
     else {
       const grid = h('div', { class: 'fin-cards' });
-      const sF = this.stat('一般资金', '—', '', '', 'coin'), sC = this.stat('建设专项资金', '—', '', '', 'hammer'), sD = this.stat('债务余额', '—', '', '', 'wallet');
+      const sF = this.stat('流动资金', '—', '', '', 'coin'), sC = this.stat('建设专项', '—', '', '', 'hammer'), sD = this.stat('债务余额', '—', '', '', 'wallet');
       grid.append(sF, sC, sD);
       el.appendChild(grid);
       const upd = function () {
@@ -1410,7 +1410,7 @@
       };
       upd(); this.live.push(upd);
       for (const w of E.warnings()) el.appendChild(this.callout(w.level === 'danger' ? 'bad' : 'warn', 'warn', w.text));
-      if (E.overdue > EPS) el.appendChild(this.callout('bad', 'warn', '存在逾期债务 ' + U.fmtMoney(E.overdue) + '（已 ' + E.overdueMonths + ' 个月）：每月收取逾期费用，' + (E.overdueMonths >= 6 ? '已暂停全部债券发行' : '城投债已暂停发行') + '。一般资金有余额时会自动偿还。'));
+      if (E.overdue > EPS) el.appendChild(this.callout('bad', 'warn', '存在逾期债务 ' + U.fmtMoney(E.overdue) + '（已 ' + E.overdueMonths + ' 个月）：每月收取逾期费用，' + (E.overdueMonths >= 6 ? '已暂停全部债券发行' : '城投债已暂停发行') + '。流动资金有余额时会自动偿还。'));
     }
     // 本月收支：一行一项，收入绿色、支出橙色
     const mbox = h('div', { class: 'fin-month' });
@@ -1630,7 +1630,7 @@
             ['批次周期', '每 ' + yrs + ' 年一批（本批 ' + curBatch + '–' + (curBatch + yrs - 1) + ' 年）'],
             ['本批建设资金', curAmt > 0 ? U.fmtMoney(curAmt) : (nextBatch + ' 年 1 月发放'),
               curAmt > 0 ? 'good' : ''],
-            ['建设专项资金余额', U.fmtMoney(E.capex) + '（只能建设与拆迁，可跨批滚存）'],
+            ['建设专项余额', U.fmtMoney(E.capex) + '（只能建设与拆迁，可跨批滚存）'],
             ['补贴力度', E.subsidyName() + ' · 承担运营成本的 ' + U.fmtPct(E.subsidyRate(), 0)],
             ['本月运营', '成本 ' + U.fmtMoney(opsM) + ' · 票款 ' + U.fmtMoney(fareM) + ' · 补贴 ' + U.fmtMoney(subM)],
             ['客均成本 / 客均票款', CFG.money.sym + perCost.toFixed(1) + ' / ' + CFG.money.sym + g.econ.fare.flat.toFixed(1),
@@ -1714,7 +1714,7 @@
     let st = 0; for (const s of g.compiled.stations) st += CFG.ops.stationDaily[s.size] * oi;
     const box = h('div');
     const group = function (title, rows, cls) { box.appendChild(h('div', { class: 'fl-g ' + (cls || '') }, h('div', { class: 'fl-h' }, title), this.kv(rows))); }.bind(this);
-    if (!free) box.appendChild(this.kv([['期初一般资金', M(c.start)], ['期初建设专项资金', M(c.capexStart)]]));
+    if (!free) box.appendChild(this.kv([['期初流动资金', M(c.start)], ['期初建设专项', M(c.capexStart)]]));
     group('财政收入', [['政府拨款', '+ ' + M(c.grant)], ['票款', '+ ' + M(c.fare)], (c.property || 0) > 0.01 ? ['物业租金', '+ ' + M(c.property)] : null, (c.capture || 0) > 0.01 ? ['TOD 增值分成', '+ ' + M(c.capture)] : null, ['任务奖励', '+ ' + M(c.reward)]], 'in');
     if (!free) group('融资到账（不计入收入）', [['债券募集 → 建设专项资金', '+ ' + M(c.bond)]], 'fin');
     group('建设支出', [['建设与拆迁', '− ' + M(buildOf(c))], !free ? ['其中由专项资金支付', M(c.capexUse)] : null], 'out');

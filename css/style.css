@@ -160,6 +160,8 @@ kbd { font-family: inherit; font-size: 10px; padding: 0 5px; border-radius: 5px;
 .pill .v { font-size: 15px; font-weight: 700; white-space: nowrap; line-height: 1.25; display: flex; align-items: baseline; gap: 4px; font-variant-numeric: tabular-nums; }
 .pill .v small { font-weight: 500; font-size: 11px; color: var(--muted); }
 .pill .trend { font-size: 10px; font-weight: 700; }
+.pill.dim .v { color: var(--faint); }
+.pill.dim .badge { opacity: .55; }
 .pill.flash-good { animation: flashGood 1s var(--ease); }
 .pill.flash-bad { animation: flashBad 1s var(--ease); }
 @keyframes flashGood { 0% { background: var(--good-soft); } 100% { background: transparent; } }
