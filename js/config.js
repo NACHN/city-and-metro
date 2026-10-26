@@ -400,7 +400,7 @@
 
     saves: { prefix: 'cm1.', maxManual: 12 },
     // 动态对象上限（代表性展示）：汽车、车站行人、街道行人、列车上下车乘客（每帧）；声音：列车声部与同时播放的环境短音
-    perf: { solverBudgetMs: 5, chunkBudgetMs: 6, cacheMaxPx: 24e6, maxCars: 320, maxPeds: 180, maxWalkers: 120, maxRiders: 120, trainVoices: 3, maxOneShots: 6 },
+    perf: { solverBudgetMs: 5, chunkBudgetMs: 6, cacheMaxPx: 24e6, freeCycle: true, freeCycleMaxMB: 220, maxCars: 320, maxPeds: 180, maxWalkers: 120, maxRiders: 120, trainVoices: 3, maxOneShots: 6 },
   };
 
   // 地价与容积率的联动（顶层配置，不随地图导出）：
