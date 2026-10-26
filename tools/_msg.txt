@@ -1,0 +1,13 @@
+Use typed arrays for the shortest-path heap
+
+roadTree（每个起点一次 Dijkstra）占了整轮求解 75% 的自耗时。堆原来用
+`new Array(nA+4).fill(0.1)` —— 定长数组 fill 之后是 holey-double，
+V8 每次读写都要多一次 hole 检查。换成 Float64Array / Int32Array 后：
+
+  gz2 · solveNow(1)  11.28 s → 10.17 s（-10%）
+  gz2 · solveNow(2)  22.30 s → 20.41 s（-8.5%）
+
+数值完全一致：smoke 指纹仍是 8c126bded4086d76。
+
+顺带加入两个体检工具：tools/perf.mjs（把加载/结算拆开计时，可跑停放的大图）与
+tools/prof-summary.mjs（把 --cpu-prof 的结果按函数自耗时排行）。

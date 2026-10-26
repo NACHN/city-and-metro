@@ -24,8 +24,9 @@
     dist.fill(INF); heap.clear();
     // Each directed arc can relax once after its source is settled. Reserve the
     // queue once, then keep its size local to avoid millions of property writes.
-    const keys = work.heapK || (work.heapK = new Array(road.nA + 4).fill(0.1));
-    const values = work.heapV || (work.heapV = new Array(road.nA + 4).fill(0));
+    // 定长数组 + fill() 会得到 holey-double，V8 每次读写都要查 hole；用定长 typed array 更快且数值完全一致
+    const keys = work.heapK || (work.heapK = new Float64Array(road.nA + 4));
+    const values = work.heapV || (work.heapV = new Int32Array(road.nA + 4));
     let count = 0;
     for (let k = start[origin]; k < start[origin + 1]; k++) {
       const v = node[k], t = initial[k];
