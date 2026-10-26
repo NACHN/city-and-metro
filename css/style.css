@@ -72,6 +72,22 @@ button { font-family: inherit; font-size: inherit; color: inherit; }
 input, select { font-family: inherit; font-size: 13px; color: var(--text); background: var(--surface-solid); }
 .ico { display: inline-flex; width: 18px; height: 18px; flex: none; }
 .ico svg { width: 100%; height: 100%; }
+/* ================= 滚动条（统一组件） =================
+   细、无轨道底色、圆角，悬停加深。Chromium 走 ::-webkit-scrollbar，
+   Firefox 走 scrollbar-width / scrollbar-color。要隐藏滚动条的容器
+   自己写 scrollbar-width: none（例如左侧图层栏、工具条）。 */
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong); border-radius: 999px;
+  border: 2px solid transparent; background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--faint); background-clip: padding-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+/* 这些容器原本用 scrollbar-width:none 隐藏滚动条，Chromium 侧要一并关掉 */
+#dock::-webkit-scrollbar, #toolopts::-webkit-scrollbar, #draftbar::-webkit-scrollbar,
+.msel-frow .fchips::-webkit-scrollbar, .tabs::-webkit-scrollbar { display: none; }
 .hud { position: fixed; z-index: 10; transition: opacity .3s var(--ease), transform .35s var(--ease); }
 .hidden { opacity: 0 !important; pointer-events: none !important; }
 .glass { background: var(--surface); border: 1px solid var(--glass-edge); border-radius: var(--radius); box-shadow: var(--shadow); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2); }
@@ -277,8 +293,6 @@ body.info-closed #buildPanel { right: 12px; }
 .pact.icon-only .ico { width: 16px; height: 16px; }
 .pact.icon-only.on { background: var(--gold-soft, var(--warn-soft)); color: var(--gold, var(--warn)); }
 .p-body { overflow-y: auto; padding: 12px 14px 16px; flex: 1; overscroll-behavior: contain; }
-.p-body::-webkit-scrollbar, #legendCard .lc-body::-webkit-scrollbar, .stats-body::-webkit-scrollbar { width: 8px; }
-.p-body::-webkit-scrollbar-thumb, #legendCard .lc-body::-webkit-scrollbar-thumb, .stats-body::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 4px; }
 .page-enter { animation: pageIn .26s var(--ease); }
 @keyframes pageIn { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: none; } }
 
@@ -431,7 +445,8 @@ table.tbl th:first-child, table.tbl td:first-child { text-align: left; }
 #tooltip .m { color: #b7c3d4; }
 #tooltip.bad .t { color: #ff8a8a; }
 /* 界面按钮提示 */
-#uitip { position: fixed; z-index: 60; pointer-events: none; display: flex; align-items: center; gap: 8px; background: rgba(17, 24, 38, 0.95); color: #f1f5fb; padding: 6px 10px; border-radius: 9px; font-size: 12px; font-weight: 500; line-height: 1.45; max-width: 300px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25); opacity: 0; transform: scale(.94); transition: opacity .14s, transform .18s var(--spring); }
+#uitip { position: fixed; z-index: 60; pointer-events: none; display: flex; align-items: baseline; gap: 8px; background: rgba(17, 24, 38, 0.95); color: #f1f5fb; padding: 6px 10px; border-radius: 9px; font-size: 12px; font-weight: 500; line-height: 1.45; max-width: 300px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25); opacity: 0; transform: scale(.94); transition: opacity .14s, transform .18s var(--spring); }
+#uitip > span { white-space: pre-line; }
 #uitip.on { opacity: 1; transform: none; }
 #uitip.s-below { transform-origin: top center; }
 #uitip.s-above { transform-origin: bottom center; }
@@ -1667,6 +1682,73 @@ td .tag { margin-left: 4px; padding: 0 6px; font-size: 10px; }
 .tbl tr.clickable { cursor: pointer; }
 .tbl tr.clickable:hover td { background: var(--hover); }
 .tbl td small { font-size: 11px; }
+
+/* ================= 线路面板（建设 / 经济 / 乘客） ================= */
+.ln-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 0 2px 9px; }
+.ln-swatch { width: 6px; height: 22px; border-radius: 3px; flex: none; }
+.ln-chips { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+
+/* 经济：净额 + 覆盖条 */
+.ln-net { font-size: 24px; font-weight: 720; letter-spacing: -.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+.ln-net i { font-size: 10.5px; font-style: normal; font-weight: 500; color: var(--faint); margin-left: 3px; }
+.ln-net.good { color: var(--good); }
+.ln-net.bad { color: var(--bad); }
+.ln-net-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.ln-meter { margin-top: 10px; }
+.ln-meter .top { display: flex; align-items: baseline; gap: 6px; font-size: 11px; color: var(--muted); }
+.ln-meter .top b { color: var(--text); font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ln-meter .top .r { margin-left: auto; }
+.ln-meter .bar { height: 6px; border-radius: 3px; background: var(--surface-3); margin-top: 5px; overflow: hidden; display: flex; }
+.ln-meter .bar i { display: block; height: 100%; }
+.ln-meter .bar i.fare { background: var(--good); }
+.ln-meter .bar i.prop { background: var(--good); opacity: .55; }
+.ln-meter .bar i.gap { background: var(--bad); opacity: .55; }
+.ln-meter .bar i.sur { background: var(--good); opacity: .3; }
+.ln-meter .leg { display: flex; gap: 10px; margin-top: 5px; font-size: 10px; color: var(--muted); flex-wrap: wrap; }
+.ln-meter .leg span { display: inline-flex; align-items: center; gap: 3px; }
+.ln-meter .leg i { width: 6px; height: 6px; border-radius: 2px; display: inline-block; }
+
+/* 乘客：指标行 + 断面图 + 站序 */
+.ln-kpi { display: flex; gap: 10px; flex-wrap: wrap; }
+.ln-kpi .it { display: flex; align-items: baseline; gap: 4px; font-size: 10.5px; color: var(--muted); }
+.ln-kpi .it em { font-style: normal; }
+.ln-kpi .it b { font-size: 12px; color: var(--text); font-variant-numeric: tabular-nums; }
+.ln-kpi .it b.bad { color: var(--bad); }
+.ln-kpi .it b.warn { color: var(--warn); }
+.ln-kpi .it b.good { color: var(--good); }
+
+.ln-flow { margin-top: 8px; }
+.ln-flow .chart { height: 104px; }
+.ln-svg { display: block; width: 100%; height: 100%; }
+.ln-svg .hit { fill: transparent; cursor: crosshair; pointer-events: all; }
+.ln-flow .lab { display: flex; justify-content: space-between; font-size: 9.5px; color: var(--faint); margin-top: 2px; }
+.ln-flow .lab .mid { color: var(--muted); }
+
+/* 站序闪灯图：线 + 站 + 站名，换乘向上伸出 T 形短线（多条紧贴） */
+.ln-strip { margin-top: 10px; }
+.ln-scroll { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
+.ln-inner { position: relative; width: max-content; min-width: 100%; padding: 0 8px; }
+.ln-rail { position: absolute; height: 4px; border-radius: 2px; top: 17px; z-index: 1; }
+.ln-stations { display: flex; align-items: flex-start; position: relative; z-index: 2; }
+.ln-st { flex: 1 0 34px; display: flex; flex-direction: column; align-items: center; background: transparent; border: 0; padding: 0; cursor: pointer; color: inherit; font: inherit; }
+.ln-st:hover .ln-name { color: var(--text); }
+.ln-stubzone { position: relative; height: 14px; width: 100%; }
+.ln-stub { position: absolute; bottom: -6px; width: 3px; height: 20px; z-index: 1; transform: translateX(-50%); }
+.ln-node { width: 10px; height: 10px; border-radius: 50%; background: var(--surface-solid); border: 3px solid var(--line-strong); z-index: 2; }
+.ln-name {
+  writing-mode: vertical-rl; text-orientation: upright; height: 54px; margin-top: 6px;
+  font-size: 10.5px; line-height: 1.15; letter-spacing: .02em; color: var(--muted);
+  white-space: nowrap; overflow: hidden; transition: color .15s var(--ease);
+}
+.ln-strip.ovf .ln-scroll { mask-image: linear-gradient(90deg, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%); }
+
+/* 颜色选择（全局组件） */
+.colorpick { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+.colorpick .sw { width: 20px; height: 20px; border-radius: 6px; border: 1px solid var(--line-strong); cursor: pointer; padding: 0; transition: transform .15s var(--spring); }
+.colorpick .sw:hover { transform: scale(1.1); }
+.colorpick .sw.on { box-shadow: 0 0 0 2px var(--text) inset, 0 0 0 1px var(--text); }
+.colorpick .sw.custom { background: conic-gradient(from 0deg, #e74c3c, #f1c40f, #2ecc71, #3498db, #9b59b6, #e74c3c); }
+.colorpick .cp-input { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
 
 /* ================= 车站面板（v13 结构：头部 / 经济 / 乘客 / 改建） ================= */
 .st-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 0 2px 9px; }

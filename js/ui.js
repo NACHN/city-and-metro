@@ -1777,6 +1777,28 @@
     }
     g.touch(); this.markUnsaved(); snd('soft');
   };
+  // 颜色选择：内置色板 + 自定义取色（系统取色器）。
+  // onPick(color) 由调用方决定怎么落地——线路色、将来的站点/区域色都走这里，不要再各写一套。
+  UI.prototype.colorPicker = function (cur, onPick) {
+    const wrap = h('div', { class: 'colorpick' });
+    const pick = function (c, btn) {
+      wrap.querySelectorAll('.sw').forEach(function (b) { b.classList.remove('on'); });
+      if (btn) btn.classList.add('on');
+      onPick(c);
+    };
+    const cols = (CM.DATA && CM.DATA.lineColorsNice) || ['#2f6fa8', '#2a9d8f', '#c0392b', '#d99a00'];
+    const curL = String(cur || '').toLowerCase();
+    for (const c of cols) {
+      const b = h('button', { class: 'sw' + (c.toLowerCase() === curL ? ' on' : ''), style: { background: c }, 'data-tip': c, onclick: function () { pick(c, b); } });
+      wrap.appendChild(b);
+    }
+    const input = h('input', { type: 'color', class: 'cp-input', value: /^#[0-9a-f]{6}$/i.test(curL) ? curL : '#2f6fa8' });
+    const custom = h('button', { class: 'sw custom' + (curL && cols.indexOf(cur) < 0 && cols.map(function (x) { return x.toLowerCase(); }).indexOf(curL) < 0 ? ' on' : ''), 'data-tip': '自定义颜色', onclick: function () { input.click(); } });
+    input.addEventListener('input', function () { custom.style.background = input.value; pick(input.value, custom); });
+    wrap.append(custom, input);
+    return wrap;
+  };
+
   UI.prototype.favBtn = function (kind, id) {
     const self = this;
     const b = h('button', { class: 'iconbtn fav', onclick: function () { self.toggleFav(kind, id); upd(); } });

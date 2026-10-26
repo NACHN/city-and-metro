@@ -26,7 +26,7 @@ globalThis.document = {
   createElement: mk, createElementNS: (ns, tag) => mk(tag),
   addEventListener() {}, documentElement: { style: { setProperty() {} }, dataset: {}, classList: { add() {}, remove() {} } },
   body: mk('body'), querySelector() { return null; }, getElementById() { return mk(); },
-  createTextNode: () => mk('text'), activeElement: null,
+  createTextNode: (t) => { const e = mk('text'); e.textContent = String(t); return e; }, activeElement: null,
 };
 globalThis.matchMedia = () => ({ matches: false, addEventListener() {} });
 globalThis.localStorage = { getItem() { return null; }, setItem() {}, removeItem() {} };
@@ -108,6 +108,26 @@ try {
   g.cancelDraft();
   console.log('✓ 草案态分支正常');
 } catch (e) { console.log('✗ 扩展分支：' + e.message + '\n' + String(e.stack).split('\n').slice(1, 3).join('\n')); }
+// 线路面板：建设面板 / 经济 / 乘客三段都要能建起来
+try {
+  const p = ui.page_line(lid);
+  if (!p || !p.el) throw new Error('返回空');
+  console.log(p.side && p.side.el && (p.side.el.children || []).length ? '✓ 线路页 · 建设面板有内容' : '✗ 线路页 · 建设面板为空');
+  console.log(Array.isArray(p.actions) && p.actions.length === 2 ? '✓ 线路页 · 标题栏动作 ' + p.actions.map(function (a) { return a.label || '收藏'; }).join(' / ') : '✗ 线路页 · 动作异常');
+  console.log(p.locate ? '✓ 线路页 · 定位坐标 ' + p.locate.map(function (v) { return Math.round(v); }).join(', ') : '✗ 线路页 · 缺定位');
+  const txt = function (n) {
+    if (!n) return '';
+    let out = typeof n.textContent === 'string' ? n.textContent : '';
+    for (const c of (n.children || [])) out += ' ' + txt(c);
+    return out;
+  };
+  const body = txt(p.el);
+  console.log(body.indexOf('经济') >= 0 && body.indexOf('乘客') >= 0 ? '✓ 线路页 · 经济与乘客两段都在' : '✗ 线路页 · 缺少分区');
+} catch (e) {
+  console.log('✗ 线路页：' + e.message);
+  console.log(String(e.stack).split('\n').slice(1, 4).join('\n'));
+}
+
 // 配车必须「立即生效」：不经过草案，直接改正式线网并重编译
 try {
   const sid = ids[1], st = g.net.stations[sid];
