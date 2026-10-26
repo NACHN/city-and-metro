@@ -15,6 +15,8 @@
   // 浮点值几乎不可能完全重合 —— 大图（2880 小区）上跑 40 秒、30 个时段都凑不出一个稳定轮，
   // 后台求解于是永不停止。改为相对变化小于 EPS 即视为稳定（行业惯例是相对间隙 1e-3~1e-2）。
   const EPS = 0.01;
+  // 懒分配：车行时间变化小于 0.5% 就沿用上一轮的最短路（多数月份都满足），最多连懒 3 轮
+  const LAZY_EPS = 0.01, LAZY_FRAC = 0.02, LAZY_MAX = 3;
   const eq = function (a, b) { return Math.abs(a - b) <= EPS * (Math.abs(b) + 1); };
   // 地铁相关的统计量：夜间时段只运营到 24 时（按 0.9 折算）
   const METRO_KEYS = new Set(['metro', 'fare', 'metroPkm', 'metroTime', 'mHW', 'mSC', 'mSH', 'mMD', 'mLZ', 'mHB', 'indM']);
@@ -1306,6 +1308,19 @@
     const rd = this.roadData, connStart = rd.start;
     const zPop = this.zPop, fullSkim = !!opts.fullSkim, iters = P.iters;
     const cw = { road: road, rd: rd, time: P.arcTime, work: work, heap: this.heap, skT: skT, skK: skK, carDem: carDem, Z: Z };
+    // 懒更新判定：最短路只取决于车行时间。自上次全量分配以来，如果各路段时间的最大相对变化
+    // 小于 LAZY_EPS、且连续懒分配没超过上限，那么绝大多数起点的最短路树根本没变 ——
+    // 沿用上一轮的树、skim 与流量，只重算方式选择与客流。（配合每 N 轮强制一次全量，避免长期漂移）
+    if (!opts.lazyCar && !fullSkim && P.timeFull && P.arcTime && (P.lazyStreak || 0) < LAZY_MAX) {
+      let moved = 0;
+      for (let a = 0; a < nA; a++) {
+        const base = P.timeFull[a] || 1;
+        if (Math.abs(P.arcTime[a] - P.timeFull[a]) / base > LAZY_EPS) moved++;
+      }
+      // 用「变动路段占比」而不是最大值：MSA 迭代里总有个别低流量路段的相对变化很大，
+      // 按最大值判定几乎永远不会懒，按占比才反映「绝大多数最短路没动」这个事实。
+      if (moved <= nA * LAZY_FRAC) opts = Object.assign({}, opts, { lazyCar: true });
+    }
     // 懒更新：快进过月时路网与拥堵时间都没变，最短路树、skim 与流量都可以沿用上一轮，
     // 只重算方式选择与地铁客流（约 10% 的开销）。流量沿用后，下面的拥堵统计仍按新需求重算。
     if (!opts.lazyCar) for (let o = 0; o < Z; o++) {
@@ -1331,6 +1346,8 @@
       st.congDen += v * road.arcLen[a];
     }
     P.iters++;
+    if (opts.lazyCar) P.lazyStreak = (P.lazyStreak || 0) + 1;
+    else if (!fullSkim) { P.timeFull = Float32Array.from(P.arcTime); P.lazyStreak = 0; }
     // 收敛判据要用**平滑前**的原始值：平滑是给显示用的低通（每轮把差距压到 0.6 倍），
     // 拿平滑值去比会让「差 0.2% 以内」多等十几轮 —— 大图上正是它让求解永远不收敛。
     if (stable && P.rawStats) for (const k in st) if (!eq(st[k], P.rawStats[k])) { stable = false; break; }
