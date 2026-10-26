@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>线路面板 · 重设计原型 v4</title>
+<title>线路面板 · 重设计原型 v5</title>
 <style>
   :root {
     --panel: #151f2b; --panel2: #1b2634; --line: #26323f;
@@ -109,26 +109,22 @@
   /* ---------- 站序时间轴（横放，站名竖排） ---------- */
   /* ---------- 站序时间轴（横放、站多可左右滑、站名竖排） ---------- */
   .tl { margin-top: 10px; padding-top: 2px; border-top: 1px dashed var(--line); }
-  .tl-scroll { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; -webkit-overflow-scrolling: touch; }
-  .tl-scroll::-webkit-scrollbar { height: 5px; }
-  .tl-scroll::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
-  .tl-inner { position: relative; width: max-content; min-width: 100%; padding: 0 2px; }
-  .tl-line { position: absolute; height: 3px; border-radius: 2px; background: var(--lc); z-index: 1; }
+  /* 原型里先隐藏滚动条：滚动条属于全局组件，之后再统一设计 */
+  .tl-scroll { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .tl-scroll::-webkit-scrollbar { display: none; }
+  .tl-inner { position: relative; width: max-content; min-width: 100%; padding: 0 8px; }
+  .tl-line { position: absolute; height: 4px; border-radius: 2px; background: var(--lc); z-index: 1; }
   .tl-row { display: flex; align-items: flex-start; position: relative; z-index: 2; }
-  .tl-col { flex: 1 0 44px; display: flex; flex-direction: column; align-items: center; position: relative; cursor: pointer; }
-  .tl-col:hover .tl-pax { color: var(--text); }
+  .tl-col { flex: 1 0 34px; display: flex; flex-direction: column; align-items: center; position: relative; cursor: pointer; }
+
   .tl-col:hover .tl-name { color: var(--text); }
-  .tl-paxrow { height: 15px; display: flex; align-items: flex-end; }
-  .tl-pax { font-size: 10px; font-weight: 600; color: var(--text3); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
-  .tl-pax.hot { color: var(--text); }
-  /* 换乘分岔：从站点**正上**方竖直伸出，多条换乘并列排开 */
-  .tl-stubzone { position: relative; height: 12px; width: 100%; }
-  .tl-stub { position: absolute; bottom: 0; width: 3px; height: 11px; border-radius: 0; transform: translateX(-50%); }
-  .tl-node { width: 9px; height: 9px; border-radius: 50%; background: var(--panel); border: 2.5px solid var(--lc); flex: none; }
+  /* 换乘分岔：竖直伸入站点，与站点合成一个 T（像车内闪灯图的换乘标记） */
+  .tl-stubzone { position: relative; height: 14px; width: 100%; }
+  .tl-stub { position: absolute; bottom: -6px; width: 3px; height: 20px; border-radius: 0; transform: translateX(-50%); z-index: 1; }
+  .tl-node { width: 10px; height: 10px; border-radius: 50%; background: var(--panel); border: 3px solid var(--lc); flex: none; position: relative; z-index: 2; }
   .tl-node.xf { background: var(--lc); }
-  .tl-name { writing-mode: vertical-rl; text-orientation: upright; height: 54px; margin-top: 5px; font-size: 10.5px; line-height: 1.15; letter-spacing: .02em; color: var(--text2); white-space: nowrap; overflow: hidden; }
+  .tl-name { writing-mode: vertical-rl; text-orientation: upright; height: 54px; margin-top: 6px; font-size: 10.5px; line-height: 1.15; letter-spacing: .02em; color: var(--text2); white-space: nowrap; overflow: hidden; }
   .tl-more { font-size: 9.5px; color: var(--text3); text-align: center; margin-top: 4px; }
-  .tl-cap { font-size: 9.5px; color: var(--text3); margin-bottom: 4px; letter-spacing: .02em; }
 
   /* ---------- 建设面板 ---------- */
   .bsec { margin-bottom: 14px; }
@@ -330,7 +326,6 @@
             <div class="note">实色 = 当前时段，背后半透明 = <b>全日最大断面</b>（不用等到高峰就能看到峰值）；红色虚线是当前运力（发车 × 定员）。半透明超过虚线就说明高峰会挤，需要加车、加长编组或修平行线。</div>
 
             <div class="tl" id="tl">
-              <div class="tl-cap">日上车 · 万人次</div>
               <div class="tl-scroll" id="tlScroll">
                 <div class="tl-inner" id="tlInner">
                   <div class="tl-line" id="tlLine"></div>
@@ -347,12 +342,12 @@
 </div>
 
 <div class="spec">
-  <b>v4：站上数字替代柱，断面图背后叠全日最大</b>
+  <b>v5：站序做成纯闪灯图，换乘线连成 T</b>
   <ol>
-    <li><b>站序时间轴</b>：横向排站、站名竖排；每站上方直接写<b>日上车</b>（万人次，最高的一站高亮），换乘站从站点竖直向上伸出短线，多条换乘并列排开，颜色取换乘线路色。</li>
+    <li><b>站序 = 闪灯图</b>：只画线、站、站名，不再标客流（客流已经在断面图里）；换乘线从站点竖直长上去、直接插进站点合成一个 <b>T</b>，多条换乘紧贴并列。</li>
     <li><b>断面图叠了「全日最大」</b>：实色是当前时段，背后半透明是同一天的最大断面——不用把时间拨到高峰也知道峰值在哪一段。</li>
     <li><b>自定义颜色</b>：内置 8 色之外，末尾的彩虹色块打开系统取色器；正式版里这是<b>全局能力</b>——任何线路都能设任意颜色，图例、地图、面板都跟着变。</li>
-    <li><b>站多时左右滑动</b>：每站最窄 44 px，放不下就横向滚动（顶部按钮可切 7 站 / 16 站对比）。换乘分岔改成<b>竖直向上</b>，多条换乘并列排开，不会互相压住。</li>
+    <li><b>站多时左右滑动</b>：每站最窄 34 px（按游戏面板字号再定），放不下就横向滚动（顶部按钮可切 7 站 / 16 站对比）。滚动条先隐藏——它属于全局组件，之后再统一设计。</li>
     <li><b>左：建设</b>——名称与颜色、全线建设方式、选中区段、批量修改、拆除。</li>
     <li><b>右上：经济</b>——年现金流一个数，票款/上盖/缺口用一条堆叠条表示覆盖关系，再列总账。</li>
     <li><b>右下：乘客</b>——断面客流双向柱（可悬停）、发车间隔与满载率、站序时间轴。</li>
@@ -509,7 +504,6 @@
   function drawTimeline() {
     const row = document.getElementById('tlRow');
     const line = document.getElementById('tlLine');
-    const maxPax = Math.max.apply(null, ST.map(function (s) { return s.pax; }));
     row.innerHTML = '';
     ST.forEach(function (s) {
       const col = document.createElement('div');
@@ -522,7 +516,6 @@
         return '<i class="tl-stub" style="left:calc(50% + ' + off + 'px);background:' + t.color + '"></i>';
       }).join('');
       col.innerHTML =
-        '<div class="tl-paxrow"><span class="tl-pax' + (s.pax >= maxPax * 0.9 ? ' hot' : '') + '">' + s.pax.toFixed(1) + '</span></div>' +
         '<div class="tl-stubzone">' + stubs + '</div>' +
         '<div class="tl-node' + (trs.length ? ' xf' : '') + '"></div>' +
         '<div class="tl-name">' + s.n + '</div>';
@@ -534,11 +527,11 @@
       row.appendChild(col);
     });
     // 主线：两端各让出半个列宽，避免线头伸出首末站
-    // 主线两端各让出半个列宽；数字行 15 + 分岔区 12 + 节点半径 4.5 − 线半高 1.5
+    // 主线两端各让出半个列宽；分岔区 14 + 节点半径 5 − 线半高 2
     const n = ST.length;
     line.style.left = (50 / n) + '%';
     line.style.right = (50 / n) + '%';
-    line.style.top = (15 + 12 + 4.5 - 1.5) + 'px';
+    line.style.top = (14 + 5 - 2) + 'px';
     // 站太多、放不下时提示可以左右滑动
     const sc = document.getElementById('tlScroll');
     document.getElementById('tlMore').style.display = (sc.scrollWidth > sc.clientWidth + 2) ? '' : 'none';
