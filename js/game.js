@@ -343,8 +343,10 @@
         yield* this.monthGen();
         const mi = this.ym();
         // 短跳每月两类都求解；长跳每月轮流求解工作日与周末（每类每 2 个月更新一次，与单一日类型时的更新频率相同）
-        if (months <= 3 || U.ymIndex(this.clock.y, this.clock.m) * 32 + this.clock.d >= tgt) yield* this.model.solveGen(1);
-        else yield* this.model.solveGen(1, [mi % 2 === 0 ? 'wd' : 'we']);
+        const last = U.ymIndex(this.clock.y, this.clock.m) * 32 + this.clock.d >= tgt;
+        if (months <= 3 || last) yield* this.model.solveGen(1);
+        // 长跳（>3 个月）中间那些月份没人看着：路网没变，车行时间沿用，只重算方式选择与客流
+        else yield* this.model.solveGen(1, [mi % 2 === 0 ? 'wd' : 'we'], { lazyCar: true });
       }
       if ((n & 7) === 0) yield;
     }

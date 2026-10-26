@@ -10,6 +10,12 @@
   const PK = ['hw', 'sc', 'sh', 'md', 'lz', 'hb'], NPK = 6;
   const HW = 0, SH = 2, LZ = 4, HB = 5;
   const DT = ['wd', 'we'];
+
+  // 收敛判据的容差。以前要求「逐位相等」：MSA 每轮用 0.4 的权重把流量往新解推，
+  // 浮点值几乎不可能完全重合 —— 大图（2880 小区）上跑 40 秒、30 个时段都凑不出一个稳定轮，
+  // 后台求解于是永不停止。改为相对变化小于 EPS 即视为稳定（行业惯例是相对间隙 1e-3~1e-2）。
+  const EPS = 0.01;
+  const eq = function (a, b) { return Math.abs(a - b) <= EPS * (Math.abs(b) + 1); };
   // 地铁相关的统计量：夜间时段只运营到 24 时（按 0.9 折算）
   const METRO_KEYS = new Set(['metro', 'fare', 'metroPkm', 'metroTime', 'mHW', 'mSC', 'mSH', 'mMD', 'mLZ', 'mHB', 'indM']);
   const TKEY = ['tHW', 'tSC', 'tSH', 'tMD', 'tLZ', 'tHB'], MKEY = ['mHW', 'mSC', 'mSH', 'mMD', 'mLZ', 'mHB'];
@@ -432,7 +438,15 @@
   }
   CM.Model = Model;
 
-  Model.prototype.wake = function () { this.settled = false; this.quietCycles = 0; this.gen = null; };
+  Model.prototype.wake = function () {
+    this.settled = false; this.quietCycles = 0; this.gen = null; this.solveCycles = 0;
+    // 输入变了：所有时段都不再「稳定」，否则下一轮会被当成无需重算而跳过
+    this.invalidateStable();
+  };
+  Model.prototype.invalidateStable = function () {
+    if (!this.ctxs) return;
+    for (const dt of DT) { const cx = this.ctxs[dt]; if (cx && cx.per) for (const P of cx.per) P.stable = false; }
+  };
   Model.prototype.setYear = function (y) { if (this.year !== y) this.wake(); this.year = y; this.capF = U.interp(CFG.road.capGrowth, y); };
   // 当天的日类型：实时画面（车流、客流、拥堵）与当天的票款使用对应的求解结果；两套结果都在后台保持收敛
   Model.prototype.setDayType = function (dt) {
@@ -1126,6 +1140,7 @@
     // 车站日客流（stDaily）按旧网络统计，到下一次 computeDaily 前与新网络的车站编号不对应
     if (!keepState || !this.stDaily || this.stDaily.inn.length !== net.N) this.dailyStale = true;
     if (!keepState) this.sinceChange = 0;
+    this.invalidateStable();   // 线网变了，逐位稳定的时段也要重算
     this.version++;
   };
 
@@ -1166,6 +1181,9 @@
   // 一个时段的一次完整迭代（buf 为该求解流程独占的临时缓冲区）。P.dt 为日类型（工作日 / 周末）
   Model.prototype.iterate = function* (net, P, p, opts) {
     opts = opts || {};
+    // 懒更新：上一轮这个时段已经在容差内达到不动点、且输入没变（wake 会清掉 stable），
+    // 那么整段 pass 是输入的纯函数 —— 重算只会得到同一组数，直接跳过。
+    if (P.stable && !opts.fullSkim) { P.iters++; return; }
     const buf = opts.buf || this.liveBuf;
     const prm = this.params();
     const Z = this.Z, od = this.od, fn = this.fn, F = fn.F, NZ = fn.NZ;
@@ -1238,7 +1256,7 @@
         if ((s & 7) === 7) yield;
       }
       const lam = opts.metroLam || 0.5;
-      for (let e = 0; e < nE; e++) { const old = P.load[e]; P.load[e] = old * (1 - lam) + load[e] * lam; if (old !== P.load[e]) stable = false; }
+      for (let e = 0; e < nE; e++) { const old = P.load[e]; P.load[e] = old * (1 - lam) + load[e] * lam; if (!eq(old, P.load[e])) stable = false; }
       const stBoard = work.stBoard, walkIn = work.walkIn;
       stBoard.fill(0); walkIn.fill(0);
       for (let e = 0; e < nE; e++) {
@@ -1257,7 +1275,7 @@
         const ratio = (P.stIn[s] + P.stOut[s] + P.stXfer[s]) / cap;
         const dl = U.clamp((ratio - 0.8) * 10, 0, 12);
         P.stDelay[s] = P.stDelay[s] * 0.5 + dl * 0.5;
-        if (oldIn !== P.stIn[s] || oldOut !== P.stOut[s] || oldDelay !== P.stDelay[s]) stable = false;
+        if (!eq(oldIn, P.stIn[s]) || !eq(oldOut, P.stOut[s]) || !eq(oldDelay, P.stDelay[s])) stable = false;
       }
       // 自动配车：发车频率取「线路最低服务水平」（按站数、站距）与「最大断面客流所需」中的较大者
       for (let r = 0; r < net.R; r++) {
@@ -1266,7 +1284,7 @@
         for (let q = 0; q < re.length; q++) if (P.load[re[q]] > mx) mx = P.load[re[q]];
         const need = U.clamp(Math.max(mx / (rt.cap * mc.targetLF), Model.serviceFloor(rt, p)), 1, mc.fMax);
         const oldFreq = P.freq[r]; P.freq[r] = oldFreq * 0.55 + need * 0.45;
-        if (oldFreq !== P.freq[r]) stable = false;
+        if (!eq(oldFreq, P.freq[r])) stable = false;
         for (let q = 0; q < re.length; q++) {
           const e = re[q];
           const LF = P.load[e] / Math.max(1, P.freq[r] * rt.cap);
@@ -1274,7 +1292,7 @@
           if (LF > 0.6) cf = 1 + 0.25 * Math.min(1, (LF - 0.6) / 0.4);
           if (LF > 1) cf = 1.25 + 1.6 * (LF - 1);
           const oldCrowd = P.crowd[e]; P.crowd[e] = Math.min(3.5, oldCrowd * 0.5 + cf * 0.5);
-          if (oldCrowd !== P.crowd[e]) stable = false;
+          if (!eq(oldCrowd, P.crowd[e])) stable = false;
           if (LF > 1) st.crowdPkm += P.load[e] * net.eKm[e];
         }
       }
@@ -1288,33 +1306,41 @@
     const rd = this.roadData, connStart = rd.start;
     const zPop = this.zPop, fullSkim = !!opts.fullSkim, iters = P.iters;
     const cw = { road: road, rd: rd, time: P.arcTime, work: work, heap: this.heap, skT: skT, skK: skK, carDem: carDem, Z: Z };
-    for (let o = 0; o < Z; o++) {
+    // 懒更新：快进过月时路网与拥堵时间都没变，最短路树、skim 与流量都可以沿用上一轮，
+    // 只重算方式选择与地铁客流（约 10% 的开销）。流量沿用后，下面的拥堵统计仍按新需求重算。
+    if (!opts.lazyCar) for (let o = 0; o < Z; o++) {
       const c0 = connStart[o], c1 = connStart[o + 1];
       if (c0 === c1) continue;
       if (!hasCar[o] && !(fullSkim && zPop[o] > 0) && iters > 0) continue;
       if (!carOrigin(cw, o, stable)) stable = false;
       if ((o & 1) === 1) yield;
+    } else if (P.arcVol) {
+      // 沿用的流量直接当作本轮分配结果（aux 不再参与）
+      stable = false;   // 沿用结果不算稳定，避免被当成「已收敛」而永久冻结
     }
     const lam = P.iters === 0 ? 1 : (opts.lam || CFG.road.msa);
     const A = CFG.road.bprA, capF = this.capF || 1;
     for (let a = 0; a < nA; a++) {
       const oldVol = P.arcVol[a], oldTime = P.arcTime[a];
-      const v = oldVol * (1 - lam) + aux[a] * lam;
+      const v = opts.lazyCar ? oldVol : oldVol * (1 - lam) + aux[a] * lam;
       P.arcVol[a] = v;
       const x = v / (road.arcCap[a] * capF);
       P.arcTime[a] = road.arcT0[a] * Math.min(8, 1 + A * x * x * x * x);
-      if (oldVol !== P.arcVol[a] || oldTime !== P.arcTime[a]) stable = false;
+      if (!eq(oldVol, P.arcVol[a]) || !eq(oldTime, P.arcTime[a])) stable = false;
       st.congNum += v * road.arcLen[a] * (P.arcTime[a] / road.arcT0[a]);
       st.congDen += v * road.arcLen[a];
     }
     P.iters++;
+    // 收敛判据要用**平滑前**的原始值：平滑是给显示用的低通（每轮把差距压到 0.6 倍），
+    // 拿平滑值去比会让「差 0.2% 以内」多等十几轮 —— 大图上正是它让求解永远不收敛。
+    if (stable && P.rawStats) for (const k in st) if (!eq(st[k], P.rawStats[k])) { stable = false; break; }
+    P.rawStats = st;
     // 统计平滑（显示更平稳）
     if (P.stats && !opts.noSmooth) {
-      const o = P.stats;
-      for (const k in st) if (o[k] !== undefined) st[k] = o[k] * 0.4 + st[k] * 0.6;
-    }
-    if (stable && P.stats) for (const k in st) if (st[k] !== P.stats[k]) { stable = false; break; }
-    P.stats = st;
+      const o = P.stats, out = {};
+      for (const k in st) out[k] = o[k] !== undefined ? o[k] * 0.4 + st[k] * 0.6 : st[k];
+      P.stats = out;
+    } else P.stats = st;
     P.facKey = fn.key;   // 数组下标只属于本次迭代使用的设施表，不能按新的设施顺序解读。
     P.stable = stable;
   };
@@ -1331,12 +1357,13 @@
           this.computeDaily();
         }
       }
-      this.cycles++; this.sinceChange++;
+      this.cycles++; this.sinceChange++; this.solveCycles = (this.solveCycles || 0) + 1;
       const allStable = DT.every(function (dt) { return this.ctxs[dt].per.every(function (P) { return P.stable; }); }, this);
       this.quietCycles = allStable ? (this.quietCycles || 0) + 1 : 0;
-      // Stop only at an exact floating-point fixed point, after two complete
-      // unchanged cycles. Explicit solves and all input changes still run fully.
-      if (this.quietCycles >= 2) {
+      // 停在「连续两轮相对变化都在 1% 以内」；另外给一个轮数上限 ——
+      // 大图上 MSA 要十几轮才真正收敛，交互式不能让后台一直转下去。
+      const cap = (CFG.perf && CFG.perf.maxSolveCycles) || 4;
+      if (this.quietCycles >= 2 || this.solveCycles >= cap) {
         this.settled = true;
         this.settledAt = { year: this.year, fare: this.fare.flat, city: this.city.version, road: this.city.roadVersion, net: this.net, od: this.od };
         yield;
@@ -1367,10 +1394,10 @@
     const g = this.solveGen(cycles, dts);
     for (let r = g.next(); !r.done; r = g.next()) { /* run */ }
   };
-  Model.prototype.solveGen = function* (cycles, dts) {
+  Model.prototype.solveGen = function* (cycles, dts, opts) {
     this.wake();
     dts = dts || DT;
-    for (let c = 0; c < cycles; c++) for (const dt of dts) for (let p = 0; p < NP; p++) { yield* this.iterate(this.net, this.ctxs[dt].per[p], p, { fullSkim: c === 0 }); }
+    for (let c = 0; c < cycles; c++) for (const dt of dts) for (let p = 0; p < NP; p++) { yield* this.iterate(this.net, this.ctxs[dt].per[p], p, Object.assign({ fullSkim: c === 0 }, opts)); }
     this.computeDaily();
     this.gen = null;
   };
