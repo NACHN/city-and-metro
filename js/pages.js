@@ -2169,7 +2169,15 @@
     slider.addEventListener('change', function () {
       const v = +slider.value;
       if (v === E.fare.flat) return;
-      E.fare = { mode: 'flat', flat: v }; g.model.fare = E.fare; g.model.sinceChange = 0; g.touch();
+      // 票价管制（真实档）：政府定价，三年一调、单次最多 +1
+      const chk = E.canSetFare ? E.canSetFare(g.clock.y, g.clock.m, v) : { ok: true };
+      if (!chk.ok) {
+        slider.value = E.fare.flat; show(E.fare.flat);
+        self.toast(chk.reason, 'bad');
+        return;
+      }
+      E.fare = { mode: 'flat', flat: v };
+      if (E.noteFareChange) E.noteFareChange(g.clock.y, g.clock.m); g.model.fare = E.fare; g.model.sinceChange = 0; g.touch();
       g.invalidatePrediction('票价已修改，建设预测需要按新票价重新计算');
       g.logEvent({ tag: '经营', title: '调整票价', desc: '全网统一票价 ' + v + ' ' + CFG.money.unit + '/次' });
       self.toast('票价已调整为 ' + UI.fmtFare(v) + '，居民出行选择正在重新计算', 'good');
@@ -2177,12 +2185,24 @@
       // 试算曲线以旧票价为基准，改价后作废；等模型重算完再按新票价重扫一次
       curve = null; curveBox.innerHTML = ''; g.model.cancelPredict();
       curveNote.textContent = '票价已改动，正在等待客流重新计算，随后会按新票价重新试算…';
+      drawRule();
       if (curveTimer) clearTimeout(curveTimer);
       curveTimer = setTimeout(startCurve, 2500);
       show(v);
     });
     show(E.fare.flat);
-    box.append(h('div', { class: 'fare-top' }, val, h('span', { class: 'tiny muted' }, '全网统一 · 换乘不另收费')),
+    // 受管制时先说明规则与下次可调时间（写在滑块上方，改价被拦时玩家不用猜）
+    const ruleLine = h('div', { class: 'note', id: 'fare-rule' });
+    const drawRule = function () {
+      const R = E.fareRule ? E.fareRule() : { on: false };
+      if (!R.on) { ruleLine.style.display = 'none'; return; }
+      const nx = E.nextFareAt ? E.nextFareAt() : null;
+      ruleLine.style.display = '';
+      ruleLine.textContent = '政府定价：每 ' + R.years + ' 年可调一次、单次最多 +' + R.step + ' ' + CFG.money.unit +
+        (nx ? '；下次可调 ' + nx[0] + ' 年 ' + nx[1] + ' 月' : '；本局还没调过价，随时可以调整一次');
+    };
+    drawRule();
+    box.append(ruleLine, h('div', { class: 'fare-top' }, val, h('span', { class: 'tiny muted' }, '全网统一 · 换乘不另收费')),
       h('div', { class: 'fare-slider' }, h('span', { class: 'tiny muted' }, CFG.money.sym + R.min), slider, h('span', { class: 'tiny muted' }, CFG.money.sym + R.max)),
       this.sec('fi-fare-fx', '票务收入与满意度影响', '', function () {
         return h('div', null, effect, h('div', { class: 'note', style: { marginTop: '6px' } }, '票价越高，乘车意愿越低、票务收入与满意度负担越高。' + g.clock.y + ' 年居民时间价值约 ' + vot.toFixed(1) + ' ' + CFG.money.unit + '/小时（估算）。松手后居民出行选择将在数秒内重新计算。'));

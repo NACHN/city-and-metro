@@ -230,6 +230,8 @@
     const limit = E.debtLimit * this.costIndex(y);
     this.negMonths = this.funds < 0 ? this.negMonths + 1 : 0;
     this.lowSatMonths = this.sat < E.satFail ? (protect ? this.lowSatMonths : this.lowSatMonths + 1) : 0;
+    // 关掉「经营失败」：计数器照常维护（预警仍然有用），但永远不会判负
+    if (this.caps && !this.caps.failure) return null;
     const reasons = [];
     if (this.funds < limit) reasons.push('资金低于负债下限（' + U.fmtMoney(this.funds) + '，下限 ' + U.fmtMoney(limit) + '）');
     if (this.negMonths >= E.negMonthsLimit) reasons.push('连续 ' + this.negMonths + ' 个月负余额（上限 ' + E.negMonthsLimit + ' 个月）');
@@ -240,10 +242,35 @@
   Economy.prototype.warnings = function () {
     if (this.isFree()) return [];
     const E = CFG.economy, out = [];
-    if (this.negMonths > 0) out.push({ level: this.negMonths >= E.negMonthsLimit * 0.6 ? 'danger' : 'warn', text: '财政预警：已连续 ' + this.negMonths + ' 个月负余额（满 ' + E.negMonthsLimit + ' 个月挑战失败）' });
-    if (this.lowSatMonths > 0) out.push({ level: this.lowSatMonths >= E.satFailMonths * 0.6 ? 'danger' : 'warn', text: '交通预警：满意度已连续 ' + this.lowSatMonths + ' 个月低于 ' + E.satFail + '（满 ' + E.satFailMonths + ' 个月挑战失败）' });
+    const soft = !(this.caps && this.caps.failure);      // 本局不判失败：只预警
+    const tail = function (n) { return soft ? '（本局不判失败）' : '（满 ' + n + ' 个月结束游戏）'; };
+    if (this.negMonths > 0) out.push({ level: this.negMonths >= E.negMonthsLimit * 0.6 ? 'danger' : 'warn', text: '财政预警：已连续 ' + this.negMonths + ' 个月负余额' + tail(E.negMonthsLimit) });
+    if (this.lowSatMonths > 0) out.push({ level: this.lowSatMonths >= E.satFailMonths * 0.6 ? 'danger' : 'warn', text: '交通预警：满意度已连续 ' + this.lowSatMonths + ' 个月低于 ' + E.satFail + tail(E.satFailMonths) });
     return out;
   };
+
+  // 票价管制（真实档）：政府定价，三年一调、单次最多 +1。返回 { ok, reason }。
+  Economy.prototype.fareRule = function () { return { on: !!(this.caps && this.caps.fareControl), years: 3, step: 1 }; };
+  Economy.prototype.nextFareAt = function () {
+    const R = this.fareRule();
+    if (!R.on || this.fareLast == null) return null;
+    const ym = this.fareLast + R.years * 12;
+    return [Math.floor(ym / 12), (ym % 12) + 1];
+  };
+  Economy.prototype.canSetFare = function (y, m, v) {
+    const R = this.fareRule();
+    if (!R.on) return { ok: true };
+    const ym = U.ymIndex(y, m);
+    if (this.fareLast != null && ym - this.fareLast < R.years * 12) {
+      const nx = this.nextFareAt();
+      return { ok: false, reason: '政府定价：票价每 ' + R.years + ' 年才能调整一次，下次可调 ' + nx[0] + ' 年 ' + nx[1] + ' 月' };
+    }
+    const d = v - this.fare.flat;
+    if (d > R.step + 1e-6) return { ok: false, reason: '政府定价：单次最多上调 ' + R.step + ' ' + CFG.money.unit };
+    if (d < -1e-6) return { ok: false, reason: '政府定价：不能自行降价' };
+    return { ok: true };
+  };
+  Economy.prototype.noteFareChange = function (y, m) { if (this.fareRule().on) this.fareLast = U.ymIndex(y, m); };
 
   // ======================== 资金流水 ========================
   // kind：grant / fare / ops / reward / build / bond / interest / principal / penalty / overdue / repay；acct：gen 一般资金、capex 建设专项资金
@@ -427,12 +454,14 @@
   Economy.prototype.serialize = function () {
     return { mode: this.mode, funds: this.funds, fare: this.fare, cur: this.cur, ledger: this.ledger, sat: this.sat, mods: this.mods, negMonths: this.negMonths, lowSatMonths: this.lowSatMonths, failed: this.failed, satFactors: this.satFactors, lastDay: this.lastDay,
       capex: this.capex, bonds: this.bonds, bondIssued: this.bondIssued, overdue: this.overdue, overdueParts: this.overdueParts || null, overdueMonths: this.overdueMonths, flow: this.flow, bondSeq: this.bondSeq, svc: this._svc == null ? null : this._svc,
-      fisc: this.fisc || null, subsidy: this.batchOn() ? (this.subsidyLevel || 'standard') : undefined };
+      fisc: this.fisc || null, subsidy: this.batchOn() ? (this.subsidyLevel || 'standard') : undefined,
+      // 票价管制的冷却起点：没有就是 undefined（不写进存档，旧存档字节不变）
+      fareLast: this.fareLast == null ? undefined : this.fareLast };
   };
   Economy.restore = function (s, caps) {
     const e = new Economy(s.mode, s.cur.y, s.cur.m, caps);
     Object.assign(e, { funds: s.funds, fare: Economy.normFare(s.fare), cur: s.cur, ledger: s.ledger || [], sat: s.sat, mods: s.mods || [], negMonths: s.negMonths || 0, lowSatMonths: s.lowSatMonths || 0, failed: s.failed || null, satFactors: s.satFactors || null, lastDay: s.lastDay || null,
-      capex: s.capex || 0, bonds: s.bonds || [], bondIssued: s.bondIssued || {}, overdue: s.overdue || 0, overdueParts: s.overdueParts || null, overdueMonths: s.overdueMonths || 0, flow: s.flow || [], bondSeq: s.bondSeq || 1, subsidyLevel: s.subsidy || 'standard' });
+      capex: s.capex || 0, bonds: s.bonds || [], bondIssued: s.bondIssued || {}, overdue: s.overdue || 0, overdueParts: s.overdueParts || null, overdueMonths: s.overdueMonths || 0, flow: s.flow || [], bondSeq: s.bondSeq || 1, subsidyLevel: s.subsidy || 'standard', fareLast: s.fareLast == null ? null : s.fareLast });
     e._svc = s.svc == null ? null : s.svc;
     e.fisc = s.fisc && isFinite(s.fisc.f) ? { y: s.fisc.y, f: s.fisc.f } : null;   // 1.7 及更早的存档没有财力系数，按 1 处理
     // 1.6 及更早的正式存档没有债券，默认债务为零。早期 1.7 开发档可能只保存逾期总账，

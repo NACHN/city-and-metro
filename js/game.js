@@ -24,8 +24,9 @@
   function applyImpedance(g) {
     const caps = g.caps || (g.econ && g.econ.caps ? g.econ.caps : CM.modeCaps(g.mode));
     CFG.choice.impedance = caps.timeCommute ? 'time' : 'distance';
-    // 增长的可达项暂时保持 'walk'：实测把增长权重换成「可达岗位数」会让城市更分散（见 开发进度 §9.3），
-    // 所以在找到更好的口径之前不打开。要试验时把 CM.GROWTH_ACCESS.from 设成 'jobAccess' 即可。
+    // 增长的可达项：只有开了「增长读就业可达」才用 45 分钟可达岗位。
+    // 实测这个口径会让城市更分散（见 开发进度 §9.3），所以默认关闭，交给难度预设决定。
+    if (CM.GROWTH_ACCESS) CM.GROWTH_ACCESS.from = caps.jobAccess ? 'jobAccess' : 'walk';
   }
 
   Game.create = function (opts) {
@@ -860,6 +861,8 @@
   Game.prototype.accrueValueCapture = function (year) {
     const V = CFG.valueCapture, econ = this.econ;
     if (!V || !this.city.landPrice) return null;
+    // 关掉 TOD 分成就没有这笔收入（地价本身照常算，只是不再分给运营方）
+    if (!econ.caps.tod) { this.capStat = { sites: 0, gain: 0, base: 0 }; return this.capStat; }
     const jan = this.clock.m === 1;
     let gainSum = 0, sites = 0, base = 0;
     for (const id in this.net.stations) {

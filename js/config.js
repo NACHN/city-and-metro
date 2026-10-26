@@ -476,6 +476,14 @@
       off: ['fareControl'],
       tuning: { subsidyRate: 0.5 },
     },
+    // 旧版口径：给「旧存档迁移」与「等价性校验」用，不出现在选择界面（不在 PRESET_ORDER 里）。
+    // 除了 jobAccess 与 fareControl（这两个是本次拆开关时才有的行为),其余与旧 tycoon 相同。
+    legacy: {
+      id: 'legacy', name: '旧版口径', badge: 'b-slate', icon: 'clock', hidden: true,
+      desc: '升级前的经营模式参数，仅用于兼容校验。',
+      off: ['jobAccess', 'fareControl'],
+      tuning: { subsidyRate: 0.5 },
+    },
     real: {
       id: 'real', name: '真实', badge: 'b-red', icon: 'target',
       desc: '补贴 50% 但票价受管制（三年一次、最多 +1 元），增长也按就业可达。',
@@ -516,7 +524,7 @@
     // timeCommute：出行分布按「广义时间」而不是直线距离衰减（见 CFG.choice.impedance）。
     // 只在经营模式打开：挑战模式与自由建造保持原口径，数值与指纹不变。
     // batch 原本隐含在 land 里（batchOn 曾读 caps.land），这里显式写出来——这是 P1 的等价重构关键点
-    tycoon: { id: 'tycoon', name: '经营模式', budget: true, grants: true, bonds: true, failure: true, rewards: true, opsTasks: true, land: true, fleet: true, batch: true, bus: true, timeCommute: true, needs: function (m) { return !m.tutorial && !!m.cfg.macro; } },
+    tycoon: { id: 'tycoon', name: '经营模式', budget: true, grants: true, bonds: true, failure: true, rewards: true, opsTasks: true, land: true, fleet: true, batch: true, bus: true, tod: true, timeCommute: true, needs: function (m) { return !m.tutorial && !!m.cfg.macro; } },
   };
   CM.modeCaps = function (mode) { return CM.MODES[mode] || CM.MODES.challenge; };
   CM.modeName = function (mode) { return (CM.MODES[mode] || CM.MODES.challenge).name; };

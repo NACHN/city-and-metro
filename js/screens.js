@@ -156,8 +156,7 @@
       // 要点：范围、起始、人口、货币等；真实城市另列开局时地图范围的经济规模（城市经济模拟的起点，估算）
       // 「模式」这一行从能力表推导（mp.modes），数据文件里不再逐图维护
       const fl = (mp.facts || []).filter(function (f) { return f[0] !== '模式'; }).slice();
-      if (mp.tutorial) fl.push(['难度', '沙盒（教程固定）']);
-      else fl.push(['难度', '沙盒 / 简单 / 一般 / 困难 / 真实，下一步可选']);
+
       const mc = mp.cfg.macro && mp.cfg.macro !== 'auto' ? mp.cfg.macro : null;
       if (mc && mc.gdp0) { const mo = mp.cfg.money, v = mc.gdp0; fl.push(['开局 GDP', '约 ' + (v >= 1e8 ? (v / 1e8).toFixed(2) + ' 万' + mo.yi : U.fmtMoney(v, 0, mo))]); }
       const facts = h('div', { class: 'msel-facts' }, fl.map(function (f) { return h('div', null, h('span', null, f[0]), h('b', { title: f[1] }, f[1])); }));

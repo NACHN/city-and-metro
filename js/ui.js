@@ -2385,7 +2385,21 @@
         h('button', { class: 'btn', onclick: function () { self.closeScreen(); self.openPage('finance', null, { root: true }); } }, ic('coin'), '财政详情'),
         h('button', { class: 'btn', onclick: function () { self.showSaveManager(true); } }, ic('folder'), '读取存档'),
         h('button', { class: 'btn', onclick: function () { self.backToMenu(); } }, ic('home'), '主菜单'),
-        h('button', { class: 'btn primary', onclick: function () { g.econ.mode = 'free'; g.mode = 'free'; g.econ.failed = null; g.logEvent({ tag: '经营', title: '转为自由建造模式继续', desc: '' }); self.closeScreen(); self.toast('已转为自由建造模式', 'info'); self.markUnsaved(); } }, ic('sparkle'), '转为自由建造继续')));
+        h('button', { class: 'btn primary', onclick: function () {
+          // 新体系：关掉「经营失败」继续，而不是整体切模式（其他系统与账目保持不动）
+          if (g.econ.caps && g.caps !== undefined) {
+            g.econ.caps.failure = false;
+            if (g.caps) g.caps.failure = false;
+            if (g.systems) g.systems.failure = false;
+            g.econ.failed = null;
+            g.logEvent({ tag: '经营', title: '关闭「经营失败」继续', desc: '财政与满意度预警照常显示，但不会再结束游戏。' });
+            self.closeScreen(); self.toast('已关闭经营失败，本局继续', 'info'); self.markUnsaved();
+            return;
+          }
+          g.econ.mode = 'free'; g.mode = 'free'; g.econ.failed = null;
+          g.logEvent({ tag: '经营', title: '转为自由建造模式继续', desc: '' });
+          self.closeScreen(); self.toast('已转为自由建造模式', 'info'); self.markUnsaved();
+        } }, ic('sparkle'), '关闭经营失败，继续')));
     this.openScreen(card, function () { self.closeScreen(); });
   };
 })(window.CM);

@@ -79,7 +79,8 @@ console.log('地图   旧 tycoon           预设 real            人口/客流/
 for (const mapId of maps) {
   try {
     const a = run(mapId, { mode: 'tycoon' });
-    const b = run(mapId, { preset: 'real' });
+    // legacy = 旧 tycoon 的口径（jobAccess / fareControl 关），专门用来做等价校验
+    const b = run(mapId, { preset: 'legacy' });
     const same = a.hash === b.hash;
     if (!same) bad++;
     console.log(mapId.padEnd(6) + a.hash.padEnd(20) + b.hash.padEnd(20) +
@@ -91,5 +92,50 @@ for (const mapId of maps) {
   }
 }
 console.log('');
-console.log(bad === 0 ? '✓ 预设 real 与旧 tycoon 逐位一致（开关重构未改变行为）' : '✗ 有 ' + bad + ' 张图不一致');
-process.exitCode = bad === 0 ? 0 : 1;
+console.log(bad === 0 ? '✓ 预设 legacy 与旧 tycoon 逐位一致（开关重构未改变行为）' : '✗ 有 ' + bad + ' 张图不一致');
+
+/* ---------------- 开关生效性：逐个验证「关掉之后确实不同」 ---------------- */
+const fails = [];
+const ok = function (cond, msg) { console.log((cond ? '✓ ' : '✗ ') + msg); if (!cond) fails.push(msg); };
+
+CM.useMap('gz');
+// 1) 增长口径：jobAccess 开关直接改 CM.GROWTH_ACCESS.from
+CM.Game.create({ map: 'gz', preset: 'real', name: 'chk' });
+ok(CM.GROWTH_ACCESS.from === 'jobAccess', '真实档把增长口径切到「就业可达」');
+CM.Game.create({ map: 'gz', preset: 'legacy', name: 'chk' });
+ok(CM.GROWTH_ACCESS.from === 'walk', 'legacy 档仍按步行到站（默认口径）');
+
+// 2) 建设批次：easy 关掉 batch，普通档开着
+const gN = CM.Game.create({ map: 'gz', preset: 'normal', name: 'chk' });
+ok(gN.econ.batchOn() === true, '一般档：建设批次生效');
+const gE = CM.Game.create({ map: 'gz', preset: 'easy', name: 'chk' });
+ok(gE.econ.batchOn() === false, '简单档：批次关闭，改按月拨款');
+
+// 3) 经营失败：关掉之后资金触底也不判负
+const gF = CM.Game.create({ map: 'gz', preset: 'normal', systems: { failure: false }, name: 'chk' });
+gF.econ.funds = -1e9;
+const noFail = gF.econ.checkFailure(1995, false);
+ok(noFail === null, '关闭经营失败后资金触底也不会结束游戏');
+const gF2 = CM.Game.create({ map: 'gz', preset: 'normal', name: 'chk' });
+gF2.econ.funds = -1e9;
+ok(!!gF2.econ.checkFailure(1995, false), '开启经营失败时同样条件下会判负');
+
+// 4) 票价管制：三年一次、单次 +1
+const gR = CM.Game.create({ map: 'gz', preset: 'real', name: 'chk' });
+const fare0 = gR.econ.fare.flat;
+ok(gR.econ.canSetFare(1990, 1, fare0 + 1).ok === true, '真实档：首次可上调 +1');
+ok(gR.econ.canSetFare(1990, 1, fare0 + 2).ok === false, '真实档：单次最多 +1（+2 被拦）');
+ok(gR.econ.canSetFare(1990, 1, fare0 - 0.5).ok === false, '真实档：不能自行降价');
+gR.econ.fareLast = CM.U.ymIndex(1990, 1);
+ok(gR.econ.canSetFare(1991, 6, fare0 + 1).ok === false, '真实档：未满三年不能调价');
+ok(gR.econ.canSetFare(1993, 2, fare0 + 1).ok === true, '真实档：满三年后可调');
+const gFree = CM.Game.create({ map: 'gz', preset: 'normal', name: 'chk' });
+ok(gFree.econ.canSetFare(1990, 2, fare0 + 5).ok === true, '非管制档：票价随意调');
+
+// 5) TOD 与地价的依赖
+ok(CM.capsFor('normal').tod === false && CM.capsFor('normal').land === true, '一般档：有地价、无 TOD 分成');
+ok(CM.capsFor('real').tod === true, '真实档：TOD 分成打开');
+
+console.log('');
+console.log(fails.length === 0 ? '✓ 全部开关都接上了' : '✗ ' + fails.length + ' 项开关未生效');
+process.exitCode = (bad === 0 && fails.length === 0) ? 0 : 1;
