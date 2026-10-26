@@ -81,6 +81,20 @@
     this.taskCnt = h('span', { class: 'cnt' }, '0');
     const taskBtn = hb('tasks', 'flag', '任务', function () { self.openTop('tasks'); });
     taskBtn.appendChild(this.taskCnt);
+    // 资金：一个 pill 上下两行——流动资金（正文颜色）与建设专项（金色）。
+    // 两个数并排放会撑宽顶栏；上下叠只多 12 px 高度，读数顺序也自然（可花的钱 → 只能建设的钱）。
+    const moneyRow = function (label, cls) {
+      const v = h('span', { class: 'mv' }, '—');
+      const el = h('span', { class: 'mrow' + (cls ? ' ' + cls : '') }, h('span', { class: 'mk' }, label), v);
+      return { el: el, v: v };
+    };
+    const mGen = moneyRow('流动资金', ''), mCap = moneyRow('建设专项', 'cap');
+    const moneyPill = h('button', {
+      class: 'pill money2', 'data-tip': '流动资金付运营与还本，建设专项只能建设与拆迁 · 点击查看财政',
+      onclick: function () { self.openTop('money'); },
+    }, h('span', { class: 'badge b-gold' }, ic('coin')), h('span', { class: 'tx' }, mGen.el, mCap.el));
+    this.pills.money = { el: moneyPill, v: mGen.v, capexV: mCap.v, capexRow: mCap.el, genRow: mGen.el };
+
     this.top = h('header', { id: 'hudTop', class: 'hud hidden' },
       h('div', { class: 'cluster glass citybar' },
         h('div', { class: 'brand' }, h('img', { src: 'img/logo-white.png', alt: '城市与地铁' })),
@@ -89,7 +103,7 @@
         h('div', { class: 'jumps' }, jmp('month', '+1月', 1, '推进 1 个月'), jmp('year', '+1年', 12, '推进 1 年（结束后显示变化）'))),
       h('div', { class: 'spacer' }),
       h('div', { class: 'cluster glass metrics' },
-        pill('money', '流动资金', 'coin', 'b-gold'), pill('capex', '建设专项', 'hammer', 'b-gold', 'opt4'), pill('econ', '经济增长', 'trend', 'b-violet', 'opt2'), pill('pop', '人口', 'people', 'b-blue', 'opt2'), pill('share', '地铁分担率', 'metro', 'b-teal', 'opt3'),
+        moneyPill, pill('econ', '经济增长', 'trend', 'b-violet', 'opt2'), pill('pop', '人口', 'people', 'b-blue', 'opt2'), pill('share', '地铁分担率', 'metro', 'b-teal', 'opt3'),
         pill('cong', '拥堵指数', 'car', 'b-orange', 'opt5'), pill('sat', '满意度', 'smile', 'b-green', 'opt4')),
       h('div', { class: 'cluster glass actions' },
         hb('search', 'search', '搜索车站、线路、道路、区域', function () { self.openSearch(); }, '/'),
@@ -233,7 +247,7 @@
   // 指标栏放不下时，按优先级从低到高收起（经济 → 满意度 → 分担率 → 人口 → 拥堵）
   UI.prototype.fitHud = function () {
     const m = this.top.querySelector('.cluster.metrics'); if (!m || !m.clientWidth) return;
-    for (const k of ['econ', 'sat', 'share', 'pop', 'cong', 'capex']) {
+    for (const k of ['econ', 'sat', 'share', 'pop', 'cong']) {
       if (m.scrollWidth <= m.clientWidth + 1) break;
       const el = this.pills[k].el; if (getComputedStyle(el).display !== 'none') el.classList.add('squeezed');
     }
@@ -410,20 +424,18 @@
     if (night !== rg.night) { rg.night = night; rg.ico.innerHTML = night ? I.moon : I.sun; rg.el.classList.toggle('night', night); }
     if (g.econ.isFree()) {
       c.money.v.innerHTML = '∞ <small>自由建造</small>';
-      if (c.capex) c.capex.el.style.display = 'none';
+      c.money.capexRow.style.display = 'none';
     } else {
       const f = g.econ.funds;
       if (this._funds != null && Math.abs(f - this._funds) >= 300) this.moneyFloat(f - this._funds);
       this.tweenNum(c.money.v, this._funds == null ? f : this._funds, f, function (x) { return U.fmtMoney(x); });
       this._funds = f;
-      c.money.v.className = 'v' + (f < 0 ? ' bad' : '');
-      // 建设专项资金：只能用于地铁建设与改扩建（来自建设批次与债券），与实际可支配的流动资金分开显示
-      if (c.capex) {
-        const x = g.econ.capex || 0;
-        c.capex.el.style.display = '';
-        c.capex.v.textContent = U.fmtMoney(x);
-        c.capex.el.classList.toggle('dim', x < 0.5);
-      }
+      c.money.v.className = 'mv' + (f < 0 ? ' bad' : '');
+      // 建设专项：只能用于建设与拆迁（来自建设批次与债券），与可自由支配的流动资金分开显示
+      const x = g.econ.capex || 0;
+      c.money.capexRow.style.display = '';
+      c.money.capexV.textContent = U.fmtMoney(x);
+      c.money.capexRow.classList.toggle('zero', x < 0.5);
     }
     const tot = this._tot && this._totVer === g.city.version ? this._tot : (this._tot = g.city.totals(), this._totVer = g.city.version, this._tot);
     this.tweenNum(c.pop.v, this._popShown == null ? tot.pop : this._popShown, tot.pop, U.fmtPeople);
@@ -467,7 +479,7 @@
     this.fitHud();
     const top = this.stack[this.stack.length - 1];
     for (const k in c) {
-      const kind = (k === 'money' || k === 'capex' || k === 'econ') ? 'finance' : (k === 'date' ? 'date' : 'metric');
+      const kind = k === 'money' || k === 'econ' ? 'finance' : (k === 'date' ? 'date' : 'metric');
       let on = !!top && top.kind === kind && (kind !== 'metric' || top.id === k);
       if (on && kind === 'finance') on = (top.id === 'econ') === (k === 'econ');
       c[k].el.classList.toggle('on', on);
@@ -1023,7 +1035,7 @@
     const top = this.stack[this.stack.length - 1], open = !!top && !this.right.classList.contains('closed');
     if (key === 'date') this.openPage('date', null, { toggle: true, root: true });
     // 资金与经济：同一个面板的不同分页。面板已打开时再次点击同一入口收起，点击另一入口切换分页
-    else if (key === 'money' || key === 'capex' || key === 'econ') {
+    else if (key === 'money' || key === 'econ') {
       const want = key === 'econ' ? 'econ' : 'ov';
       if (open && top.kind === 'finance' && ((want === 'econ') === (top.id === 'econ'))) { this.closePanel(); return; }
       this.finTab = want;
