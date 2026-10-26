@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>线路面板 · 重设计原型 v1</title>
+<title>线路面板 · 重设计原型 v2</title>
 <style>
   :root {
     --panel: #151f2b; --panel2: #1b2634; --line: #26323f;
@@ -106,16 +106,23 @@
   .loadchart .hit { fill: transparent; cursor: crosshair; }
   .loadchart .hit:hover { fill: #ffffff0a; }
 
-  /* ---------- 车站列表 ---------- */
-  .stlist { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 6px; }
-  .strow { display: flex; align-items: center; gap: 7px; padding: 5px 4px; border-radius: 7px; cursor: pointer; font-size: 11.5px; }
-  .strow:hover { background: #ffffff08; }
-  .strow .dot { width: 7px; height: 7px; border-radius: 50%; border: 2px solid var(--lc); flex: none; }
-  .strow .dot.x { background: var(--lc); }
-  .strow .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .strow .pax { color: var(--text3); font-size: 10px; font-variant-numeric: tabular-nums; }
-  .strow .tr { font-size: 9.5px; color: var(--accent); border: 1px solid #1D9E7555; border-radius: 999px; padding: 0 5px; }
-  .strow .sz { font-size: 9.5px; color: var(--text3); }
+  /* ---------- 站序时间轴（横放，站名竖排） ---------- */
+  .tl { position: relative; margin-top: 10px; padding-top: 2px; border-top: 1px dashed var(--line); }
+  .tl-line { position: absolute; height: 3px; border-radius: 2px; background: var(--lc); z-index: 1; }
+  .tl-row { display: flex; align-items: flex-start; position: relative; z-index: 2; }
+  .tl-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; position: relative; cursor: pointer; }
+  .tl-col:hover .tl-bar { filter: brightness(1.25); }
+  .tl-col:hover .tl-name { color: var(--text); }
+  .tl-barslot { height: 46px; display: flex; align-items: flex-end; }
+  .tl-bar { width: 9px; border-radius: 2px 2px 0 0; background: var(--lc); opacity: .8; }
+  .tl-bar.hot { opacity: 1; }
+  .tl-node { width: 9px; height: 9px; border-radius: 50%; background: var(--panel); border: 2.5px solid var(--lc); margin: 3px 0 5px; flex: none; }
+  .tl-node.xf { background: var(--lc); }
+  /* 换乘分岔：从站点向右上方斜出，颜色取换乘线路色 */
+  /* 从站点中心向右上 45° 斜出，末端一个小圆点（换乘线路色） */
+  .tl-branch { position: absolute; left: 50%; top: 50%; width: 13px; height: 2.5px; border-radius: 2px; transform-origin: 0 50%; transform: rotate(-45deg); margin-top: -1.25px; z-index: 1; }
+  .tl-branch i { position: absolute; right: -2.5px; top: -2.25px; width: 7px; height: 7px; border-radius: 50%; background: inherit; }
+  .tl-name { writing-mode: vertical-rl; text-orientation: upright; height: 58px; font-size: 10.5px; line-height: 1.15; letter-spacing: .02em; color: var(--text2); white-space: nowrap; overflow: hidden; }
 
   /* ---------- 建设面板 ---------- */
   .bsec { margin-bottom: 14px; }
@@ -313,7 +320,10 @@
             </div>
             <div class="note">上半为上行车流、下半为下行；红色虚线是当前运力（发车 × 定员）。断面超过运力就是拥挤，需要加车、加长编组或修平行线。</div>
 
-            <div class="stlist" id="stList"></div>
+            <div class="tl" id="tl">
+              <div class="tl-line" id="tlLine"></div>
+              <div class="tl-row" id="tlRow"></div>
+            </div>
           </div>
         </section>
       </div>
@@ -322,12 +332,13 @@
 </div>
 
 <div class="spec">
-  <b>v1：按车站面板的同一套骨架做线路页</b>
+  <b>v2：站序改成横向时间轴，颜色可自定义</b>
   <ol>
+    <li><b>站序时间轴</b>：横向排站、站名竖排；每站上方一根柱表示日上车量（最高的实心），换乘站从站点向右上 45° 斜出一支，颜色取换乘线路色——像地铁线路图上的换乘标记。</li>
+    <li><b>自定义颜色</b>：内置 8 色之外，末尾的彩虹色块打开系统取色器，取到的颜色会同步到主线、柱状图与时间轴。</li>
     <li><b>左：建设</b>——名称与颜色、全线建设方式、选中区段、批量修改、拆除。</li>
-    <li><b>右上：经济</b>——年现金流一个数，票款/上盖/运营用一条堆叠条表示覆盖关系，再列总账。</li>
-    <li><b>右下：乘客</b>——断面客流双向柱（可悬停）、发车间隔与满载率、车站列表。</li>
-    <li>窄屏两页签（信息 / 建设），与车站面板一致。</li>
+    <li><b>右上：经济</b>——年现金流一个数，票款/上盖/缺口用一条堆叠条表示覆盖关系，再列总账。</li>
+    <li><b>右下：乘客</b>——断面客流双向柱（可悬停）、发车间隔与满载率、站序时间轴。</li>
   </ol>
 </div>
 
@@ -369,18 +380,31 @@
   /* ---------- 颜色 / 建设方式 ---------- */
   const COLORS = ['#2166cc', '#1D9E75', '#c02b2b', '#d99a00', '#7a4fd0', '#0e8f9e', '#8a6d3b', '#444c5a'];
   const sw = document.getElementById('swatches');
+  function pickColor(c, btn) {
+    document.documentElement.style.setProperty('--lc', c);
+    sw.querySelectorAll('button').forEach(function (x) { x.classList.remove('on'); });
+    if (btn) btn.classList.add('on');
+    drawChart(); drawTimeline();
+  }
   COLORS.forEach(function (c, i) {
     const b = document.createElement('button');
     b.style.background = c;
     if (i === 0) b.classList.add('on');
-    b.onclick = function () {
-      document.documentElement.style.setProperty('--lc', c);
-      sw.querySelectorAll('button').forEach(function (x) { x.classList.remove('on'); });
-      b.classList.add('on');
-      drawChart();
-    };
+    b.onclick = function () { pickColor(c, b); };
     sw.appendChild(b);
   });
+  // 自定义颜色：调色板取色（真实游戏里对应线路色可任意设定）
+  const custom = document.createElement('button');
+  custom.title = '自定义颜色';
+  custom.style.background = 'conic-gradient(from 0deg, #e74c3c, #f1c40f, #2ecc71, #3498db, #9b59b6, #e74c3c)';
+  const picker = document.createElement('input');
+  picker.type = 'color';
+  picker.value = '#2166cc';
+  picker.style.cssText = 'position:absolute;width:0;height:0;opacity:0;pointer-events:none';
+  custom.onclick = function () { picker.click(); };
+  picker.addEventListener('input', function () { custom.style.background = picker.value; pickColor(picker.value, custom); });
+  sw.appendChild(custom);
+  document.body.appendChild(picker);
   document.querySelectorAll('.seg').forEach(function (seg) {
     seg.querySelectorAll('button').forEach(function (b) {
       b.onclick = function () {
@@ -434,27 +458,45 @@
 
   /* ---------- 车站列表 ---------- */
   const ST = [
-    { n: '北京路', pax: 2.6, sz: '中型', tr: '' },
-    { n: '公园前', pax: 5.1, sz: '大型', tr: '换乘 1 号线' },
-    { n: '海珠广场', pax: 3.4, sz: '中型', tr: '换乘 6 号线' },
-    { n: '市二宫', pax: 2.2, sz: '中型', tr: '' },
-    { n: '江南西', pax: 2.9, sz: '中型', tr: '' },
-    { n: '昌岗', pax: 3.1, sz: '大型', tr: '换乘 8 号线' },
-    { n: '江泰路', pax: 2.1, sz: '小型', tr: '' },
+    { n: '北京路', pax: 2.6, sz: '中型' },
+    { n: '公园前', pax: 5.1, sz: '大型', tr: { line: '1 号线', color: '#d99a00' } },
+    { n: '海珠广场', pax: 3.4, sz: '中型', tr: { line: '6 号线', color: '#7a4fd0' } },
+    { n: '市二宫', pax: 2.2, sz: '中型' },
+    { n: '江南西', pax: 2.9, sz: '中型' },
+    { n: '昌岗', pax: 3.1, sz: '大型', tr: { line: '8 号线', color: '#0e8f9e' } },
+    { n: '江泰路', pax: 2.1, sz: '小型' },
   ];
-  const list = document.getElementById('stList');
-  ST.forEach(function (s, i) {
-    const row = document.createElement('div');
-    row.className = 'strow';
-    row.innerHTML = '<span class="dot' + (s.tr ? ' x' : '') + '"></span>' +
-      '<span class="nm">' + s.n + '</span>' +
-      (s.tr ? '<span class="tr">' + s.tr + '</span>' : '') +
-      '<span class="sz">' + s.sz + '</span>' +
-      '<span class="pax">' + s.pax.toFixed(1) + ' 万</span>';
-    row.addEventListener('mousemove', function (e) { showTip('日上车 ' + s.pax.toFixed(1) + ' 万人次 · ' + s.sz + '站' + (s.tr ? '<br>' + s.tr : ''), e.clientX, e.clientY); });
-    row.addEventListener('mouseleave', hideTip);
-    list.appendChild(row);
-  });
+  // 站序时间轴：横向排站、站名竖排；上方是每站日上车，换乘站向右上斜出一支（换乘线路色）
+  const maxPax = Math.max.apply(null, ST.map(function (s) { return s.pax; }));
+  function drawTimeline() {
+    const row = document.getElementById('tlRow');
+    const line = document.getElementById('tlLine');
+    row.innerHTML = '';
+    ST.forEach(function (s) {
+      const col = document.createElement('div');
+      col.className = 'tl-col';
+      const h = Math.max(4, Math.round(s.pax / maxPax * 44));
+      col.innerHTML =
+        '<div class="tl-barslot"><i class="tl-bar' + (s.pax >= maxPax * 0.9 ? ' hot' : '') + '" style="height:' + h + 'px"></i></div>' +
+        '<div style="position:relative">' +
+          '<div class="tl-node' + (s.tr ? ' xf' : '') + '"></div>' +
+          (s.tr ? '<div class="tl-branch" style="background:' + s.tr.color + '"><i></i></div>' : '') +
+        '</div>' +
+        '<div class="tl-name">' + s.n + '</div>';
+      col.addEventListener('mousemove', function (e) {
+        showTip('<b>' + s.n + '</b>' + (s.tr ? '（换乘 ' + s.tr.line + '）' : '') + '<br>' +
+          '日上车 ' + s.pax.toFixed(1) + ' 万人次 · ' + s.sz + '站', e.clientX, e.clientY);
+      });
+      col.addEventListener('mouseleave', hideTip);
+      row.appendChild(col);
+    });
+    // 主线：两端各让出半个列宽，避免线头伸出首末站
+    const n = ST.length;
+    line.style.left = (50 / n) + '%';
+    line.style.right = (50 / n) + '%';
+    line.style.top = (46 + 3 + 4.5 - 1.5) + 'px';   // 46 柱高 + 3 上边距 + 节点半径 - 线半高
+  }
+  drawTimeline();
 
   window.addEventListener('resize', drawChart);
   drawChart();
