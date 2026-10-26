@@ -509,6 +509,14 @@ table.tbl th:first-child, table.tbl td:first-child { text-align: left; }
 .preset .badge .ico { width: 15px; height: 15px; }
 .preset b { font-size: 13px; }
 .preset small { font-size: 10.5px; line-height: 1.5; color: var(--muted); }
+.setup-tune { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.tune-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; margin-top: 6px; }
+.tune-row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; }
+.tune-row .tn { flex: none; width: 92px; color: var(--muted); }
+.tune-row input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.tune-row .tv { flex: none; width: 46px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 650; color: var(--text); }
+@media (max-width: 720px) { .tune-grid { grid-template-columns: 1fr; } }
+
 .setup-sum { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; padding: 10px 12px; background: var(--surface-2); border-radius: 11px; font-size: 11.5px; }
 .setup-sum span { display: inline-flex; align-items: baseline; gap: 5px; }
 .setup-sum em { font-style: normal; color: var(--muted); }

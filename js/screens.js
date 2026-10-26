@@ -234,16 +234,19 @@
     // 城市经济（macro）是资金类系统的前置：没有它就没有拨款与失败判定
     const ecoOk = !mp.tutorial && !!mp.cfg.macro;
     if (!this.setup || this.setup.map !== mapId) {
-      this.setup = { map: mapId, preset: ecoOk ? 'normal' : 'sandbox', sys: {}, adv: false };
+      this.setup = { map: mapId, preset: ecoOk ? 'normal' : 'sandbox', sys: {}, tune: {}, adv: false };
     }
     const st = this.setup;
     if (!ecoOk) st.preset = 'sandbox';
-    const caps = function () { return CM.capsFor(st.preset, st.sys); };
+    if (!st.tune) st.tune = {};
+    const caps = function () { return CM.capsFor(st.preset, st.sys, st.tune); };
 
     const start = function () {
       snd('build');
-      CM.newGame({ map: mapId, preset: st.preset, systems: Object.keys(st.sys).length ? st.sys : null,
-        name: CM.presetName(st.preset) + ' · ' + (mp.data.city || mp.name) + ' ' + y0 });
+      CM.newGame({ map: mapId, preset: st.preset,
+        systems: Object.keys(st.sys).length ? st.sys : null,
+        tune: Object.keys(st.tune).length ? st.tune : null,
+        name: CM.presetName(st.preset) + (Object.keys(st.tune).length ? '（自定义）' : '') + ' · ' + (mp.data.city || mp.name) + ' ' + y0 });
     };
 
     const card = h('div', { class: 'card setup' });
@@ -269,7 +272,7 @@
         grid.appendChild(h('button', {
           class: 'preset' + (on ? ' on' : '') + (blocked ? ' off' : ''),
           disabled: blocked ? true : null,
-          onclick: function () { if (blocked) return; st.preset = id; st.sys = {}; snd('soft'); drawAll(); },
+          onclick: function () { if (blocked) return; st.preset = id; st.sys = {}; st.tune = {}; snd('soft'); drawAll(); },
         },
           h('span', { class: 'badge ' + P.badge }, ic(P.icon)),
           h('b', null, P.name),
@@ -315,6 +318,40 @@
       advBox.appendChild(box);
     };
 
+    /* ---- 数值微调：预设只是把滑条摆好，玩家可以自己拖 ---- */
+    const TUNE_DEFS = [
+      { k: 'subsidyRate', name: '运营补贴率', min: 0, max: 1, step: 0.05, fmt: function (v) { return Math.round(v * 100) + '%'; } },
+      { k: 'fundsMul', name: '初始资金', min: 0.5, max: 2, step: 0.05, fmt: function (v) { return '×' + v.toFixed(2); } },
+      { k: 'debtMul', name: '负债上限', min: 0.5, max: 2, step: 0.05, fmt: function (v) { return '×' + v.toFixed(2); } },
+      { k: 'bondMul', name: '债券额度', min: 0.5, max: 2, step: 0.05, fmt: function (v) { return '×' + v.toFixed(2); } },
+      { k: 'negMonths', name: '负余额月数上限', min: 6, max: 48, step: 1, fmt: function (v) { return v + ' 月'; } },
+    ];
+    const tuneBox = h('div', { class: 'setup-tune' });
+    const drawTune = function () {
+      tuneBox.innerHTML = '';
+      const c = caps(), P = CM.PRESETS[st.preset] || {};
+      const head = h('div', { class: 'setup-advh', style: { cursor: 'default' } },
+        h('b', null, '数值微调'),
+        h('span', { class: 'tiny muted' }, Object.keys(st.tune).length ? '已自定义（点预设可还原）' : '拖动即在预设基础上覆盖'));
+      tuneBox.appendChild(head);
+      const grid = h('div', { class: 'tune-grid' });
+      for (const d of TUNE_DEFS) {
+        const val = (c.tuning && typeof c.tuning[d.k] === 'number') ? c.tuning[d.k] : (P.tuning && P.tuning[d.k]);
+        if (typeof val !== 'number') continue;
+        const out = h('b', { class: 'tv' }, d.fmt(val));
+        const inp = h('input', { type: 'range', min: d.min, max: d.max, step: d.step, value: val, 'aria-label': d.name });
+        inp.addEventListener('input', function () {
+          st.tune[d.k] = +inp.value;
+          out.textContent = d.fmt(+inp.value);
+          drawSum();                                  // 摘要实时跟手
+          if (head.lastChild) head.lastChild.textContent = '已自定义（点预设可还原）';
+        });
+        inp.addEventListener('change', function () { drawAll(); });   // 松手后统一重绘（重建滑条）
+        grid.appendChild(h('div', { class: 'tune-row' }, h('span', { class: 'tn' }, d.name), inp, out));
+      }
+      tuneBox.appendChild(grid);
+    };
+
     /* ---- 影响摘要：把开关翻译成一句话 ---- */
     const drawSum = function () {
       sumBox.innerHTML = '';
@@ -340,10 +377,10 @@
       h('button', { class: 'btn primary startgo', onclick: start }, ic('play'), goLabel));
 
     const drawAll = function () {
-      drawPresets(); drawSum(); drawAdv();
+      drawPresets(); drawTune(); drawSum(); drawAdv();
       goLabel.textContent = '开始游戏 · ' + CM.presetName(st.preset);
     };
-    card.append(grid, sumBox, advBox, foot);
+    card.append(grid, tuneBox, sumBox, advBox, foot);
     drawAll();
 
     this.openScreen(card, function () { self.showMapSelect(mapId); }, 'setup-screen');

@@ -493,11 +493,13 @@
   };
   // 由预设 + 玩家微调算出 caps。结构必须与旧 CM.MODES 的条目一致（budget/land/… ），
   // 这样 26 处 econ.caps.* 的调用点一个字都不用改。
-  CM.capsFor = function (presetId, overrides) {
+  // tune：玩家自己拖的数值（覆盖预设的 tuning）；不传就完全按预设
+  CM.capsFor = function (presetId, overrides, tune) {
     const P = CM.PRESETS[presetId] || CM.PRESETS.normal;
     const off = {};
     for (const id of (P.off || [])) off[id] = true;
-    const caps = { preset: P.id, tuning: P.tuning || {} };
+    const tuning = Object.assign({}, P.tuning || {}, tune || {});
+    const caps = { preset: P.id, tuning: tuning };
     const set = function (s) {
       const want = s.locked ? true : !off[s.id];
       caps[s.id] = want && (s.impl === false ? false : true);
@@ -513,7 +515,7 @@
     }
     for (const s of CM.SYSTEMS) if (s.locked) caps[s.id] = true;
     caps.grants = !!caps.budget;          // 兼容旧字段
-    caps.subsidyRate = (P.tuning && typeof P.tuning.subsidyRate === 'number') ? P.tuning.subsidyRate : null;
+    caps.subsidyRate = (typeof tuning.subsidyRate === 'number') ? tuning.subsidyRate : null;
     return caps;
   };
   CM.presetName = function (id) { const P = CM.PRESETS[id]; return P ? P.name : '自定义'; };

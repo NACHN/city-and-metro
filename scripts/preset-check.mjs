@@ -132,7 +132,14 @@ ok(gR.econ.canSetFare(1993, 2, fare0 + 1).ok === true, '真实档：满三年后
 const gFree = CM.Game.create({ map: 'gz', preset: 'normal', name: 'chk' });
 ok(gFree.econ.canSetFare(1990, 2, fare0 + 5).ok === true, '非管制档：票价随意调');
 
-// 5) TOD 与地价的依赖
+// 5) 数值滑条：在预设之上覆盖 tuning
+const capsTuned = CM.capsFor('normal', null, { subsidyRate: 0.2, fundsMul: 0.6 });
+ok(capsTuned.subsidyRate === 0.2, '滑条覆盖补贴率（0.2）');
+ok(capsTuned.tuning.fundsMul === 0.6 && capsTuned.tuning.bondMul === 1, '滑条只覆盖拖过的那几项');
+const gT = CM.Game.create({ map: 'gz', preset: 'normal', tune: { subsidyRate: 0.2 }, name: 'chk' });
+ok(Math.abs(gT.econ.subsidyRate() - 0.2) < 1e-9, '开局时把自定义补贴率带进经济系统');
+
+// 6) TOD 与地价的依赖
 ok(CM.capsFor('normal').tod === false && CM.capsFor('normal').land === true, '一般档：有地价、无 TOD 分成');
 ok(CM.capsFor('real').tod === true, '真实档：TOD 分成打开');
 
