@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>线路面板 · 重设计原型 v2</title>
+<title>线路面板 · 重设计原型 v3</title>
 <style>
   :root {
     --panel: #151f2b; --panel2: #1b2634; --line: #26323f;
@@ -107,22 +107,27 @@
   .loadchart .hit:hover { fill: #ffffff0a; }
 
   /* ---------- 站序时间轴（横放，站名竖排） ---------- */
-  .tl { position: relative; margin-top: 10px; padding-top: 2px; border-top: 1px dashed var(--line); }
+  /* ---------- 站序时间轴（横放、站多可左右滑、站名竖排） ---------- */
+  .tl { margin-top: 10px; padding-top: 2px; border-top: 1px dashed var(--line); }
+  .tl-scroll { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; -webkit-overflow-scrolling: touch; }
+  .tl-scroll::-webkit-scrollbar { height: 5px; }
+  .tl-scroll::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+  .tl-inner { position: relative; width: max-content; min-width: 100%; padding: 0 2px; }
   .tl-line { position: absolute; height: 3px; border-radius: 2px; background: var(--lc); z-index: 1; }
   .tl-row { display: flex; align-items: flex-start; position: relative; z-index: 2; }
-  .tl-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; position: relative; cursor: pointer; }
-  .tl-col:hover .tl-bar { filter: brightness(1.25); }
+  .tl-col { flex: 1 0 44px; display: flex; flex-direction: column; align-items: center; position: relative; cursor: pointer; }
+  .tl-col:hover .tl-bar { filter: brightness(1.3); }
   .tl-col:hover .tl-name { color: var(--text); }
-  .tl-barslot { height: 46px; display: flex; align-items: flex-end; }
-  .tl-bar { width: 9px; border-radius: 2px 2px 0 0; background: var(--lc); opacity: .8; }
+  .tl-barslot { height: 38px; display: flex; align-items: flex-end; }
+  .tl-bar { width: 7px; border-radius: 2px 2px 0 0; background: var(--lc); opacity: .78; }
   .tl-bar.hot { opacity: 1; }
-  .tl-node { width: 9px; height: 9px; border-radius: 50%; background: var(--panel); border: 2.5px solid var(--lc); margin: 3px 0 5px; flex: none; }
+  /* 换乘分岔：从站点**正上**方竖直伸出，多条换乘并列排开 */
+  .tl-stubzone { position: relative; height: 12px; width: 100%; }
+  .tl-stub { position: absolute; bottom: 0; width: 2.5px; height: 11px; border-radius: 1px; transform: translateX(-50%); }
+  .tl-node { width: 9px; height: 9px; border-radius: 50%; background: var(--panel); border: 2.5px solid var(--lc); flex: none; }
   .tl-node.xf { background: var(--lc); }
-  /* 换乘分岔：从站点向右上方斜出，颜色取换乘线路色 */
-  /* 从站点中心向右上 45° 斜出，末端一个小圆点（换乘线路色） */
-  .tl-branch { position: absolute; left: 50%; top: 50%; width: 13px; height: 2.5px; border-radius: 2px; transform-origin: 0 50%; transform: rotate(-45deg); margin-top: -1.25px; z-index: 1; }
-  .tl-branch i { position: absolute; right: -2.5px; top: -2.25px; width: 7px; height: 7px; border-radius: 50%; background: inherit; }
-  .tl-name { writing-mode: vertical-rl; text-orientation: upright; height: 58px; font-size: 10.5px; line-height: 1.15; letter-spacing: .02em; color: var(--text2); white-space: nowrap; overflow: hidden; }
+  .tl-name { writing-mode: vertical-rl; text-orientation: upright; height: 54px; margin-top: 5px; font-size: 10.5px; line-height: 1.15; letter-spacing: .02em; color: var(--text2); white-space: nowrap; overflow: hidden; }
+  .tl-more { font-size: 9.5px; color: var(--text3); text-align: center; margin-top: 4px; }
 
   /* ---------- 建设面板 ---------- */
   .bsec { margin-bottom: 14px; }
@@ -169,6 +174,9 @@
 <div class="demobar">
   <button id="btnWide" class="on">宽屏（两栏）</button>
   <button id="btnNarrow">窄屏（切页）</button>
+  <span style="width:1px;height:14px;background:var(--line)"></span>
+  <button id="btnFew" class="on">7 站</button>
+  <button id="btnMany">16 站（左右滑动）</button>
   <span style="opacity:.7">左建设 · 右信息（经济在上、乘客在下）</span>
 </div>
 
@@ -321,8 +329,13 @@
             <div class="note">上半为上行车流、下半为下行；红色虚线是当前运力（发车 × 定员）。断面超过运力就是拥挤，需要加车、加长编组或修平行线。</div>
 
             <div class="tl" id="tl">
-              <div class="tl-line" id="tlLine"></div>
-              <div class="tl-row" id="tlRow"></div>
+              <div class="tl-scroll" id="tlScroll">
+                <div class="tl-inner" id="tlInner">
+                  <div class="tl-line" id="tlLine"></div>
+                  <div class="tl-row" id="tlRow"></div>
+                </div>
+              </div>
+              <div class="tl-more" id="tlMore" style="display:none">← 左右滑动查看全部车站 →</div>
             </div>
           </div>
         </section>
@@ -332,10 +345,11 @@
 </div>
 
 <div class="spec">
-  <b>v2：站序改成横向时间轴，颜色可自定义</b>
+  <b>v3：站多可左右滑动，换乘竖直分岔</b>
   <ol>
     <li><b>站序时间轴</b>：横向排站、站名竖排；每站上方一根柱表示日上车量（最高的实心），换乘站从站点向右上 45° 斜出一支，颜色取换乘线路色——像地铁线路图上的换乘标记。</li>
-    <li><b>自定义颜色</b>：内置 8 色之外，末尾的彩虹色块打开系统取色器，取到的颜色会同步到主线、柱状图与时间轴。</li>
+    <li><b>自定义颜色</b>：内置 8 色之外，末尾的彩虹色块打开系统取色器；正式版里这是<b>全局能力</b>——任何线路都能设任意颜色，图例、地图、面板都跟着变。</li>
+    <li><b>站多时左右滑动</b>：每站最窄 44 px，放不下就横向滚动（顶部按钮可切 7 站 / 16 站对比）。换乘分岔改成<b>竖直向上</b>，多条换乘并列排开，不会互相压住。</li>
     <li><b>左：建设</b>——名称与颜色、全线建设方式、选中区段、批量修改、拆除。</li>
     <li><b>右上：经济</b>——年现金流一个数，票款/上盖/缺口用一条堆叠条表示覆盖关系，再列总账。</li>
     <li><b>右下：乘客</b>——断面客流双向柱（可悬停）、发车间隔与满载率、站序时间轴。</li>
@@ -457,48 +471,72 @@
   }
 
   /* ---------- 车站列表 ---------- */
-  const ST = [
+  const ST_SHORT = [
     { n: '北京路', pax: 2.6, sz: '中型' },
-    { n: '公园前', pax: 5.1, sz: '大型', tr: { line: '1 号线', color: '#d99a00' } },
-    { n: '海珠广场', pax: 3.4, sz: '中型', tr: { line: '6 号线', color: '#7a4fd0' } },
+    { n: '公园前', pax: 5.1, sz: '大型', tr: [{ line: '1 号线', color: '#d99a00' }, { line: '6 号线', color: '#7a4fd0' }] },
+    { n: '海珠广场', pax: 3.4, sz: '中型', tr: [{ line: '6 号线', color: '#7a4fd0' }] },
     { n: '市二宫', pax: 2.2, sz: '中型' },
     { n: '江南西', pax: 2.9, sz: '中型' },
-    { n: '昌岗', pax: 3.1, sz: '大型', tr: { line: '8 号线', color: '#0e8f9e' } },
+    { n: '昌岗', pax: 3.1, sz: '大型', tr: [{ line: '8 号线', color: '#0e8f9e' }] },
     { n: '江泰路', pax: 2.1, sz: '小型' },
   ];
+  // 长线路：站多到一屏放不下，用来看横向滚动与分岔并列
+  const ST_LONG = ST_SHORT.concat([
+    { n: '东晓南', pax: 1.8, sz: '中型' },
+    { n: '南洲', pax: 2.4, sz: '中型', tr: [{ line: '广佛线', color: '#c02b2b' }] },
+    { n: '洛溪', pax: 1.5, sz: '小型' },
+    { n: '南浦', pax: 1.2, sz: '小型' },
+    { n: '会江', pax: 0.9, sz: '小型' },
+    { n: '石壁', pax: 0.7, sz: '小型' },
+    { n: '广州南站', pax: 4.2, sz: '大型', tr: [{ line: '7 号线', color: '#1D9E75' }, { line: '22 号线', color: '#8a6d3b' }] },
+    { n: '韦涌', pax: 0.5, sz: '小型' },
+    { n: '陈头岗', pax: 0.4, sz: '小型' },
+  ]);
+  let ST = ST_SHORT;
   // 站序时间轴：横向排站、站名竖排；上方是每站日上车，换乘站向右上斜出一支（换乘线路色）
-  const maxPax = Math.max.apply(null, ST.map(function (s) { return s.pax; }));
   function drawTimeline() {
     const row = document.getElementById('tlRow');
     const line = document.getElementById('tlLine');
+    const maxPax = Math.max.apply(null, ST.map(function (s) { return s.pax; }));
     row.innerHTML = '';
     ST.forEach(function (s) {
       const col = document.createElement('div');
       col.className = 'tl-col';
-      const h = Math.max(4, Math.round(s.pax / maxPax * 44));
+      const h = Math.max(3, Math.round(s.pax / maxPax * 36));
+      // 换乘：竖直伸出的短线，多条并列（以站点为中心左右排开）
+      const trs = s.tr || [];
+      const stubs = trs.map(function (t, i) {
+        const off = trs.length === 1 ? 0 : (i - (trs.length - 1) / 2) * 6;
+        return '<i class="tl-stub" style="left:calc(50% + ' + off + 'px);background:' + t.color + '"></i>';
+      }).join('');
       col.innerHTML =
         '<div class="tl-barslot"><i class="tl-bar' + (s.pax >= maxPax * 0.9 ? ' hot' : '') + '" style="height:' + h + 'px"></i></div>' +
-        '<div style="position:relative">' +
-          '<div class="tl-node' + (s.tr ? ' xf' : '') + '"></div>' +
-          (s.tr ? '<div class="tl-branch" style="background:' + s.tr.color + '"><i></i></div>' : '') +
-        '</div>' +
+        '<div class="tl-stubzone">' + stubs + '</div>' +
+        '<div class="tl-node' + (trs.length ? ' xf' : '') + '"></div>' +
         '<div class="tl-name">' + s.n + '</div>';
       col.addEventListener('mousemove', function (e) {
-        showTip('<b>' + s.n + '</b>' + (s.tr ? '（换乘 ' + s.tr.line + '）' : '') + '<br>' +
+        showTip('<b>' + s.n + '</b>' + (trs.length ? '（换乘 ' + trs.map(function (t) { return t.line; }).join(' / ') + '）' : '') + '<br>' +
           '日上车 ' + s.pax.toFixed(1) + ' 万人次 · ' + s.sz + '站', e.clientX, e.clientY);
       });
       col.addEventListener('mouseleave', hideTip);
       row.appendChild(col);
     });
     // 主线：两端各让出半个列宽，避免线头伸出首末站
+    // 主线两端各让出半个列宽；柱区 38 + 分岔区 12 + 节点半径 4.5 − 线半高 1.5
     const n = ST.length;
     line.style.left = (50 / n) + '%';
     line.style.right = (50 / n) + '%';
-    line.style.top = (46 + 3 + 4.5 - 1.5) + 'px';   // 46 柱高 + 3 上边距 + 节点半径 - 线半高
+    line.style.top = (38 + 12 + 4.5 - 1.5) + 'px';
+    // 站太多、放不下时提示可以左右滑动
+    const sc = document.getElementById('tlScroll');
+    document.getElementById('tlMore').style.display = (sc.scrollWidth > sc.clientWidth + 2) ? '' : 'none';
   }
   drawTimeline();
 
-  window.addEventListener('resize', drawChart);
+  document.getElementById('btnFew').onclick = function () { ST = ST_SHORT; this.classList.add('on'); document.getElementById('btnMany').classList.remove('on'); drawTimeline(); };
+  document.getElementById('btnMany').onclick = function () { ST = ST_LONG; this.classList.add('on'); document.getElementById('btnFew').classList.remove('on'); drawTimeline(); };
+
+  window.addEventListener('resize', function () { drawChart(); drawTimeline(); });
   drawChart();
 })();
 </script>
