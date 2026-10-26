@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>线路面板 · 重设计原型 v3</title>
+<title>线路面板 · 重设计原型 v4</title>
 <style>
   :root {
     --panel: #151f2b; --panel2: #1b2634; --line: #26323f;
@@ -116,11 +116,11 @@
   .tl-line { position: absolute; height: 3px; border-radius: 2px; background: var(--lc); z-index: 1; }
   .tl-row { display: flex; align-items: flex-start; position: relative; z-index: 2; }
   .tl-col { flex: 1 0 44px; display: flex; flex-direction: column; align-items: center; position: relative; cursor: pointer; }
-  .tl-col:hover .tl-bar { filter: brightness(1.3); }
+  .tl-col:hover .tl-pax { color: var(--text); }
   .tl-col:hover .tl-name { color: var(--text); }
-  .tl-barslot { height: 38px; display: flex; align-items: flex-end; }
-  .tl-bar { width: 7px; border-radius: 2px 2px 0 0; background: var(--lc); opacity: .78; }
-  .tl-bar.hot { opacity: 1; }
+  .tl-paxrow { height: 15px; display: flex; align-items: flex-end; }
+  .tl-pax { font-size: 10px; font-weight: 600; color: var(--text3); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+  .tl-pax.hot { color: var(--text); }
   /* 换乘分岔：从站点**正上**方竖直伸出，多条换乘并列排开 */
   .tl-stubzone { position: relative; height: 12px; width: 100%; }
   .tl-stub { position: absolute; bottom: 0; width: 2.5px; height: 11px; border-radius: 1px; transform: translateX(-50%); }
@@ -128,6 +128,7 @@
   .tl-node.xf { background: var(--lc); }
   .tl-name { writing-mode: vertical-rl; text-orientation: upright; height: 54px; margin-top: 5px; font-size: 10.5px; line-height: 1.15; letter-spacing: .02em; color: var(--text2); white-space: nowrap; overflow: hidden; }
   .tl-more { font-size: 9.5px; color: var(--text3); text-align: center; margin-top: 4px; }
+  .tl-cap { font-size: 9.5px; color: var(--text3); margin-bottom: 4px; letter-spacing: .02em; }
 
   /* ---------- 建设面板 ---------- */
   .bsec { margin-bottom: 14px; }
@@ -326,9 +327,10 @@
               <svg id="loadSvg" viewBox="0 0 360 108" preserveAspectRatio="none"></svg>
               <div class="lab"><span>北京路</span><span>公园前</span><span>海珠广场</span><span>江南西</span></div>
             </div>
-            <div class="note">上半为上行车流、下半为下行；红色虚线是当前运力（发车 × 定员）。断面超过运力就是拥挤，需要加车、加长编组或修平行线。</div>
+            <div class="note">实色 = 当前时段，背后半透明 = <b>全日最大断面</b>（不用等到高峰就能看到峰值）；红色虚线是当前运力（发车 × 定员）。半透明超过虚线就说明高峰会挤，需要加车、加长编组或修平行线。</div>
 
             <div class="tl" id="tl">
+              <div class="tl-cap">日上车 · 万人次</div>
               <div class="tl-scroll" id="tlScroll">
                 <div class="tl-inner" id="tlInner">
                   <div class="tl-line" id="tlLine"></div>
@@ -345,9 +347,10 @@
 </div>
 
 <div class="spec">
-  <b>v3：站多可左右滑动，换乘竖直分岔</b>
+  <b>v4：站上数字替代柱，断面图背后叠全日最大</b>
   <ol>
-    <li><b>站序时间轴</b>：横向排站、站名竖排；每站上方一根柱表示日上车量（最高的实心），换乘站从站点向右上 45° 斜出一支，颜色取换乘线路色——像地铁线路图上的换乘标记。</li>
+    <li><b>站序时间轴</b>：横向排站、站名竖排；每站上方直接写<b>日上车</b>（万人次，最高的一站高亮），换乘站从站点竖直向上伸出短线，多条换乘并列排开，颜色取换乘线路色。</li>
+    <li><b>断面图叠了「全日最大」</b>：实色是当前时段，背后半透明是同一天的最大断面——不用把时间拨到高峰也知道峰值在哪一段。</li>
     <li><b>自定义颜色</b>：内置 8 色之外，末尾的彩虹色块打开系统取色器；正式版里这是<b>全局能力</b>——任何线路都能设任意颜色，图例、地图、面板都跟着变。</li>
     <li><b>站多时左右滑动</b>：每站最窄 44 px，放不下就横向滚动（顶部按钮可切 7 站 / 16 站对比）。换乘分岔改成<b>竖直向上</b>，多条换乘并列排开，不会互相压住。</li>
     <li><b>左：建设</b>——名称与颜色、全线建设方式、选中区段、批量修改、拆除。</li>
@@ -430,21 +433,29 @@
 
   /* ---------- 断面客流 ---------- */
   // 6 个区间：上行（向右）/ 下行（向左）；单位：万人次/小时
+  // up / dn = 当前时段；maxUp / maxDn = 全日最大断面（画在背后的半透明层）
   const SEC = [
-    { a: '北京路', b: '公园前', up: 0.72, dn: 0.58, len: 1.42 },
-    { a: '公园前', b: '海珠广场', up: 1.28, dn: 1.02, len: 1.24 },
-    { a: '海珠广场', b: '市二宫', up: 1.42, dn: 1.18, len: 1.36 },
-    { a: '市二宫', b: '江南西', up: 1.21, dn: 1.05, len: 1.18 },
-    { a: '江南西', b: '昌岗', up: 0.93, dn: 0.88, len: 1.55 },
-    { a: '昌岗', b: '江泰路', up: 0.61, dn: 0.54, len: 1.85 },
+    { a: '北京路', b: '公园前', up: 0.72, dn: 0.58, maxUp: 0.94, maxDn: 0.76, len: 1.42 },
+    { a: '公园前', b: '海珠广场', up: 1.28, dn: 1.02, maxUp: 1.69, maxDn: 1.34, len: 1.24 },
+    { a: '海珠广场', b: '市二宫', up: 1.42, dn: 1.18, maxUp: 1.83, maxDn: 1.52, len: 1.36 },
+    { a: '市二宫', b: '江南西', up: 1.21, dn: 1.05, maxUp: 1.58, maxDn: 1.37, len: 1.18 },
+    { a: '江南西', b: '昌岗', up: 0.93, dn: 0.88, maxUp: 1.22, maxDn: 1.15, len: 1.55 },
+    { a: '昌岗', b: '江泰路', up: 0.61, dn: 0.54, maxUp: 0.82, maxDn: 0.71, len: 1.85 },
   ];
   const CAP = 1.65;                     // 单向运力（万人次/小时）
 
   function drawChart() {
     const svg = document.getElementById('loadSvg');
     const W = 360, H = 108, mid = H / 2, n = SEC.length, bw = W / n;
-    const mx = Math.max(CAP, ...SEC.map(function (s) { return Math.max(s.up, s.dn); })) * 1.05;
+    const mx = Math.max(CAP, ...SEC.map(function (s) { return Math.max(s.up, s.dn, s.maxUp, s.maxDn); })) * 1.05;
     let out = '';
+    // 背后的半透明层：全日最大断面（不用等到高峰时段才看得见）
+    const hMax = function (v) { return v / mx * (mid - 6); };
+    SEC.forEach(function (s, k) {
+      const xu = k * bw + 3, wu = bw - 6;
+      out += '<rect x="' + xu + '" y="' + (mid - hMax(s.maxUp)) + '" width="' + wu + '" height="' + hMax(s.maxUp) + '" rx="2" fill="var(--lc)" opacity=".16"/>';
+      out += '<rect x="' + xu + '" y="' + mid + '" width="' + wu + '" height="' + hMax(s.maxDn) + '" rx="2" fill="var(--lc)" opacity=".1"/>';
+    });
     // 运力线
     const cy = CAP / mx * (mid - 6);
     out += '<line x1="0" y1="' + (mid - cy) + '" x2="' + W + '" y2="' + (mid - cy) + '" stroke="#D4537E" stroke-width="1" stroke-dasharray="4 3" opacity=".8"/>';
@@ -461,10 +472,11 @@
     svg.querySelectorAll('.hit').forEach(function (el) {
       el.addEventListener('mousemove', function (e) {
         const s = SEC[+el.dataset.k];
-        const util = s.up / CAP;
+        const util = s.up / CAP, peak = s.maxUp / CAP;
         showTip('<b>' + s.a + ' → ' + s.b + '</b>（' + s.len.toFixed(2) + ' km）<br>' +
-          '上行 ' + s.up.toFixed(2) + ' 万/时 · 下行 ' + s.dn.toFixed(2) + ' 万/时<br>' +
-          '满载率 ' + Math.round(util * 100) + '%（运力 ' + CAP.toFixed(2) + ' 万/时）', e.clientX, e.clientY);
+          '当前 上行 ' + s.up.toFixed(2) + ' · 下行 ' + s.dn.toFixed(2) + ' 万/时<br>' +
+          '全日最大 ' + s.maxUp.toFixed(2) + ' 万/时（满载 ' + Math.round(peak * 100) + '%）<br>' +
+          '运力 ' + CAP.toFixed(2) + ' 万/时', e.clientX, e.clientY);
       });
       el.addEventListener('mouseleave', hideTip);
     });
@@ -502,7 +514,6 @@
     ST.forEach(function (s) {
       const col = document.createElement('div');
       col.className = 'tl-col';
-      const h = Math.max(3, Math.round(s.pax / maxPax * 36));
       // 换乘：竖直伸出的短线，多条并列（以站点为中心左右排开）
       const trs = s.tr || [];
       const stubs = trs.map(function (t, i) {
@@ -510,7 +521,7 @@
         return '<i class="tl-stub" style="left:calc(50% + ' + off + 'px);background:' + t.color + '"></i>';
       }).join('');
       col.innerHTML =
-        '<div class="tl-barslot"><i class="tl-bar' + (s.pax >= maxPax * 0.9 ? ' hot' : '') + '" style="height:' + h + 'px"></i></div>' +
+        '<div class="tl-paxrow"><span class="tl-pax' + (s.pax >= maxPax * 0.9 ? ' hot' : '') + '">' + s.pax.toFixed(1) + '</span></div>' +
         '<div class="tl-stubzone">' + stubs + '</div>' +
         '<div class="tl-node' + (trs.length ? ' xf' : '') + '"></div>' +
         '<div class="tl-name">' + s.n + '</div>';
@@ -522,11 +533,11 @@
       row.appendChild(col);
     });
     // 主线：两端各让出半个列宽，避免线头伸出首末站
-    // 主线两端各让出半个列宽；柱区 38 + 分岔区 12 + 节点半径 4.5 − 线半高 1.5
+    // 主线两端各让出半个列宽；数字行 15 + 分岔区 12 + 节点半径 4.5 − 线半高 1.5
     const n = ST.length;
     line.style.left = (50 / n) + '%';
     line.style.right = (50 / n) + '%';
-    line.style.top = (38 + 12 + 4.5 - 1.5) + 'px';
+    line.style.top = (15 + 12 + 4.5 - 1.5) + 'px';
     // 站太多、放不下时提示可以左右滑动
     const sc = document.getElementById('tlScroll');
     document.getElementById('tlMore').style.display = (sc.scrollWidth > sc.clientWidth + 2) ? '' : 'none';
