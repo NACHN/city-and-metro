@@ -9,9 +9,12 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const id = process.argv[2] || 'gz2';
 const sb = { console: { log() {}, warn() {}, error() {} } };
 sb.window = sb; vm.createContext(sb);
-for (const f of ['js/util.js', 'js/config.js', 'js/geo.js', 'js/geo_' + id + '.js']) {
+const parked = path.join(root, 'maps', id, 'parked', 'geo_' + id + '.js');
+for (const f of ['js/util.js', 'js/config.js', 'js/geo.js']) {
   vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), sb, { filename: f });
 }
+const geoFile = fs.existsSync(path.join(root, 'js/geo_' + id + '.js')) ? path.join(root, 'js/geo_' + id + '.js') : parked;
+vm.runInContext(fs.readFileSync(geoFile, 'utf8'), sb, { filename: geoFile });
 const CM = sb.CM;
 CM.CFG.W = 240; CM.CFG.H = 192;
 CM.GEO = CM.GEOS[id];

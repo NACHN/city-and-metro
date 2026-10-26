@@ -13,13 +13,18 @@ const root = path.resolve(HERE, '..');
 const mapId = process.argv[2] || 'gz2';
 const out = process.argv[3] || path.join(HERE, '_preview_' + mapId + '.ppm');
 
-const FILES = ['js/util.js', 'js/config.js', 'js/manifest.js', 'js/geo_gz.js', 'js/geo_gz2.js', 'js/geo.js',
-  'js/data_gz.js', 'js/data_gz2.js', 'js/data_tutorial.js', 'js/data_hz.js', 'js/data_hk.js', 'js/data_tk.js', 'js/data_tp.js',
+// 大图（gz2）已停放，生成物在 maps/gz2/parked/；启用后会自动优先用 js/ 里的那份
+const PARKED = (rel) => {
+  const parked = path.join(root, 'maps', 'gz2', 'parked', path.basename(rel));
+  return fs.existsSync(path.join(root, rel)) ? path.join(root, rel) : parked;
+};
+const FILES = ['js/util.js', 'js/config.js', 'js/manifest.js', 'js/geo_gz.js', PARKED('js/geo_gz2.js'), 'js/geo.js',
+  'js/data_gz.js', PARKED('js/data_gz2.js'), 'js/data_tutorial.js', 'js/data_hz.js', 'js/data_hk.js', 'js/data_tk.js', 'js/data_tp.js',
   'js/maps.js', 'js/facility.js', 'js/city.js'];
 const sb = { console: { log() {}, warn() {}, error() {} } };
 sb.window = sb; vm.createContext(sb);
 for (const f of FILES) {
-  try { vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), sb, { filename: f }); } catch (e) { console.error('load', f, e.message); }
+  try { vm.runInContext(fs.readFileSync(f, 'utf8'), sb, { filename: f }); } catch (e) { console.error('load', f, e.message); }
 }
 const CM = sb.CM;
 CM.useMap(mapId);
