@@ -1721,7 +1721,9 @@ td .tag { margin-left: 4px; padding: 0 6px; font-size: 10px; }
 .msel-acth { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 13px; }
 .msel-acth .tiny { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
 .msel-acth .tiny .ico { width: 12px; height: 12px; }
-.msel-actbar .map-actions { margin: 0; gap: 8px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+/* 竖排的旧布局（.map-mode 卡片）用两列网格；.row 那一行由 .map-act 自己排版 */
+.msel-actbar .map-actions:not(.row) { margin: 0; gap: 8px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.msel-actbar .map-actions.row { margin: 0; }
 .msel-actbar .map-mode { min-width: 0; }
 .msel-actbar .map-mode small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .msel-actbar .map-mode .grow { min-width: 0; }
