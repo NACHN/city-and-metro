@@ -4,6 +4,25 @@
   const U = CM.U, CFG = CM.CFG, D = CM.DATA, M = CM.Metro;
   const h = U.h, I = CM.ICON, ic = CM.icon;
   const snd = function (name) { if (CM.Sound) CM.Sound.play(name); };
+  // 选色用到的两个换算（HSL/HSV 里只有 HSV 能直接用两个渐变画出色板）
+  const hex2hsv = function (hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''));
+    if (!m) return [210, 0.62, 0.66];
+    const n = parseInt(m[1], 16), r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    let h = 0;
+    if (d > 0) {
+      if (mx === r) h = 60 * (((g - b) / d + 6) % 6);
+      else if (mx === g) h = 60 * ((b - r) / d + 2);
+      else h = 60 * ((r - g) / d + 4);
+    }
+    return [h, mx > 0 ? d / mx : 0, mx];
+  };
+  const hsv2hex = function (h, s, v) {
+    const c = v * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = v - c;
+    const rgb = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+    return '#' + rgb.map(function (q) { return ('0' + Math.round((q + m) * 255).toString(16)).slice(-2); }).join('');
+  };
 
   // 分析图层（v1.9 起分为三组）：城市（人口、职住、设施出行需求）· 交通（拥堵、出行方向）· 地铁（覆盖、车站客流、服务缺口）
   const LAYER_GROUPS = [['city', '城市'], ['traffic', '交通'], ['metro', '地铁']];
@@ -1180,6 +1199,7 @@
     this.predBox.replaceWith(n); this.predBox = n;
   };
   UI.prototype.renderPage = function (anim) {
+    if (this.colorPop) this.closeColorPop();
     const top = this.stack[this.stack.length - 1];
     if (!top || !this.g()) { this.closePanel(true); return; }
     this.live = [];
@@ -1816,15 +1836,91 @@
       const b = h('button', { class: 'sw' + (c.toLowerCase() === curL ? ' on' : ''), style: { background: c }, 'data-tip': c, onclick: function () { pick(c, b); } });
       wrap.appendChild(b);
     }
-    // 自定义色：色块本身是个 <label>，里面装着一个透明的 type=color 铺满它。
-    // 点色块＝直接点输入框，系统调色板自然锚在色块上；不再用 JS 的 input.click() 转手
-    // （那样锚点是个 0×0 的隐藏元素，调色板会飘到别处）。
+    // 自定义色：点开自绘的 HSV 取色浮层。不用 <input type="color"> —— 那玩意在移动端
+    // 要么打不开要么整屏盖住，桌面端又会被面板重排顶掉。
     const isCustom = /^#[0-9a-f]{6}$/.test(curL) && cols.map(function (x) { return x.toLowerCase(); }).indexOf(curL) < 0;
-    const input = h('input', { type: 'color', class: 'cp-input', 'aria-label': '自定义颜色', value: isCustom ? curL : (cols[0] || '#2f6fa8') });
-    const custom = h('label', { class: 'sw custom' + (isCustom ? ' on' : ''), 'data-tip': '自定义颜色', style: isCustom ? { background: curL } : null }, input);
-    input.addEventListener('input', function () { custom.style.background = input.value; pick(input.value, custom); });
+    const self = this;
+    let last = isCustom ? curL : '';
+    const custom = h('button', {
+      class: 'sw custom' + (isCustom ? ' on' : ''), 'data-tip': '自定义颜色', 'data-noripple': true,
+      style: isCustom ? { background: curL } : null,
+      onclick: function () {
+        if (self.colorPop && self.cpAnchor === custom) { self.closeColorPop(); return; }
+        self.popColor(custom, last || curL || (cols[0] || '#2f6fa8'), function (c) {
+          last = c; custom.style.background = c; pick(c, custom);
+        });
+      },
+    });
     wrap.append(custom);
     return wrap;
+  };
+
+  // ---------------- 自绘取色浮层（桌面与移动端同一套交互） ----------------
+  UI.prototype.closeColorPop = function () {
+    if (!this.colorPop) return;
+    this.colorPop.remove(); this.colorPop = null; this.cpAnchor = null;
+    if (this._cpOutside) { window.removeEventListener('pointerdown', this._cpOutside, true); this._cpOutside = null; }
+    if (this._cpEsc) { window.removeEventListener('keydown', this._cpEsc, true); this._cpEsc = null; }
+    if (this._cpQuiet) { this.quietRefresh = this._cpQuietPrev; this._cpQuiet = false; }
+    if (this._pendingRefresh) { const self = this; setTimeout(function () { if (self._pendingRefresh) { self._pendingRefresh = false; self.rerenderPage(); } }, 0); }
+  };
+  UI.prototype.popColor = function (anchor, cur, onPick) {
+    const self = this;
+    this.closeColorPop();
+    this.cpAnchor = anchor;
+    // 取色器开着的时候面板不重建：锚点色块被换掉，浮层就没地方贴了
+    this._cpQuietPrev = this.quietRefresh; this.quietRefresh = true; this._cpQuiet = true;
+    const st = hex2hsv(cur);
+    const dot = h('i', { class: 'cp-dot' });
+    const sv = h('div', { class: 'cp-sv' }, dot);
+    const hdot = h('i', { class: 'cp-hdot' });
+    const hue = h('div', { class: 'cp-hue' }, hdot);
+    const hexEl = h('span', { class: 'cp-hex' });
+    const apply = function (fire) {
+      const hex = hsv2hex(st[0], st[1], st[2]);
+      sv.style.background = 'linear-gradient(to top, #000, rgba(0,0,0,0)), linear-gradient(to right, #fff, ' + hsv2hex(st[0], 1, 1) + ')';
+      dot.style.left = (st[1] * 100) + '%';
+      dot.style.top = ((1 - st[2]) * 100) + '%';
+      hdot.style.left = (st[0] / 360 * 100) + '%';
+      hexEl.textContent = hex.toUpperCase();
+      hexEl.style.color = hex;
+      if (fire) onPick(hex);
+    };
+    const drag = function (el, fn) {
+      let on = false;
+      el.addEventListener('pointerdown', function (e) {
+        on = true;
+        if (el.setPointerCapture) { try { el.setPointerCapture(e.pointerId); } catch (err) { /* 老浏览器 */ } }
+        fn(e); e.preventDefault();
+      });
+      el.addEventListener('pointermove', function (e) { if (on) { fn(e); e.preventDefault(); } });
+      el.addEventListener('pointerup', function () { on = false; });
+      el.addEventListener('pointercancel', function () { on = false; });
+    };
+    drag(sv, function (e) {
+      const r = sv.getBoundingClientRect();
+      st[1] = U.clamp((e.clientX - r.left) / r.width, 0, 1);
+      st[2] = 1 - U.clamp((e.clientY - r.top) / r.height, 0, 1);
+      apply(true);
+    });
+    drag(hue, function (e) {
+      const r = hue.getBoundingClientRect();
+      st[0] = U.clamp((e.clientX - r.left) / r.width, 0, 1) * 359.9;
+      apply(true);
+    });
+    const pop = h('div', { class: 'cp-pop' }, sv, hue,
+      h('div', { class: 'cp-foot' }, hexEl, h('button', { class: 'btn sm primary', onclick: function () { self.closeColorPop(); } }, '完成')));
+    document.body.appendChild(pop);
+    this.colorPop = pop;
+    pop._place = function () { self.placeDd(pop, anchor); };
+    this.placeDd(pop, anchor);
+    apply(false);
+    setTimeout(function () {
+      self._cpOutside = function (e) { if (!self.colorPop) return; if (self.colorPop.contains(e.target) || e.target === anchor || anchor.contains(e.target)) return; self.closeColorPop(); };
+      window.addEventListener('pointerdown', self._cpOutside, true);
+      self._cpEsc = function (e) { if (e.key === 'Escape') { e.stopPropagation(); self.closeColorPop(); } };
+      window.addEventListener('keydown', self._cpEsc, true);
+    }, 0);
   };
 
   UI.prototype.favBtn = function (kind, id) {

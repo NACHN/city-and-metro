@@ -1820,10 +1820,19 @@ td .tag { margin-left: 4px; padding: 0 6px; font-size: 10px; }
 .colorpick .sw { width: 20px; height: 20px; border-radius: 6px; border: 1px solid var(--line-strong); cursor: pointer; padding: 0; transition: transform .15s var(--spring); }
 .colorpick .sw:hover { transform: scale(1.1); }
 .colorpick .sw.on { box-shadow: 0 0 0 2px var(--text) inset, 0 0 0 1px var(--text); }
-.colorpick .sw.custom { display: block; position: relative; overflow: hidden; background: conic-gradient(from 0deg, #e74c3c, #f1c40f, #2ecc71, #3498db, #9b59b6, #e74c3c); }
-/* 透明的 type=color 铺满自定义色块：点色块＝点输入框，系统调色板锚在这里。
-   以前是个 0×0 的隐藏输入，靠 input.click() 打开，锚点不对、面板一重建就跟着关。 */
-.colorpick .sw.custom .cp-input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; }
+.colorpick .sw.custom { background: conic-gradient(from 0deg, #e74c3c, #f1c40f, #2ecc71, #3498db, #9b59b6, #e74c3c); }
+/* 自绘取色浮层：色相条 + 明度/饱和度方块。不用系统调色板，桌面与移动端同一套交互。 */
+.cp-pop { position: fixed; z-index: 46; width: 190px; padding: 10px; display: flex; flex-direction: column; gap: 9px;
+  background: var(--surface-solid); border: 1px solid var(--line-strong); border-radius: 14px; box-shadow: var(--shadow);
+  animation: menuIn .18s var(--spring); transform-origin: top left; }
+.cp-sv { position: relative; height: 100px; border-radius: 9px; cursor: crosshair; touch-action: none; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14); }
+.cp-dot { position: absolute; width: 13px; height: 13px; margin: -7px 0 0 -7px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5); pointer-events: none; }
+.cp-hue { position: relative; height: 14px; border-radius: 7px; cursor: pointer; touch-action: none;
+  background: linear-gradient(to right, #f00, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00); }
+.cp-hdot { position: absolute; top: -3px; width: 5px; height: 20px; margin-left: -2.5px; border-radius: 3px; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45); pointer-events: none; }
+.cp-foot { display: flex; align-items: center; gap: 8px; }
+.cp-hex { font: 700 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.6px; }
+.cp-foot .btn { margin-left: auto; }
 
 /* ================= 车站面板（v13 结构：头部 / 经济 / 乘客 / 改建） ================= */
 .st-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 0 2px 9px; }
