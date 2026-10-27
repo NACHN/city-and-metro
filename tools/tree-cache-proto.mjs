@@ -1,26 +1,31 @@
-// 跨月复用最短路树 —— 实验结论：**不划算，不接入游戏**（保留原型与数据，免得以后重跑）
+// 跨月复用最短路树 —— 结论：**可行**（整树作废曾把它误判为不可行）
 //
-// 机制是可行的，而且可以做到逐位一致：
-//   · 树可以只存**弧号序列**（2 B/点），不必存节点顺序 —— 回溯只要按 settle 逆序取 pred 弧，
-//     距离可以从树反推（序列反过来 = settle 正序，dist[arcTo[e]] = dist[arcFrom[e]] + t[e]）。
-//   · 同树同时间重放，aux 逐位相同（自检 8/8）。
-//   · 重放比重新建树快 5.2 倍：8 个时段 2.0 s vs 10.4 s。
+// 机制（逐位一致，不依赖近似）：
+//   · 树只存**弧号序列**（2 B/点）：回溯只要按 settle 逆序取 pred 弧，弧号自带两端；
+//     距离能从树反推（序列反过来 = settle 正序，dist[arcTo[e]] = dist[arcFrom[e]] + t[e]）。
+//     同树同时间重放 aux 逐位相同（自检 8/8）。
+//   · 重放 2.1 s vs 重新建树 10.9 s（gz2 · 8 个时段 · 2,838 棵/时段 · 1.1 亿条目）→ **5.3×**。
 //
-// 但真正卡住它的是**路网每月都在变**（见 tools/road-churn.mjs）：
-//   · 城市每月重建 car 图，link.key = 两端点 + 折点数，所以一条路被延伸/拆分就会换 key；
-//     实测 14 个月里只有 5 个月「零弧消失」，其余 1–14 条弧消失或换 key。
-//   · 按 key 重映射弧号可行（约 0.3–0.7 s / 8 个时段），但**消失的弧**会让用到它的整棵树作废 ——
-//     消失的往往是干道，2 条弧消失就能带走 2514/2838 棵树（88%）。
-//   · 于是平均收益只有 8 s × 36% ≈ 2.9 s/月（月步进 13.5 s 的 21%），其余月份等于没做；
-//     而且它**完全帮不到载入**（没有上一个月可复用）。
+// 关键修正是**失效的粒度**，不是哈希：
+//   · 弧身份改用**顶点对**：顶点号来自城市网格，跨月稳定；link.key 里含折点数，路一被延伸/拆分就变，
+//     按 key 比会把「路还在、只是编号变了」误判成消失（这就是早先「2 条弧带走 88% 树」的来源）。
+//   · 失效落到**父弧那一根子树**：救不回的弧标记为 -2，回溯与距离重建自然跳过，它的后代因父节点
+//     dist = Infinity 一起失效；整棵树其余部分照常复用。
+//     实测每月失效条目 0 ~ 0.036%（0 ~ 40,288 / 1.1 亿），也就是「哈希」没必要，直接判更省。
+//   · 因此不需要子树哈希：子树是否可用由「它的根弧能不能映射」唯一决定，而映射本身几乎总是成功。
 //
-// 对比 Web Worker 分起点：2.5–4×，每个月都生效，载入也一起变快，不改数值口径。
-// 所以这条路留作记录：数据在这里，结论是「不值得」。
+// 实测（gz2，连续 6 个月，每月都复用「上个月」的树）：
+//   救不回的弧  0 ~ 6 条/月 · 失效条目 0 ~ 0.036%
+//   重放 2.0–2.1 s vs 重建 10.9–11.1 s（5.2–5.4×）
+//   全城车流偏差 −0.56% ~ +0.66% · 按各自流量重算 BPR 的车时偏差 −2.9% ~ +0.66%
+//   单弧流量中位偏差 0.03% ~ 5.6%（夜间时段近路多、路径在近似并列处翻转，相对偏差放大）
 //
-// 基准数据（gz2，240×192 / 2880 小区 / 6189 节点 / 14746 弧）：
-//   · 8 个时段 2,838 棵/时段，合计 1.1 亿个回溯条目
-//   · 编码体积：原始 210.7 MB · brotli q3 47.1 MB（1.15 s）· brotli q5 37.2 MB（3.9 s，解压 0.54 s）
-//   · 干净月份（零弧消失）：全城车流偏差 −0.4%~+0.01%，单弧流量中位 0.03%~5.8%，8%~47% 的弧有差异
+// 代价：内存 8 个时段 1.1 亿条目 × 2 B = **221 MB**；
+//       brotli q3 压到 47 MB，但每月多付 1.15 s 压缩 + 0.54 s 解压。
+//       月步进：13.5 s → 约 5.5 s（原样内存）或 约 7.2 s（压缩）。
+//       注意它**帮不到载入**（开局没有上一个月可复用）。
+//
+// 另见 tools/tree-damage.mjs：单独量「每月破坏每棵树的多少节点」，是得出上面结论的关键数据。
 //
 // 用法：node tools/tree-cache-proto.mjs [mapId]
 import fs from 'node:fs';
@@ -210,10 +215,13 @@ const compareOne = (t, sources) => {
     const skRel = [];
     for (let i = 0; i < Z * Z; i++) if (P.skimT[i] > 0 && repSkim[i] > 0) skRel.push(Math.abs(repSkim[i] - P.skimT[i]) / P.skimT[i]);
     skRel.sort((a, b) => a - b);
+    // 车时按各自流量重算 BPR，两边用同一个口径（用真值的时间去算复放的流量是偏的）
+    const A_ = CM.CFG.road.bprA, capF_ = m.capF || 1;
+    const bpr = (v, a) => { const x = v / (m.road.arcCap[a] * capF_); return m.road.arcT0[a] * Math.min(8, 1 + A_ * x * x * x * x); };
     let vT = 0, vR = 0, hT = 0, hR = 0;
     for (let a = 0; a < nAc; a++) {
       vT += t.aux[a]; vR += repAux[a];
-      hT += t.aux[a] * P.arcTime[a]; hR += repAux[a] * P.arcTime[a];
+      hT += t.aux[a] * bpr(t.aux[a], a); hR += repAux[a] * bpr(repAux[a], a);
     }
     out[src.name] = { ms, st, info, skMed: quant(skRel, 0.5), skP90: quant(skRel, 0.9),
       skMax: skRel.length ? skRel[skRel.length - 1] : 0, vT, vR, hT, hR };
@@ -257,46 +265,48 @@ const firstPass = (sources) => {
 // 翻译不了的（道路消失了）→ 那棵树作废，只重建那个起点。
 const cacheLinks = () => m.road.links.map((L) => ({ key: L.key, id: L.id, v0: L.verts[0] }));
 const remapTrees = (cache) => {
-  const byKey = new Map();
-  for (const L of m.road.links) byKey.set(L.key, L);
-  const lut = new Int32Array(cache.nA).fill(-1);
+  // 弧身份不用 link.key（key 含折点数，路一被延伸就变），改用**顶点对**：
+  // 顶点号来自城市网格，跨月稳定，所以「同一条路」能认出来。
+  const byPair = new Map();
+  const nw = m.road;
+  for (let a = 0; a < nw.nA; a++) byPair.set(nw.arcFrom[a] * 100000 + nw.arcTo[a], a);
+  const oldToNew = new Int32Array(cache.nA).fill(-2);
   let mapped = 0;
-  for (const o of cache.links) {
-    const n = byKey.get(o.key);
-    if (!n) continue;
-    const same = o.v0 === n.verts[0];
-    lut[2 * o.id] = 2 * n.id + (same ? 0 : 1);
-    lut[2 * o.id + 1] = 2 * n.id + (same ? 1 : 0);
-    mapped += 2;
+  for (let a = 0; a < cache.nA; a++) {
+    const vf = cache.nodeVert[cache.arcFrom[a]], vt = cache.nodeVert[cache.arcTo[a]];
+    const nf = nw.vertNode[vf], nt = nw.vertNode[vt];
+    if (nf < 0 || nt < 0) continue;                 // 端点没了 → 这条弧救不回来
+    const hit = byPair.get(nf * 100000 + nt);
+    if (hit !== undefined) { oldToNew[a] = hit; mapped++; }
   }
-  const gone = cache.nA - mapped;
+  // 只丢「父弧救不回来」的那根子树：把该条目标成 -2，回溯与距离重建都会自然跳过，
+  // 它的后代因为父节点 dist = Infinity 也会一起失效。整棵树其余部分照常复用。
   const trees = new Map();
-  let dropped = 0, remapped = 0;
+  let blocked = 0, entries = 0;
   for (const [key, list] of cache.trees) {
     const out = new Map();
     for (const [o, tr] of list) {
       const a = new Int16Array(tr.arcs.length);
-      let ok = true;
       for (let i = 0; i < a.length; i++) {
         const e = tr.arcs[i];
+        entries++;
         if (e < 0) { a[i] = -1; continue; }
-        const ne = lut[e];
-        if (ne < 0) { ok = false; break; }
-        a[i] = ne;
+        const ne = oldToNew[e];
+        if (ne < 0) { a[i] = -2; blocked++; } else a[i] = ne;
       }
-      if (!ok) { dropped++; continue; }
       out.set(o, { no: tr.no, arcs: a });
-      remapped++;
     }
     trees.set(key, out);
   }
-  return { trees, dropped, remapped, gone };
+  return { trees, blocked, entries, gone: cache.nA - mapped };
 };
 
 // ---------- 按月推进 ----------
 const grabCache = (truth) => ({
   trees: new Map(truth.map((t) => [t.key, t.trees])),
-  links: cacheLinks(),
+  nodeVert: Int32Array.from(m.road.nodeVert),
+  arcFrom: Int32Array.from(m.road.arcFrom),
+  arcTo: Int32Array.from(m.road.arcTo),
   nA: m.road.nA,
   time: truth.map((t) => ({ key: t.key, time: t.timeSnap })),
 });
@@ -314,10 +324,11 @@ for (let mo = 2; mo <= 7; mo++) {
   const sources = [];
   let note = '无缓存';
   const tRemap = performance.now();
-  if (last) sources.push({ name: '上月', trees: remapTrees(last).trees });
+  let rm = null;
+  if (last) { rm = remapTrees(last); sources.push({ name: '上月', trees: rm.trees }); }
   if (base) { sources.push({ name: `${baseAge}个月前`, trees: remapTrees(base).trees }); }
   const remapMs = performance.now() - tRemap;
-  if (sources.length) note = `重映射 ${remapMs.toFixed(0)} ms`;
+  if (rm) note = `重映射 ${remapMs.toFixed(0)} ms · 救不回的弧 ${rm.gone} 条 → 失效条目 ${rm.blocked}/${rm.entries}（${(rm.blocked / rm.entries * 100).toFixed(3)}%）`;
 
   const truth = firstPass(sources.length ? sources : null);
   const sumTruth = truth.reduce((s, t) => s + t.ms, 0);
