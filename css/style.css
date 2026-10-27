@@ -1820,8 +1820,10 @@ td .tag { margin-left: 4px; padding: 0 6px; font-size: 10px; }
 .colorpick .sw { width: 20px; height: 20px; border-radius: 6px; border: 1px solid var(--line-strong); cursor: pointer; padding: 0; transition: transform .15s var(--spring); }
 .colorpick .sw:hover { transform: scale(1.1); }
 .colorpick .sw.on { box-shadow: 0 0 0 2px var(--text) inset, 0 0 0 1px var(--text); }
-.colorpick .sw.custom { background: conic-gradient(from 0deg, #e74c3c, #f1c40f, #2ecc71, #3498db, #9b59b6, #e74c3c); }
-.colorpick .cp-input { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
+.colorpick .sw.custom { display: block; position: relative; overflow: hidden; background: conic-gradient(from 0deg, #e74c3c, #f1c40f, #2ecc71, #3498db, #9b59b6, #e74c3c); }
+/* 透明的 type=color 铺满自定义色块：点色块＝点输入框，系统调色板锚在这里。
+   以前是个 0×0 的隐藏输入，靠 input.click() 打开，锚点不对、面板一重建就跟着关。 */
+.colorpick .sw.custom .cp-input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; }
 
 /* ================= 车站面板（v13 结构：头部 / 经济 / 乘客 / 改建） ================= */
 .st-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 0 2px 9px; }

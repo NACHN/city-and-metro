@@ -1160,7 +1160,15 @@
     this.buildWant = next;
     this.setBuild(next);
   };
-  UI.prototype.rerenderPage = function () { this.busHi = null; if (this.stack.length) this.renderPage(false); };
+  // 重建当前页面。输入框（含系统调色板）开着的时候一律推迟：重建会把 <input> 从 DOM 里摘掉，
+  // 系统调色板跟着关掉 —— 颜色选一半就"没了"。补上的时机见构造函数里的 rBody focusout。
+  UI.prototype.rerenderPage = function () {
+    this.busHi = null;
+    if (this.quietRefresh) return;   // 改颜色这类只影响观感的调整：面板不重建
+    const a = document.activeElement;
+    if (a && this.rBody && this.rBody.contains(a) && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA')) { this._pendingRefresh = true; return; }
+    if (this.stack.length) this.renderPage(false);
+  };
   UI.prototype.refreshBuild = function () {
     const top = this.stack[this.stack.length - 1];
     if (top && top.kind === 'build') this.renderPage(false);
@@ -1808,10 +1816,14 @@
       const b = h('button', { class: 'sw' + (c.toLowerCase() === curL ? ' on' : ''), style: { background: c }, 'data-tip': c, onclick: function () { pick(c, b); } });
       wrap.appendChild(b);
     }
-    const input = h('input', { type: 'color', class: 'cp-input', value: /^#[0-9a-f]{6}$/i.test(curL) ? curL : '#2f6fa8' });
-    const custom = h('button', { class: 'sw custom' + (curL && cols.indexOf(cur) < 0 && cols.map(function (x) { return x.toLowerCase(); }).indexOf(curL) < 0 ? ' on' : ''), 'data-tip': '自定义颜色', onclick: function () { input.click(); } });
+    // 自定义色：色块本身是个 <label>，里面装着一个透明的 type=color 铺满它。
+    // 点色块＝直接点输入框，系统调色板自然锚在色块上；不再用 JS 的 input.click() 转手
+    // （那样锚点是个 0×0 的隐藏元素，调色板会飘到别处）。
+    const isCustom = /^#[0-9a-f]{6}$/.test(curL) && cols.map(function (x) { return x.toLowerCase(); }).indexOf(curL) < 0;
+    const input = h('input', { type: 'color', class: 'cp-input', 'aria-label': '自定义颜色', value: isCustom ? curL : (cols[0] || '#2f6fa8') });
+    const custom = h('label', { class: 'sw custom' + (isCustom ? ' on' : ''), 'data-tip': '自定义颜色', style: isCustom ? { background: curL } : null }, input);
     input.addEventListener('input', function () { custom.style.background = input.value; pick(input.value, custom); });
-    wrap.append(custom, input);
+    wrap.append(custom);
     return wrap;
   };
 

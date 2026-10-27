@@ -897,7 +897,7 @@
       nameIn.addEventListener('keydown', function (e) { if (e.isComposing || e.keyCode === 229) return; if (e.key === 'Enter') { e.preventDefault(); rename(); } });
       b.appendChild(h('div', { class: 'field' }, h('label', null, '名称'), h('div', { class: 'row' }, nameIn, h('button', { class: 'btn sm', onclick: rename }, '更名'))));
       b.appendChild(h('div', { class: 'field' }, h('label', null, '线路颜色'),
-        self.colorPicker(line.color, function (c) { applyLine(function (n) { n.lines[lid].color = c; }); })));
+        self.colorPicker(line.color, function (c) { applyLine(function (n) { n.lines[lid].color = c; }, true); })));
 
       // 全线建设方式
       if (segs.length) {
@@ -971,10 +971,15 @@
     };
 
     // 建设类改动走草案；颜色 / 改名这类无造价的调整直接生效（没有草案时）
-    const applyLine = function (fn) {
+    // quiet：只影响观感的调整（改颜色）不重排面板 —— 面板一重建，系统调色板就跟着关了
+    const applyLine = function (fn, quiet) {
       if (g.draft || !official) { g.edit(fn); return; }
-      const r = g.tune(fn);
-      if (r && r.error) { self.toast(r.error, 'bad'); g.edit(fn); }
+      const prev = self.quietRefresh;
+      if (quiet) self.quietRefresh = true;
+      try {
+        const r = g.tune(fn);
+        if (r && r.error) { self.toast(r.error, 'bad'); g.edit(fn); }
+      } finally { self.quietRefresh = prev; }
     };
 
     // 定位：本线车站的外包框中心
