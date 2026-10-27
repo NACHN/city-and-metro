@@ -524,6 +524,50 @@ def coast_sea(chains, bbox, samples):
 
 
 
+def load_water_extra(path):
+    """读一份 WKT 水域（水利/测绘专题数据），返回 [多边形, ...]，多边形 = [外环, 内环...]。
+
+    OSM 在城市河道上普遍只画中心线或零碎水面，专题数据里的水面是完整的多边形，
+    正好补这个洞。文件可以是每行一条记录，前面带制表符分隔的字段（导出成 CSV 的样子），
+    只需要 WKT 那一段。
+    """
+    from shapely import wkt as swkt
+    out = []
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            k = line.find("MultiPolygon")
+            if k < 0:
+                k = line.find("Polygon")
+            if k < 0:
+                continue
+            frag = line[k:]
+            depth = 0
+            end = None
+            for j, ch in enumerate(frag):
+                if ch == "(":
+                    depth += 1
+                elif ch == ")":
+                    depth -= 1
+                    if depth == 0:
+                        end = j + 1
+                        break
+            if not end:
+                continue
+            try:
+                g = swkt.loads(frag[:end])
+            except Exception as exc:
+                print("  WKT 解析失败：%s" % exc)
+                continue
+            polys = list(g.geoms) if g.geom_type.startswith("Multi") else [g]
+            for p in polys:
+                if p.geom_type != "Polygon" or p.is_empty or p.area <= 0:
+                    continue
+                out.append([list(p.exterior.coords)] + [list(r.coords) for r in p.interiors])
+    print("外加水面：%s -> %d 个多边形" % (path, len(out)))
+    return out
+
+
+
 def union_water(raw):
     """把水面原始环合并成一片片，然后才简化。
 
@@ -586,7 +630,7 @@ def union_water(raw):
     return out
 
 
-def collect(area_pbf, dest_geojson, bbox=None, sea=False):
+def collect(area_pbf, dest_geojson, bbox=None, sea=False, extra=None):
     # 第一趟只为了知道「哪些路是关系多边形的成员」
     wanted = set()
 
@@ -663,6 +707,10 @@ def collect(area_pbf, dest_geojson, bbox=None, sea=False):
         sea = coast_sea(col.coast_raw, bbox, samples)
         if sea:
             col.water_raw.append(("", sea))
+    if extra:
+        _w = load_water_extra(extra)
+        if _w:
+            col.water_raw.append(("", _w))
     col.features = union_water(col.water_raw) + col.features
     with open(dest_geojson, "w", encoding="utf-8") as fh:
         json.dump({"type": "FeatureCollection", "features": col.features}, fh, ensure_ascii=False)
@@ -684,6 +732,7 @@ def main(argv):
     ap.add_argument("--proj", default="113.08,23.34,409.6,443", help="lon0,lat0,kx,ky（必须与 gen-geo 一致）")
     ap.add_argument("--stats-only", action="store_true")
     ap.add_argument("--sea", action="store_true", help="用 coastline 拼海面（实验性，默认关）")
+    ap.add_argument("--water-extra", default=None, help="额外的 WKT 水域文件，补进水面")
     args = ap.parse_args(argv[1:])
     lon0, lat0, kx, ky = (float(v) for v in args.proj.split(","))
     PROJ.update({"lon0": lon0, "lat0": lat0, "kx": kx, "ky": ky})
@@ -696,7 +745,7 @@ def main(argv):
         print("复用已有裁剪结果 %s" % area)
     if args.stats_only:
         return 0
-    collect(area, os.path.join(args.out, "features.geojson"), bbox, args.sea)
+    collect(area, os.path.join(args.out, "features.geojson"), bbox, args.sea, args.water_extra)
     return 0
 
 
