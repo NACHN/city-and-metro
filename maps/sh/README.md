@@ -23,10 +23,18 @@ proj  121.22,31.433,380.53,443.39            # lon0,lat0,格/经度,格/纬度�
 
 ## 数据要点
 
-- **35 个片区**：按 OSM 的街道/镇边界分组（`streets` 匹配），带开放年份 —— 核心 12 区 1990 年就在，
-  浦东各开发区 1993–2010，嘉定/松江/南汇的外围镇街 1995–2010。
+- **32 个片区 + 3 处景区**：按 OSM 的街道/镇边界分组（`streets` 匹配），带开放年份 —— 核心 12 区 1990 年就在；
+  浦东：川沙 1990（当时是川沙县城）、张江 1992（高科技园区成立那一年）、金桥 1993、花木与外高桥 1995、
+  三林 2003、周康 2005；嘉定/松江/闵行的外围镇街 1993–2010。
+  **外围地区 2000**（1990 年这里是近郊农田与小镇，人口门槛 13M 防「提前开放」）。
+  界外的惠南、车墩、南桥三个片区已删掉 —— 地图南界在 31.0°N，这些镇根本不在图上。
+- **虹桥机场是可建站的地**：`airport.closeYear: 9999` + `buildable: "underground"` + 片区 `open: 1990`，
+  用地不开发（292 格 `LU.AIRPORT`），但允许地下设站与地下穿越（10 号线在虹桥 1 号航站楼就是这样）。
+  早先写 `open: 2099` 等于永久不开放，`metro.checkSite` 直接拒绝设站。
 - **28 个人口中心 / 34 个地标 / 37 处设施**：地标按落成年份出现（东方明珠 1994、金茂 1999、上海中心 2015、
-  迪士尼 2016），火车站与机场带客流曲线。
+  迪士尼 2016）。火车站与机场写 `pax`（万人次/日，走枢纽通路）；公园、医院、商圈、景点、大学、场馆写
+  `w`（占全市该目的吸引的份额）—— 这些设施原先误写成 `pax`，引擎读不到就按 0 算，界面上是「人流 0」，
+  v2.8.3 用 `tools/pax-to-w.mjs` 换算成 `w`。
 - **道路与桥梁年份**：沪嘉 1988、内环高架 1994、延安高架 1999、外环 2002、中环 2006；
   越江设施从打浦路隧道（1971）、延安东路隧道（1989）到南浦（1991）、杨浦（1993）、卢浦（2003）与一批隧道。
   未列出的道路随所在片区开放。
@@ -43,12 +51,12 @@ proj  121.22,31.433,380.53,443.39            # lon0,lat0,格/经度,格/纬度�
 ## 验收
 
 ```bash
-node scripts/build.mjs                        # 59 文件 / 8 图 / 0 警告
-node scripts/map-source.mjs check             # 8/8
-node scripts/validate-map.mjs                 # 8/8
-node scripts/ground-check.mjs                 # 八图底图可绘制
-node scripts/smoke.mjs --maps=sh --months=2   # 三模式，指纹 ca758850f9ab3bfd
-node tools/month-breakdown.mjs sh --months=3  # 建局 4.3 s，月步进 1.8 s
+node scripts/build.mjs                        # 61 文件 / 9 图 / 0 警告
+node scripts/map-source.mjs check             # 9/9
+node scripts/validate-map.mjs                 # 9/9
+node tools/map-check.mjs sh                   # 机场可地下设站、7 个历史任务锚点 0 死局
+node scripts/smoke.mjs --maps=sh --months=2   # 三模式 4e3294a1a09834c8 / b2b1e159949fbb35 / fe8ab53a672fedde
+node tools/month-breakdown.mjs sh --months=2  # 建局 4.3 s，节点 3,584 / 弧 6,694
 node tools/preview-map.mjs sh out.ppm         # 底图预览（PPM）
 ```
 

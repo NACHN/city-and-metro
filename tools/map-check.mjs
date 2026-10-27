@@ -1,5 +1,9 @@
-// 机场与「新区开放年」体检：这张图上，哪些地方 2000 年就能设站，哪些要等到某一年。
-// 用法：node tools/airport-check.mjs [mapId]
+// 地图体检：机场能不能设站、每个片区哪一年开放、历史任务的锚点是不是「到死也修不到」。
+// 用法：node tools/map-check.mjs [mapId]
+//
+// 为什么需要它：开放年写错不会报错，只会让某个任务在数学上不可能完成 ——
+// 机场片区写 open: 2099 就是永久不开放（地窝堡、虹桥都踩过），
+// 任务锚点落在 2020 年才开放的片区里也是一样的死局。
 // 为什么需要它：机场片区写 `open: 2099` 等于永久不开放，而历史任务又要求「通到机场」——
 // 任务在数学上就不可能完成。正确写法是 airport.buildable + 片区 open 正常年份：
 // 用地仍然不开发，但允许地下设站与地下穿越（台北松山就是这么写的）。
@@ -37,6 +41,7 @@ for (const f of ['js/util.js', 'js/config.js', 'js/manifest.js', 'js/news.js', '
 for (const f of [pick('js/geo_' + MAP + '.js'), pick('js/data_' + MAP + '.js')].filter(Boolean)) L(f);
 for (const f of ['js/maps.js', 'js/facility.js', 'js/city.js', 'js/metro.js']) L(path.join(root, f));
 
+const U = globalThis.CM.U;
 const CM = globalThis.CM;
 CM.useMap(MAP);
 const D = CM.DATA;
@@ -88,7 +93,47 @@ for (const y of [...byYear.keys()].sort((a, b) => a - b)) {
   console.log(`    ${y}  ${list.slice(0, 6).join(' · ')}${list.length > 6 ? ` … 共 ${list.length} 片` : ''}`);
 }
 
-// 3) 2000 年就能设站的格数占比
+// 3) 历史参考任务的锚点：到期限时那片地方开放了吗、能不能设站
+if (D.histTasks && D.histTasks.length) {
+  console.log('  历史任务锚点：');
+  for (const t of D.histTasks) {
+    const dl = t.deadline[0];
+    // 期限早于开局年份的任务根本发不出来（monthly 里 issuance 之后立刻判过期），不算问题
+    if (U.ymIndex(dl, t.deadline[1]) < U.ymIndex(CM.CFG.START.y, CM.CFG.START.m)) {
+      console.log('    ' + String(t.id).padEnd(4) + String(dl).padEnd(6) + '－ 期限早于开局，不会发布');
+      continue;
+    }
+    const bad = [];
+    for (const a of t.anchors || []) {
+      // 判定口径与 connect 任务一致：锚点半径 a.r 格内**任意一格**能设站即可，
+      // 不是非得钉在锚点那个坐标上（历史上玩家就是这么贴着景区边界设站的）。
+      const R = Math.max(0.5, a.r || 3);
+      let ok = false, why = '';
+      for (let j = Math.floor(a.y - R); j <= Math.floor(a.y + R) && !ok; j++) {
+        for (let i = Math.floor(a.x - R); i <= Math.floor(a.x + R) && !ok; i++) {
+          if (i < 0 || j < 0 || i >= city.W || j >= city.H) continue;
+          if (U.dist(i + 0.5, j + 0.5, a.x, a.y) > R) continue;
+          const c = j * city.W + i, rg = city.regions[city.region[c]];
+          if (rg.scenic) { why = why || `${a.name}→${rg.name}（景区，不能设站）`; continue; }
+          const y = rg.open == null ? CM.CFG.START.y : Math.max(CM.CFG.START.y, rg.open);
+          if (y > dl) { why = why || `${a.name}→${rg.name}（${y} 年才开放，期限 ${dl}）`; continue; }
+          // 用 landMax（含之后的填海）而不是开局的 landFrac：台场这类 1990 年还是水面、
+          // 2000 年前才成陆的地方，按开局年份判会把能做的任务判成死局。
+          if ((city.landMax ? city.landMax[c] : city.landFrac[c]) < 0.5) continue;
+          // 只看山体：开局的「水面」可能是后来的填海地（台场），landMax 已经把关过真水域
+          if (city.lu[c] === CM.LU.HILL) continue;
+          if (city.lu[c] === CM.LU.AIRPORT && !(D.airport && D.airport.buildable)) { why = why || `${a.name}→${rg.name}（机场不可建站）`; continue; }
+          if (city.protectedId[c] > 0) continue;
+          ok = true;
+        }
+      }
+      if (!ok) bad.push(why || `${a.name}（半径 ${R} 格内无处设站）`);
+    }
+    console.log('    ' + String(t.id).padEnd(4) + String(dl).padEnd(6) + (bad.length ? '✗ ' + bad.join('、') : '✓ ' + t.title.replace(/^参考 /, '')));
+  }
+}
+
+// 4) 开局就能设站的格数占比
 let open0 = 0, urban0 = 0;
 for (let c = 0; c < N; c++) {
   const rg = city.regions[city.region[c]];
