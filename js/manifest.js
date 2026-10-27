@@ -17,10 +17,8 @@
   CM.MAP_MANIFEST = [
     { id: 'tutorial', geo: null, data: 'tutorial', climate: 'mild' },
     { id: 'gz', geo: 'gz', data: 'gz', climate: 'mild' },
-    // 广州大图（gz2，240×192 / 60×48 km）已经生成，但这一版不随包发布：
-    // 启用时把下面一行取消注释、在 index.html 恢复 geo_gz2/data_gz2 两个 script，
-    // 并在 scripts/*.mjs 的资源清单里加回这两个文件。
-    // { id: 'gz2', geo: 'gz2', data: 'gz2', climate: 'mild' },
+    // 广州大图（gz2，240×192 / 60×48 km）：2.6.0 起随包发布，排在小图之后
+    { id: 'gz2', geo: 'gz2', data: 'gz2', climate: 'mild' },
     { id: 'hz', geo: 'hz', data: 'hz', climate: 'cold' },
     { id: 'hk', geo: 'hk', data: 'hk', climate: 'mild' },
     { id: 'tp', geo: 'tp', data: 'tp', climate: 'mild' },

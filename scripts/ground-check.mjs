@@ -53,7 +53,7 @@ globalThis.requestAnimationFrame = () => 0;
 globalThis.performance = globalThis.performance || { now: () => Date.now() };
 
 const FILES = ['js/util.js', 'js/config.js', 'js/manifest.js', 'js/news.js',
-  'js/geo_gz.js', 'js/geo.js', 'js/data_gz.js', 'js/data_tutorial.js',
+  'js/geo_gz.js', 'js/geo.js', 'js/data_gz.js', 'js/geo_gz2.js', 'js/data_gz2.js', 'js/data_tutorial.js',
   'js/geo_hz.js', 'js/data_hz.js', 'js/geo_hk.js', 'js/data_hk.js',
   'js/geo_tk.js', 'js/data_tk.js', 'js/geo_tp.js', 'js/data_tp.js',
   'js/maps.js', 'js/facility.js', 'js/city.js', 'js/metro.js', 'js/sim.js', 'js/economy.js',

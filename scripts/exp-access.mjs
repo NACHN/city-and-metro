@@ -29,7 +29,7 @@ patch('        if (am > 1.02) farK = 1 + Ld.farGain * Math.min(1, (am - 1) / (Ld
 patch('      if (walk) { const wm = Math.min(walk[c] || 0, 4000); accMul = 1 + L.accessGain * Math.exp(-wm / L.accessScale); }',
   '      if (this._accMulArr) accMul = this._accMulArr[c] || 1;\n      else if (walk) { const wm = Math.min(walk[c] || 0, 4000); accMul = 1 + L.accessGain * Math.exp(-wm / L.accessScale); }', 'landAcc');
 
-const FILES = ['js/util.js','js/config.js','js/manifest.js','js/news.js','js/geo_gz.js','js/geo.js','js/data_gz.js','js/data_tutorial.js',
+const FILES = ['js/util.js','js/config.js','js/manifest.js','js/news.js','js/geo_gz.js','js/geo.js','js/data_gz.js', 'js/geo_gz2.js', 'js/data_gz2.js','js/data_tutorial.js',
  'js/geo_hz.js','js/data_hz.js','js/geo_hk.js','js/data_hk.js','js/geo_tk.js','js/data_tk.js','js/geo_tp.js','js/data_tp.js',
  'js/maps.js','js/facility.js','js/city.js','js/metro.js','js/sim.js','js/economy.js','js/macro.js','js/game.js','js/milestones.js','js/save.js'];
 for (const f of FILES) {
