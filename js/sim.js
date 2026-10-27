@@ -77,7 +77,7 @@
 
   // 单个起点：最短路树、汽车行程时间（skim）与汽车流量回溯到路段（与此前在求解循环中内联的计算完全相同）；
   // 返回本起点的行程时间是否与上次完全相同（chk 为 false 时不比较）
-  function carOrigin(cw, o, chk, group) {
+  function carOrigin(cw, o, chk, group, sink) {
     const road = cw.road, rd = cw.rd, work = cw.work, Z = cw.Z, skT = cw.skT, skK = cw.skK, carDem = cw.carDem;
     const dist = work.dist, dkm = work.dkm, pred = work.pred, order = work.order, accN = work.accN, aux = work.aux, arcFrom = road.arcFrom;
     const connStart = rd.start, connNode = rd.nodes, connTime = rd.times, connKm = rd.km, zones = rd.zones;
@@ -90,6 +90,12 @@
       const base = o * group.nN, tree = group.tree;
       for (let q = 0; q < no; q++) { const n = order[q]; tree[base + q] = n | ((pred[n] + 1) << 16); }
       group.cnt[o] = no;
+    }
+    // 跨月缓存：只存弧号（按回溯顺序），节点号可以由弧号反推，所以不必存
+    if (sink) {
+      const a = new Int16Array(no);
+      for (let q = 0; q < no; q++) a[no - 1 - q] = pred[order[q]];
+      sink[o] = { no: no, arcs: a };
     }
     let same = chk;
     for (let zi = 0; zi < zones.length; zi++) {
@@ -115,7 +121,7 @@
   // 复用参考时段的最短路树：skim 直接照抄（同一棵树、同一组连接边，算出来逐位相同），
   // 只按本时段的需求做接驳点注入与树上回溯。遍历顺序与原实现一致（目的地按小区序号升序、
   // 回溯按 settle 逆序），所以 aux 的累加顺序也一致 —— 结果与重新建树逐位相同。
-  function carOriginReuse(cw, group, o) {
+  function carOriginReuse(cw, group, o, sink) {
     const road = cw.road, Z = cw.Z, carDem = cw.carDem, aux = cw.work.aux, accN = cw.work.accN;
     const row = o * Z;
     cw.skT.set(group.refT.subarray(row, row + Z), row);
@@ -128,11 +134,69 @@
       if (dem > 0) accN[b] += dem;
     }
     const base = o * group.nN, cnt = group.cnt[o];
+    if (sink) {
+      // 这一个 cycle 里 8 个时段共用同一棵树，所以 8 个时段都记同一份（跨月缓存首次填充就靠它）
+      const a = new Int16Array(cnt);
+      for (let q = 0; q < cnt; q++) a[cnt - 1 - q] = ((tree[base + q] >>> 16) - 1);
+      sink[o] = { no: cnt, arcs: a };
+    }
     for (let q = cnt - 1; q >= 0; q--) {
       const packed = tree[base + q], n = packed & 0xffff, e = (packed >>> 16) - 1;
       const a = accN[n];
       if (a > 0) { if (e >= 0) { aux[e] += a; accN[arcFrom[e]] += a; } accN[n] = 0; }
     }
+  }
+
+  // 跨月复用：树来自上个月（可能已按顶点对重映射过）。距离用**当前**的车行时间沿旧路径累加，
+  // 所以 skim 反映的是当前拥堵，只有「路径怎么走」沿用上个月。被标成 -2 的失效子树连同后代
+  // 一起缺席（父节点 dist = Infinity 会自然传染），其余部分照常注入与回溯。
+  function carOriginReplay(cw, tr, o, chk) {
+    const road = cw.road, rd = cw.rd, work = cw.work, Z = cw.Z, skT = cw.skT, skK = cw.skK, carDem = cw.carDem;
+    const time = cw.time;
+    const dist = work.dist, dkm = work.dkm, accN = work.accN, aux = work.aux;
+    const arcFrom = road.arcFrom, arcTo = road.arcTo, arcKm = rd.arcKm;
+    const connStart = rd.start, connNode = rd.nodes, connTime = rd.times, connKm = rd.km, zones = rd.zones;
+    const A = tr.arcs, no = tr.no;
+    dist.fill(INF);
+    for (let k = connStart[o]; k < connStart[o + 1]; k++) {
+      const v = connNode[k], t = connTime[k];
+      if (t < dist[v]) { dist[v] = t; dkm[v] = connKm[k]; }
+    }
+    // 存的是回溯顺序（深→浅），反过来遍历就是 settle 正序：父节点一定先算好。
+    // 这是拓扑性质，换成新的时间也成立，所以 dist 与重新建树逐位相同（同一组弧、同一组时间）。
+    for (let i = no - 1; i >= 0; i--) {
+      const e = A[i];
+      if (e < 0) continue;
+      const n = arcTo[e], p = arcFrom[e];
+      dist[n] = dist[p] + time[e];
+      dkm[n] = dkm[p] + arcKm[e];
+    }
+    const row = o * Z;
+    let same = chk;
+    for (let zi = 0; zi < zones.length; zi++) {
+      const d = zones[zi];
+      if (d === o) continue;
+      let best = INF, bk = 0, bn = -1;
+      for (let k = connStart[d]; k < connStart[d + 1]; k++) {
+        const nd = connNode[k], v = dist[nd] + connTime[k];
+        if (v < best) { best = v; bk = dkm[nd] + connKm[k]; bn = nd; }
+      }
+      if (bn < 0 || best >= INF) continue;
+      const oldT = same ? skT[row + d] : 0, oldK = same ? skK[row + d] : 0;
+      skT[row + d] = best; skK[row + d] = bk;
+      if (same && (oldT !== best || oldK !== bk)) same = false;
+      const dem = carDem[row + d];
+      if (dem > 0) accN[bn] += dem;
+    }
+    for (let i = 0; i < no; i++) {
+      const e = A[i];
+      if (e < 0) continue;
+      const n = arcTo[e], a = accN[n];
+      if (a > 0) { aux[e] += a; accN[arcFrom[e]] += a; accN[n] = 0; }
+    }
+    // 根（pred = -1 的种子）也要清账，否则会漏到下一个起点
+    for (let k = connStart[o]; k < connStart[o + 1]; k++) accN[connNode[k]] = 0;
+    return same;
   }
 
   // 单个起点的方式选择与统计：对起点 i 的每条需求记录，先算去程（i → j）再算返程（j → i）。
@@ -728,6 +792,14 @@
   // 使其不会读到新旧混合的小区/需求/路网状态；计算结果与一次性执行相同。
   Model.prototype.refreshCityGen = function* (C) {
     this.refreshing = true;
+    // 一个月一次：跨月树缓存的年龄 +1。不能放在 syncRoad 里 —— 小图的路网常年不变，
+    // 那条分支一个月都不会走一次，缓存就永不过期了。
+    if (this.treeCache) {
+      const c = this.treeCache, lim = (CFG.perf && CFG.perf.treeCacheRefresh) || 3;
+      c.age++;
+      // 复用到期：这个月全部时段都重建（重建的结果同时也刷新了缓存），不能只刷新第一个时段
+      if (c.age > lim) { c.age = 0; c.rebuilding = true; } else c.rebuilding = false;
+    }
     try {
       this.buildZones();
       yield* this.buildDemandGen();
@@ -766,7 +838,7 @@
     this.wake();
     const old = this.road, nw = this.city.car;
     // Preserve legacy state remapping even for identical graphs with duplicate link keys.
-    if (old === nw && this.roadData.uniqueKeys) { this.roadVer = this.city.roadVersion; this.version++; return; }
+    if (old === nw && this.roadData.uniqueKeys) { this.roadVer = this.city.roadVersion; this.syncTreeCache(old, nw); this.version++; return; }
     const map = new Map();
     old.links.forEach(function (L) { map.set(L.key, L); });
     const remap = function (arr, fillFn) {
@@ -791,6 +863,7 @@
       }
     }
     this.road = nw; this.roadVer = this.city.roadVersion;
+    this.syncTreeCache(old, nw);   // 路网换了：旧树的弧号要按顶点对重映射（失效子树标 -2）
     this.prepareRoad();
     this.computeArcZones();
     this.version++;
@@ -1356,12 +1429,15 @@
     // 懒更新：快进过月时路网与拥堵时间都没变，最短路树、skim 与流量都可以沿用上一轮，
     // 只重算方式选择与地铁客流（约 10% 的开销）。流量沿用后，下面的拥堵统计仍按新需求重算。
     const group = opts.group || null;
+    const replay = opts.replay || null, capture = opts.capture || null;
     if (!opts.lazyCar) for (let o = 0; o < Z; o++) {
       const c0 = connStart[o], c1 = connStart[o + 1];
       if (c0 === c1) continue;
       if (!hasCar[o] && !(fullSkim && zPop[o] > 0) && iters > 0) continue;
-      if (group && group.ref) carOriginReuse(cw, group, o);
-      else if (!carOrigin(cw, o, stable, group)) stable = false;
+      const tr = replay ? replay[o] : null;
+      if (tr) { if (!carOriginReplay(cw, tr, o, stable)) stable = false; }
+      else if (group && group.ref) carOriginReuse(cw, group, o, capture);
+      else if (!carOrigin(cw, o, stable, group, capture)) stable = false;
       if ((o & 1) === 1) yield;
     }
     if (group && !group.ref) { group.ref = P; group.refT = P.skimT; group.refK = P.skimK; } else if (P.arcVol) {
@@ -1405,7 +1481,15 @@
       for (const dt of order) {
         const ctx = this.ctxs[dt];
         for (let p = 0; p < NP; p++) {
-          yield* this.iterate(this.net, ctx.per[p], p, { fullSkim: this.sinceChange < 1 });
+          // 缓存只在「这个月的第一个 cycle」决策一次。注意不能拿 fullSkim 当判据：
+          // refreshCityGen 里是 setNetwork(..., true)，sinceChange 不归零，月首那一轮并不是 fullSkim。
+          const firstCycle = this.solveCycles === 0;
+          let rep = null, cap = null;
+          if (firstCycle) {
+            rep = this.treeReplayFor(dt, p);
+            if (!rep) cap = this.treeCaptureFor(dt, p);
+          }
+          yield* this.iterate(this.net, ctx.per[p], p, { fullSkim: this.sinceChange < 1, replay: rep, capture: cap });
           this.computeDaily();
         }
       }
@@ -1442,8 +1526,8 @@
     while (!this.settled && performance.now() - t0 < budget) this.gen.next();
   };
   // 快速收敛（读档、跳月等场合），同步执行；dts 为要求解的日类型（默认工作日与周末）
-  Model.prototype.solveNow = function (cycles, dts) {
-    const g = this.solveGen(cycles, dts);
+  Model.prototype.solveNow = function (cycles, dts, opts) {
+    const g = this.solveGen(cycles, dts, opts);
     for (let r = g.next(); !r.done; r = g.next()) { /* run */ }
   };
   // 一次载入的第一个 cycle：8 个时段（2 日型 × 4 时段）的车行时间全都还是自由流、逐位相同，
@@ -1475,6 +1559,107 @@
     return G;
   };
   Model.prototype.dropFreeGroup = function () { this.freeGroup = null; };
+
+  // ---------------- 跨月最短路树缓存 ----------------
+  // 上个月每个起点的树按弧号序列存下来（2 B/点），下个月第一个 cycle 直接重放。
+  // 逐位一致的依据：同一组弧 + 同一组时间算出来的 dist 是确定的；重放时的遍历顺序
+  // （目的地升序注入、回溯按 settle 逆序）与原实现完全一致，所以 aux 的浮点累加顺序也不变。
+  // 唯一的近似来自「路径是上个月的」：上个月到现在的 arcTime 变了，最短路可能已经不同。
+  Model.prototype.treeCacheBudget = function () {
+    const perf = CFG.perf || {};
+    if (perf.treeCache === false) return 0;
+    return (perf.treeCacheMaxMB || 320) * 1e6;
+  };
+  // 取某个时段的缓存在哪；没有就按需建（返回 Array(Z)，元素为 {no, arcs} 或 null）
+  Model.prototype.treeCaptureFor = function (dt, p) {
+    const perf = CFG.perf || {};
+    if (perf.treeCache === false) return null;
+    if (!this.treeCacheBudget()) return null;
+    const Z = this.Z, nN = this.road.nN, nA = this.road.nA;
+    if (nN > 65000 || nA > 32000) return null;   // 弧号按 Int16 存，超出就退回逐时段建树
+    let c = this.treeCache;
+    if (!c) {
+      // 上界估算：起点数 × 节点数 × 2 B × 8 个时段。超预算就整个不做（不半途分配再回收）
+      if (Z * nN * 2 * 8 > this.treeCacheBudget()) return null;
+      c = this.treeCache = {
+        per: Object.create(null), nA: nA, age: 0,
+        nodeVert: Int32Array.from(this.road.nodeVert),
+        arcFrom: Int32Array.from(this.road.arcFrom),
+        arcTo: Int32Array.from(this.road.arcTo),
+      };
+    }
+    const key = dt + '|' + p;
+    if (!c.per[key]) c.per[key] = new Array(Z).fill(null);
+    return c.per[key];
+  };
+  Model.prototype.treeReplayFor = function (dt, p) {
+    const c = this.treeCache;
+    if (!c) return null;
+    if (c.rebuilding) return null;         // 这个月是「刷新月」：全部重建
+    const list = c.per[dt + '|' + p];
+    return list || null;
+  };
+  // 路网换了：旧树的弧号还认不认得出。
+  // 先试「旧弧号原样仍然成立」（新路只在末尾追加时就是这种情况，比较前缀即可）；
+  // 不行就按**顶点对**重映射 —— 顶点号来自城市网格，跨月稳定，而 link.key 里含折点数，
+  // 一条路被延伸或拆分就会变，按 key 比会把「路还在、只是编号变了」误判成消失。
+  // 映射不到的弧标记 -2：只废掉它下面那一根子树，整棵树其余部分继续用。
+  Model.prototype.syncTreeCache = function (oldRoad, newRoad) {
+    const c = this.treeCache;
+    if (!c) return;
+    const nOld = c.nA, nNew = newRoad.nA;
+    let same = nNew >= nOld;
+    if (same) {
+      for (let a = 0; a < nOld; a++) {
+        if (c.arcFrom[a] !== newRoad.arcFrom[a] || c.arcTo[a] !== newRoad.arcTo[a]) { same = false; break; }
+      }
+    }
+    let lost = 0;
+    let lut = null;
+    if (!same) {
+      const byPair = new Map();
+      for (let a = 0; a < nNew; a++) byPair.set(newRoad.arcFrom[a] * 65536 + newRoad.arcTo[a], a);
+      lut = new Int32Array(nOld).fill(-2);
+      for (let a = 0; a < nOld; a++) {
+        const vf = c.nodeVert[c.arcFrom[a]], vt = c.nodeVert[c.arcTo[a]];
+        const nf = newRoad.vertNode[vf], nt = newRoad.vertNode[vt];
+        if (nf < 0 || nt < 0) { lost++; continue; }
+        const hit = byPair.get(nf * 65536 + nt);
+        if (hit === undefined) { lost++; continue; }
+        lut[a] = hit;
+      }
+    }
+    // 这个月路网动了多少：判「旧树还可不可信」的依据。动得太多就直接丢掉缓存，
+    // 这个月本来也要重建（重建时 treeCaptureFor 会重新建一份），省下重写的开销。
+    const churn = lost + Math.max(0, nNew - nOld);
+    const churnMax = Math.max(12, nOld * 0.002);
+    if (churn > churnMax) { this.treeCache = null; return; }
+    if (lut) {
+      let blocked = 0, entries = 0;
+      for (const key in c.per) {
+        const list = c.per[key];
+        for (let o = 0; o < list.length; o++) {
+          const tr = list[o];
+          if (!tr) continue;
+          const src = tr.arcs, a = new Int16Array(src.length);
+          for (let i = 0; i < src.length; i++) {
+            const e = src[i];
+            entries++;
+            if (e < 0) { a[i] = -1; continue; }
+            const ne = lut[e];
+            if (ne < 0) { a[i] = -2; blocked++; } else a[i] = ne;
+          }
+          tr.arcs = a;
+        }
+      }
+      c.lastRemap = { lost: lost, blocked: blocked, entries: entries };
+    }
+    c.churn = churn;
+    c.nA = nNew;
+    c.nodeVert = Int32Array.from(newRoad.nodeVert);
+    c.arcFrom = Int32Array.from(newRoad.arcFrom);
+    c.arcTo = Int32Array.from(newRoad.arcTo);
+  };
   Model.prototype.solveGen = function* (cycles, dts, opts) {
     this.wake();
     dts = dts || DT;
@@ -1482,7 +1667,16 @@
     let group = null;
     for (let c = 0; c < cycles; c++) {
       if (c === 0 && !opts.noGroup) group = this.freeGroupFor(dts);
-      for (const dt of dts) for (let p = 0; p < NP; p++) { yield* this.iterate(this.net, this.ctxs[dt].per[p], p, Object.assign({ fullSkim: c === 0 }, opts, group ? { group: group } : null)); }
+      for (const dt of dts) for (let p = 0; p < NP; p++) {
+        const P = this.ctxs[dt].per[p];
+        // 第一个 cycle 是唯一的全量分配：有可用缓存就整段重放，否则重建并顺手存下来
+        let rep = null, cap = null;
+        if (c === 0 && !opts.lazyCar && opts.noCache !== true) {
+          rep = this.treeReplayFor(dt, p);
+          if (!rep) cap = this.treeCaptureFor(dt, p);
+        }
+        yield* this.iterate(this.net, P, p, Object.assign({ fullSkim: c === 0 }, opts, group ? { group: group } : null, { replay: rep, capture: cap }));
+      }
       if (group) { this.dropFreeGroup(); group = null; }
     }
     this.computeDaily();

@@ -400,7 +400,13 @@
 
     saves: { prefix: 'cm1.', maxManual: 12 },
     // 动态对象上限（代表性展示）：汽车、车站行人、街道行人、列车上下车乘客（每帧）；声音：列车声部与同时播放的环境短音
-    perf: { solverBudgetMs: 5, chunkBudgetMs: 6, cacheMaxPx: 24e6, freeCycle: true, freeCycleMaxMB: 220, maxCars: 320, maxPeds: 180, maxWalkers: 120, maxRiders: 120, trainVoices: 3, maxOneShots: 6 },
+    // treeCache：跨月复用最短路树。上个月每个起点的那棵树按「弧号序列」存下来（2 B/点），
+    // 下个月第一个 cycle 直接重放（沿旧路径用新时间累加距离 → 填 skim → 注入 → 回溯），
+    // 不再重建。实测 gz2 上 8 个时段 10.9 s → 2.1 s。代价是内存：起点数 × 节点数 × 2 B × 8。
+    // 弧号每月会重排，按**顶点对**重映射（顶点号来自城市网格，跨月稳定）；映射不到的弧只废掉
+    // 它那一根子树（标记 -2），不影响整棵树。
+    // treeCacheRefresh：每重建一次最多复用几个月；超过就重新建树并刷新缓存（防长期漂移）。
+    perf: { solverBudgetMs: 5, chunkBudgetMs: 6, cacheMaxPx: 24e6, freeCycle: true, freeCycleMaxMB: 220, treeCache: true, treeCacheMaxMB: 320, treeCacheRefresh: 3, maxCars: 320, maxPeds: 180, maxWalkers: 120, maxRiders: 120, trainVoices: 3, maxOneShots: 6 },
   };
 
   // 地价与容积率的联动（顶层配置，不随地图导出）：

@@ -2,6 +2,8 @@
 // 游戏状态与流程：时钟、日/月结算、跳月/跳年、建设草案、预测与存档序列化
 (function (CM) {
   const U = CM.U, CFG = CM.CFG, D = CM.DATA, M = CM.Metro;
+  // 载入/读档的冷启动求解不复用跨月树缓存（理由见 Game.create 里的注释）
+  const NO_CACHE = { noCache: true };
 
   function Game() {
     U.Emitter.call(this);
@@ -61,11 +63,13 @@
     g.econ.revOf = function (yy) { return g.fiscalRev(yy); };
     g.model.fare = g.econ.fare;
     g.tasks = new CM.Tasks();
-    g.model.solveNow(2);
+    // 载入时不复用跨月树缓存：这两轮是「从自由流起步」的冷启动，之间弧时变化最大，
+    // 拿上一轮的树重放反而失真（实测东京的分担率差 1.1pp）。缓存留给月度推进。
+    g.model.solveNow(2, null, NO_CACHE);
     // 时间口径要先有一次求解把 skim 填满，重建需求才拿得到真实时间；否则会落到自由流兜底上。
     // 这一次只需 1 轮：路网没变，只是把「按真实时间重建的需求」再过一遍，剩下的收敛交给后台循环
     // （wake 之后 liveLoop 会继续跑到容差内），载入因此少一整轮（大图约 5 秒）。
-    if (CFG.choice.impedance === 'time') { g.model.buildDemand(); g.model.solveNow(1); }
+    if (CFG.choice.impedance === 'time') { g.model.buildDemand(); g.model.solveNow(1, null, NO_CACHE); }
     // 地价是经营模式的派生量：开局先算一次，之后每月随城市与线网更新（见 monthGen）
     if (g.econ.caps.land) {
       g.model.computeLandAccess((CM.LAND_LINK && CM.LAND_LINK.winMin) || 30);
@@ -964,8 +968,8 @@
     g.favs = { stations: (s.favs && s.favs.stations) || [], lines: (s.favs && s.favs.lines) || [], names: (s.favs && s.favs.names) || {} };
     g.mapInit = s.mapInit || null;
     g.milestones = s.milestones || null;
-    g.model.solveNow(2);
-    if (CFG.choice.impedance === 'time') { g.model.buildDemand(); g.model.solveNow(1); }   // 同上：只补一轮，余下的交给后台
+    g.model.solveNow(2, null, NO_CACHE);
+    if (CFG.choice.impedance === 'time') { g.model.buildDemand(); g.model.solveNow(1, null, NO_CACHE); }   // 同上：只补一轮，余下的交给后台
     if (CM.Milestones) CM.Milestones.backfill(g);
     // 城市经济：有数据则恢复；1.7 及更早的存档（或数据不完整）从当前状态接入，不补造过去的记录，不改变已有资金与债务。
     // 接入失败时本局不启用经济模拟，原存档不受影响
