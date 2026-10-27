@@ -13,7 +13,13 @@
 //      根因是**月内的 MSA 收敛**：它把弧时推到新均衡（wd-0 最大弧时 6.32 → 7.82 分），
 //      而重放只更新距离、不更新拓扑。低流量时段路径本身近似并列，微小扰动就整片翻转。
 //   3. 所以「整月 8 个时段一起重建」是浪费的：真正需要重建的只有流量大的那 2~4 个时段。
-//   4. 成本：对偶检查 0.13 s/时段（扫完 14,746 条弧），重建 0.73 s/时段。
+//   4. **决定性对照（--prebuild）**：改用「月末收敛后」的时间建树，下个月初的 gap 全部是
+//      0.00%（8 个时段 × 2,844 起点，0 棵需要重建）；检查 1.07 s vs 全量 6.03 s。
+//      而用「月初第一轮」的时间建树，wd-0/wd-2 的 gap 中位 6.8%~14.8%。
+//      ⇒ 树只对「建它时的那份弧时」成立。现在的缓存用月初时间建，天生就旧了一个 MSA 收敛周期。
+//      把建树挪到月末（收敛后），下个月初就是逐位精确的 —— 这是「树懒更新」真正的落点：
+//      不是省掉建树，而是让建树只发生在「gap 真的不为 0」的时段，并且在后台做。
+//   5. 成本：对偶检查 0.13 s/时段（扫完 14,746 条弧），重建 0.73 s/时段。
 //      把刷新粒度从「整月」降到「时段」，刷新月 12.5 s → 约 6 s。
 //
 // 踩到的两个坑（都不是算法）：
@@ -165,6 +171,35 @@ function check(time) {
   return gap;
 }
 
+// ---- 结构差异：多少节点的「父弧选择」变了，以及需要重算的子树有多大 ----
+// 新树的 order 是 settle 正序（父先于子），所以一趟就能把「受影响」标出来：
+// 自身父弧与旧树不同，或父节点已经受影响 ⇒ 这个节点要重算。
+function structDiff(arcs, o, time) {
+  const r = m.road;
+  const tr = buildTrace(o, time);      // 新树：bd = 新 dist，brd = 新 pred
+  const oldPred = new Map();
+  for (let i = 0; i < arcs.length; i++) {
+    const e = arcs[i];
+    if (e < 0) continue;
+    oldPred.set(r.arcTo[e], e);
+  }
+  const aff = new Set();
+  let changedPred = 0;
+  for (let i = 0; i < tr.no; i++) {
+    const v = tr.order[i];
+    const e = brd[v];
+    const oe = oldPred.get(v);
+    if (e < 0) { aff.add(v); continue; }
+    const p = r.arcFrom[e];
+    if (oe !== e) changedPred++;
+    if (aff.has(p) || oe !== e) aff.add(v);
+  }
+  // 只统计还留在旧树上的节点（旧树已有的），避免把新可达的点算成「重算量」
+  let inOld = 0;
+  for (let i = 0; i < tr.no; i++) if (oldPred.has(tr.order[i])) inOld++;
+  return { total: tr.no, inOld, changedPred, affected: aff.size };
+}
+
 // ---- 自己建树（与 roadTree 同构），用于「重建坏树」的对照 ----
 const bd = new Float64Array(m.road.nN);
 const hk = new Float64Array(m.road.nA + 8), hv = new Int32Array(m.road.nA + 8);
@@ -203,6 +238,65 @@ function build(o, time) {
   }
 }
 
+// ---- 建树并保留 settle 顺序与前驱弧（月末预建用）----
+const brd = new Int32Array(m.road.nN), bord = new Int32Array(m.road.nN);
+function buildTrace(o, time) {
+  const r = m.road, rd = m.roadData;
+  const outStart = r.outStart, outArc = r.outArc, arcTo = r.arcTo;
+  bd.fill(Infinity);
+  let cnt = 0, no = 0;
+  const push = (k, v) => {
+    let i = cnt++;
+    while (i > 0) { const p = (i - 1) >> 1; if (hk[p] <= k) break; hk[i] = hk[p]; hv[i] = hv[p]; i = p; }
+    hk[i] = k; hv[i] = v;
+  };
+  for (let k = rd.start[o]; k < rd.start[o + 1]; k++) {
+    const v = rd.nodes[k], t = rd.times[k];
+    if (t < bd[v]) { bd[v] = t; brd[v] = -1; push(t, v); }
+  }
+  while (cnt) {
+    const u = hv[0], du = hk[0], n = --cnt;
+    if (n > 0) {
+      const k2 = hk[n], v2 = hv[n];
+      let i = 0;
+      for (;;) {
+        const l = i * 2 + 1; if (l >= n) break;
+        const rr = l + 1, c = rr < n && hk[rr] < hk[l] ? rr : l;
+        if (hk[c] >= k2) break;
+        hk[i] = hk[c]; hv[i] = hv[c]; i = c;
+      }
+      hk[i] = k2; hv[i] = v2;
+    }
+    if (du > bd[u]) continue;
+    bord[no++] = u;
+    for (let k = outStart[u]; k < outStart[u + 1]; k++) {
+      const a = outArc[k], v = arcTo[a], nd = du + time[a];
+      if (nd < bd[v]) { bd[v] = nd; brd[v] = a; push(nd, v); }
+    }
+  }
+  return { no, order: bord, pred: brd };
+}
+
+// ---- 月末预建：用**收敛后**的弧时建树，而不是月初第一轮 ----
+function prebuildAll() {
+  const trees = new Map(), times = new Map();
+  const zones = [];
+  for (let o = 0; o < m.Z; o++) if (m.roadData.start[o] !== m.roadData.start[o + 1]) zones.push(o);
+  for (const q of periods) {
+    const P = P_of(q), time = P.arcTime;
+    times.set(q.key, Float32Array.from(time));
+    const map = new Map();
+    for (const o of zones) {
+      const tr = buildTrace(o, time);
+      const a = new Int16Array(tr.no);
+      for (let i = 0; i < tr.no; i++) a[i] = tr.pred[tr.order[tr.no - 1 - i]];
+      map.set(o, a);
+    }
+    trees.set(q.key, map);
+  }
+  return { trees, times };
+}
+
 // ---- 抓「某月第一轮」的树：必须在 iterate 之前记下时间，因为 BPR 会改它 ----
 function captureAll() {
   const trees = new Map(), times = new Map();
@@ -219,12 +313,20 @@ function captureAll() {
 }
 
 // ---------- 流程 ----------
+const PRE = argv.includes('--prebuild');
 settle();                 // 月 1 收敛
 advanceMonth();           // → 月 2 月初
 const t0 = performance.now();
-const base = captureAll();  // 模拟「月 2 第一轮把树存进缓存」
+let base;
+if (PRE) {
+  settle();                        // 先收敛到月末
+  base = prebuildAll();            // 用月末（= 下月初）的时间建树
+} else {
+  base = captureAll();             // 现状：用月初第一轮的时间建树
+  settle();
+}
 const baseNet = snapNet();
-console.log(`[${MAP}] 小区 ${m.Z} · 节点 ${m.road.nN} · 弧 ${m.road.nA}`
+console.log(`[${MAP}] ${PRE ? '月末预建' : '月初第一轮'} · 小区 ${m.Z} · 节点 ${m.road.nN} · 弧 ${m.road.nA}`
   + ` · 抓 8 时段 ${(performance.now() - t0).toFixed(0)} ms · ${[...base.trees.values()].reduce((s, x) => s + x.size, 0)} 棵树`);
 settle();                 // 月 2 收敛
 
@@ -332,6 +434,15 @@ for (let mo = 1; mo <= MONTHS; mo++) {
       dr.push(Math.abs(time[na] - bt[a]) / Math.max(bt[a], 1));
     }
     dr.sort((x, y) => x - y);
+    if (process.env.STRUCT) {
+      let t2 = 0, io = 0, cp = 0, af = 0;
+      for (const o of [...old.arcs.keys()].slice(0, 400)) {
+        if (m.roadData.start[o] === m.roadData.start[o + 1]) continue;
+        const sd = structDiff(old.arcs.get(o), o, time);
+        t2 += sd.total; io += sd.inOld; cp += sd.changedPred; af += sd.affected;
+      }
+      console.log(`[结构] ${q.key} 采样 400 起点：父弧改变 ${(cp / io * 100).toFixed(2)}% · 需重算(含后代) ${(af / io * 100).toFixed(2)}% · 新树多出节点 ${(t2 - io)}`);
+    }
     gaps.sort((a, b) => a - b);
     const qq = (p2) => gaps[Math.min(gaps.length - 1, Math.floor(gaps.length * p2))];
     const over = {};
