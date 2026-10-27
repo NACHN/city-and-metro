@@ -42,6 +42,9 @@ RAIL_KINDS = {"rail", "subway", "light_rail", "monorail", "narrow_gauge", "tram"
 # 水系折线的默认宽度（格）。对照广州小图：真实折线多在 0.04–0.09 格（10–22 m）——
 # 大江大河在 OSM 里是 natural=water 多边形，折线只负责窄河涌，所以这里不能按「河宽 600 m」给。
 WATERWAY_DEFAULT_WIDTH = {"river": 0.09, "canal": 0.07, "stream": 0.04, "ditch": 0.02, "drain": 0.02}
+# 这张图的水道上限（格）。乌鲁木齐全是小河沟，OSM 上挂着 60–90 m 的 width 标签（那是河滩/渠道
+# 用地的宽度，不是水面），按标签画出来河比路还宽。给了上限就一律压到这个宽度。
+WATERWAY_MAX = None
 
 PARK_KINDS = ("park", "garden", "playground", "recreation_ground", "common")
 WOOD_LANDUSE = ("forest", "wood", "scrub", "meadow", "orchard")
@@ -118,6 +121,8 @@ def classify(tags):
                 w = 0.8      # 200 m，可通内河船
             else:
                 w = WATERWAY_DEFAULT_WIDTH[ww]
+        if WATERWAY_MAX and w > WATERWAY_MAX:
+            w = WATERWAY_MAX
         w = min(max(w, 0.02), 12.0)   # 上限 3 km，避免单个错标把整张图淹掉
         return {"layer": "waterway", "width": round(w, 3)}
     if tags.get("leisure") in PARK_KINDS:
@@ -332,12 +337,24 @@ def join_rings(lines, close_open=False):
 
     `close_open`：接不上的开口链要不要把首尾直接连起来当成环。街区/行政边界这类关系
     常常有一部分在框外，成员路根本不在裁剪出来的小 pbf 里，接不上就整块丢掉 —— 结果
-    是贴在边缘的镇（安亭、佘山、大团……）没有边界，格子掉进「外围地区」。真实的多边形
-    本来就该被框线切断，用首尾连线补上比丢掉更接近事实（缺口都在框边一带）。
-    水面不开这个开关：开口的水面连起来会凭空合出一片湖。
+    是贴在边缘的镇（安亭、佘山、大团……）没有边界，格子掉进「外围地区」；水面同理，
+    狮子洋 26/38 段在框外，丢掉相当于把珠江口挖掉一角。真实的多边形本来就该被框线切断，
+    用首尾连线补上比丢掉更接近事实（缺口都在框边一带）。
+    代价是缺口若在**图内**，就会补出一块不存在的水面 —— 所以只在整个 relation 一段都接不上时
+    才补（已有闭合外环的不动，见 `collect`），并且逐个打印，扫一眼就知道缺口在哪。
     """
     lines = [list(l) for l in lines if len(l) >= 2]
     rings = []
+    # 本身就是闭环的 member way 先单独收下，不参与拼接。不这么做的后果是它被当成一条
+    # 普通线段接到别的开口链上：两个外环接成一个「8」字，偶奇填充会把其中一瓣吃掉
+    # （广州南海区的 2 个环被接成 1 个，佛山片区一次少了 1,274 格）。
+    open_lines = []
+    for l in lines:
+        if len(l) >= 4 and l[0] == l[-1]:
+            rings.append(l)
+        else:
+            open_lines.append(l)
+    lines = open_lines
     while lines:
         cur = lines.pop()
         grew = True
@@ -700,10 +717,21 @@ def collect(area_pbf, dest_geojson, bbox=None, sea=False, extra=None, extra_name
     # 关系多边形：先用成员路坐标拼环，再按外环面积排序、内环归到包含它的外环里
     poly = 0
     lost = []
+    patched = []
     for cls, tags, members in col.rels:
-        _close = cls["layer"] != "water"
-        outers = join_rings([col.way_geom[r] for role, r in members if role != "inner" and r in col.way_geom], _close)
-        inners = join_rings([col.way_geom[r] for role, r in members if role == "inner" and r in col.way_geom], _close)
+        _ow = [col.way_geom[r] for role, r in members if role != "inner" and r in col.way_geom]
+        outers = join_rings(_ow)
+        if not outers:
+            # 整块都接不上（成员有一截在框外）才补首尾 —— 只有这时补出来的环才等于
+            # 「被框线切断的多边形」。已经有闭合外环的关系不补：那会把两片中间本不相连的
+            # 外环用一条弦连成自交环，偶奇填充把中间整块挖掉（广州南海区 2 个环被并成 1 个，
+            # 佛山片区一次丢了 1,274 格）。
+            outers = join_rings(_ow, True)
+            if outers:
+                patched.append((tags.get('name', '') or tags.get('name:zh', '') or '无名',
+                                cls['layer'],
+                                sum(1 for _r, _m in members if _m not in col.way_geom), len(members)))
+        inners = join_rings([col.way_geom[r] for role, r in members if role == "inner" and r in col.way_geom])
         if not outers:
             # 拼不成闭合环就等于整块丢掉 —— 这件事必须喊出来，不能静默
             nm = tags.get('name', '') or tags.get('name:zh', '')
@@ -770,6 +798,12 @@ def collect(area_pbf, dest_geojson, bbox=None, sea=False, extra=None, extra_name
         print("  ! 关系多边形 %d 个拼不成闭合环，整块丢掉：" % len(lost))
         for nm, layer, cnt, miss in lost[:10]:
             print("      %-14s %-6s 成员 %3d 段，缺 %3d 段" % (nm, layer, cnt, miss))
+    if patched:
+        # 补环是权宜：区域/街区补出来的等于被框线切断的多边形；水面补出来的要看一眼缺口在哪，
+        # 缺口在框外就没问题，在图内就会合出一片不存在的湖。
+        print("  · 靠首尾补环闭合的关系 %d 个：" % len(patched))
+        for nm, layer, miss, cnt in patched[:12]:
+            print("      %-14s %-6s 缺 %2d/%2d 段" % (nm, layer, miss, cnt))
     print("层：" + " · ".join("%s %d" % (k, v) for k, v in sorted(col.stats.items())))
     print("-> %s (%.1f MB)" % (dest_geojson, os.path.getsize(dest_geojson) / 1048576.0))
     return col.stats
@@ -785,9 +819,13 @@ def main(argv):
     ap.add_argument("--sea", action="store_true", help="用 coastline 拼海面（实验性，默认关）")
     ap.add_argument("--water-extra", default=None, help="额外的 WKT 水域文件，补进水面")
     ap.add_argument("--water-extra-name", default="", help="上面那份水域的名字（写进地图标注）")
+    ap.add_argument("--waterway-max", type=float, default=None,
+                    help="水系折线的宽度上限（格）：这张图全是小河沟时用，例如乌鲁木齐 0.02 = 5 m")
     args = ap.parse_args(argv[1:])
     lon0, lat0, kx, ky = (float(v) for v in args.proj.split(","))
     PROJ.update({"lon0": lon0, "lat0": lat0, "kx": kx, "ky": ky})
+    global WATERWAY_MAX
+    WATERWAY_MAX = args.waterway_max
     bbox = tuple(float(v) for v in args.bbox.split(","))
     os.makedirs(args.out, exist_ok=True)
     area = os.path.join(args.out, "area.osm.pbf")

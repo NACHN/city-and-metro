@@ -125,9 +125,9 @@ node scripts/build.mjs                        # 61 文件 / 9 图 / 0 警告
 node scripts/map-source.mjs check             # 9/9
 node scripts/validate-map.mjs                 # 9/9
 node scripts/ground-check.mjs                 # 九图底图可绘制
-node scripts/smoke.mjs --maps=wlmq --months=2 # 三模式，指纹 7f25525fb2555696
+node scripts/smoke.mjs --maps=wlmq --months=2 # 三模式 ffb1dcf8b79e808a / f814db51e1c7bdb5 / 3a56258aed584ebb
 node tools/month-breakdown.mjs wlmq --months=3
-node tools/region-cells.mjs wlmq              # 18 个片区都有格子，0 个空片区
+node tools/region-cells.mjs wlmq              # 25 个片区都有格子，0 个空片区
 node tools/preview-map.mjs wlmq out.ppm
 ```
 
@@ -135,7 +135,7 @@ node tools/preview-map.mjs wlmq out.ppm
 
 ```bash
 python tools/osm-cut.py --bbox 43.6767,87.2609,44.0033,87.7791 --out maps/_raw/wlmq \
-  --proj 87.27,44.003,321.17,443.6            # 约 15 min
+  --proj 87.27,44.003,321.17,443.6 --waterway-max 0.02   # 约 15 min（只重跑收集约 6 s）
 node scripts/gen-geo.mjs --from maps/_raw/wlmq/features.geojson --map wlmq --w 160 --h 144 \
   --proj 87.27,44.003,321.17,443.6 --out js/geo_wlmq.js
 python tools/_wlmq-source.py                  # 经纬度表 → maps/wlmq/source.json
@@ -146,6 +146,9 @@ node tools/preview-map.mjs wlmq out.ppm
 
 ## 已知偏差
 
+- **河道一律按 5 m 画**：OSM 给乌鲁木齐的水道挂了 60–90 m 的 `width`（那是河滩/渠道用地的宽度，
+  不是水面），照标签画出来比马路还宽。`--waterway-max 0.02`（= 5 m）把 339 条水系线全部压到一处，
+  城市里那几条小河沟就是这个量级。照片式的宽阔河床不再体现在水面宽度上。
 - **步行网只有 811 条**（广州是 20,368 条）：乌鲁木齐的 OSM 数据里 footway / path 很少，
   步行接驳的实际连通性比真实差一些，覆盖范围可能偏小。玩家反馈若集中在这点，需要单独补一层人行道。
 - **2000 年起步拥堵只有 1.02**，不像"乌鲁木齐很堵"的印象。模型里拥堵由人口密度 × 路网供给算出，

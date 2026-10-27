@@ -43,7 +43,7 @@ proj  121.22,31.433,380.53,443.39            # lon0,lat0,格/经度,格/纬度�
 - **长江口与东海来自水利专题面**（`water_extra.wkt`，两条记录：`长江` GB 210101 / HYDC FB010001，
   `东海` GB 250100 海域）：OSM 在长江口只有中心线（`长江南港`、`长江南槽` 两条 `ship=yes` 的水道，
   各 600 m 宽），切出来整个口门是陆地，长兴、横沙也跟宝山连成一片。专题面注进来以后水面从
-  79 → 454 km²：长兴、横沙变成两座岛，南港、北港分开，浦东机场以东与南汇东岸有了海，九段沙那块沙洲
+  79 → 457 km²（引擎栅格口径）：长兴、横沙变成两座岛，南港、北港分开，浦东机场以东与南汇东岸有了海，九段沙那块沙洲
   按数据自身的洞留成陆地。
   长江面 81% 在图外（一直给到 120.55°E / 32.0°N），东海面只有 41 km² 落在框内（其余在 121.85°E 以东）。
   注入前按框裁掉 —— 框内断成几块，`gen-geo` 的矩形裁环会把它们沿框边桥接起来，面积多 26%，
@@ -64,9 +64,9 @@ node scripts/build.mjs                        # 61 文件 / 9 图 / 0 警告
 node scripts/map-source.mjs check             # 9/9
 node scripts/validate-map.mjs                 # 9/9
 node tools/map-check.mjs sh                   # 机场可地下设站、7 个历史任务锚点 0 死局；开局可设站 9,014 格
-node scripts/smoke.mjs --maps=sh --months=2   # 三模式 f2649b500c846179 / 3c6c72e6cc64c38a / 5b49abb7e1503845
+node scripts/smoke.mjs --maps=sh --months=2   # 三模式 f2689807fc5fc27d / 1543296f07c23b1d / 5561bf6d28ef2d05
 node tools/region-cells.mjs sh                # 片区 33，空片区 1（滨江森林公园在框外）
-node tools/water-cover.mjs sh                 # 水面 1,090 片，水系线落在水面内 8.1%（长江南港/南槽已不再外露）
+node tools/water-cover.mjs sh                 # 水面 1,087 片，水系线落在水面内 8.3%（长江南港/南槽已不再外露）
 node tools/month-breakdown.mjs sh --months=2  # 建局 4.3 s，节点 3,584 / 弧 6,694
 node tools/preview-map.mjs sh out.ppm         # 底图预览（PPM）
 ```
