@@ -59,18 +59,28 @@ city.generate(CM.CFG.START.y * 10000 + 101, CM.CFG.START.y);
 
 const N = city.region.length;
 const cnt = new Int32Array(city.regions.length);
-for (let c = 0; c < N; c++) cnt[city.region[c]]++;
+const built = new Int32Array(city.regions.length);   // 开局就已经是城市用地的格
+const pop = new Float64Array(city.regions.length);
+const IDLE = new Set([CM.LU.RURAL, CM.LU.WATER, CM.LU.HILL, CM.LU.PARK, CM.LU.AIRPORT]);
+for (let c = 0; c < N; c++) {
+  const k = city.region[c];
+  cnt[k]++; pop[k] += city.pop[c];
+  if (!IDLE.has(city.lu[c])) built[k]++;
+}
 const total = N * 0.0625;
 
 console.log(`[${MAP}] ${CM.CFG.W}×${CM.CFG.H} = ${total.toFixed(0)} km² · 片区 ${city.regions.length}`);
 let empty = 0, sum = 0;
-const rows = city.regions.map((r, i) => ({ i, name: r.name, n: cnt[i], open: r.open, plan: r.plan }));
+const rows = city.regions.map((r, i) => ({ i, name: r.name, n: cnt[i], built: built[i], pop: pop[i], open: r.open, plan: r.plan }));
 rows.sort((a, b) => b.n - a.n);
 for (const r of rows) {
   if (!r.n) empty++;
   sum += r.n;
   const km2 = (r.n * 0.0625).toFixed(1);
-  console.log(`  ${String(r.n).padStart(5)} 格 ${String(km2).padStart(7)} km²  ${r.name}` +
+  // 建成格与人口：判断「这片在开局那年是不是空地」时，只看格数会被骗 ——
+  // 一片 700 格里可能只有 40 格是房子，其余是戈壁。开放年越晚，建成格就该越少。
+  const b = r.n ? Math.round(100 * r.built / r.n) : 0;
+  console.log(`  ${String(r.n).padStart(5)} 格 ${String(km2).padStart(6)} km²  建成 ${String(b).padStart(3)}%  人口 ${String(Math.round(r.pop)).padStart(9)}  ${r.name}` +
     `  ${r.open == null ? '（永久/景区）' : '开放 ' + r.open}  ${r.plan || ''}`);
 }
 console.log(`合计 ${sum} / ${N} 格 · 空片区 ${empty} 个${empty ? ' ← 名字对不上 OSM 的 level-8 边界，检查 source.json 的 streets' : ''}`);

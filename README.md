@@ -95,6 +95,8 @@
 | [js/maps.js](./js/maps.js) / [js/config.js](./js/config.js) | 地图登记与共用参数 |
 | [scripts/smoke.mjs](./scripts/smoke.mjs) | 无头冒烟与数值回归：固定地图 × 模式逐日推进 N 月，输出状态指纹（`node scripts/smoke.mjs`） |
 | [tools/region-cells.mjs](./tools/region-cells.mjs) | 片区格数体检：按 OSM 街道名匹配的片区有没有落空（`node tools/region-cells.mjs wlmq`） |
+| [tools/airport-check.mjs](./tools/airport-check.mjs) | 机场能否地下设站、各片区哪一年能设站（`node tools/airport-check.mjs wlmq`） |
+| [tools/which-region.mjs](./tools/which-region.mjs) | 一个经纬度落在哪个 OSM 街道边界里（写片区清单时核对用） |
 | [scripts/new-map.mjs](./scripts/new-map.mjs) | 新地图的第一公里：中心经纬度 + 尺寸 → bbox / 投影参数与后续命令（`node scripts/new-map.mjs --id xx --lat 31.2 --lon 121.5`） |
 | [tools/editor.html](./tools/editor.html) | 地图编辑器（地图优先画布 + 数据抽屉，开发内部用，不随站点发布） |
 
