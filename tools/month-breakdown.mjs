@@ -8,6 +8,7 @@ const root = 'C:/dev/city-and-metro';
 const argv = process.argv.slice(2);
 const MAP = argv.find((a) => !a.startsWith('--')) || 'gz2';
 const MONTHS = +(argv.find((a) => a.startsWith('--months=')) || '--months=4').split('=')[1];
+const TOL = +(argv.find((a) => a.startsWith('--tol=')) || '').split('=')[1];
 const NOOP = () => {};
 
 globalThis.window = globalThis;
@@ -41,6 +42,7 @@ for (const f of ['js/maps.js', 'js/facility.js', 'js/city.js', 'js/metro.js', 'j
 
 const CM = globalThis.CM;
 CM.useMap(MAP);
+if (Number.isFinite(TOL)) CM.CFG.road.routeTol = TOL;
 
 const t0 = performance.now();
 const g = CM.Game.create({ map: MAP, preset: 'normal', name: 'mb' });
@@ -123,9 +125,10 @@ for (let i = 1; i <= MONTHS; i++) {
   const tPb = performance.now();
   settleRest();
   const msPb = performance.now() - tPb;
+  const cycles = m.solveCycles;
   const c = m.treeCache;
   const mode = !c ? '无缓存' : (c.fresh ? '预建命中（复用）' : '缓存失效（重建）');
-  console.log(`── 第 ${i} 个月 · ${mode} · 合计 ${(total / 1000).toFixed(2)} s ──`);
+  console.log(`── 第 ${i} 个月 · ${mode} · 合计 ${(total / 1000).toFixed(2)} s · ${cycles} 轮 ──`);
   const rows = Object.entries(ACC).filter(([k]) => !k.startsWith('A ')).sort((a, b) => b[1] - a[1]);
   for (const [k, v] of rows) {
     if (v < 1) continue;
