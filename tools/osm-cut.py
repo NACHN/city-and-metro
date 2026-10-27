@@ -558,7 +558,7 @@ def union_water(raw):
         return []
     # 只焊接真贴着的片：这一段相邻水面片之间的缝中位 7.6 m、p10 3.6 m，
     # 焊 5 m 能把一条河的碎片接上；焊 60 m 会把番禺的鱼塘连成整片（实测水面涨到 1,066 km²）。
-    d = 0.02 / float(PROJ["kx"])   # 5 m：把同一条河的碎片焊上（相邻片缝中位 7.6 m、p10 3.6 m）
+    d = 0.12 / float(PROJ["kx"])   # 30 m：把同一条河的碎片焊上（相邻片缝中位 7.6 m、p90 50 m）：把同一条河的碎片焊上（相邻片缝中位 7.6 m、p10 3.6 m）
     if d > 0:
         merged = unary_union([g.buffer(d, quad_segs=1) for g in geoms]).buffer(-d, quad_segs=1)
     else:
