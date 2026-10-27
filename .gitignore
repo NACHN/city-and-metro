@@ -32,5 +32,7 @@ maps/_raw/
 # 预览中间产物（PPM 是未压缩位图，只留在本地）
 tools/_*.ppm
 tools/_*.png
+# 地图编辑器保存时自动留的上一版备份（不进版本库）
+maps/*/source_bak.json
 # 工具留下的临时目录（浏览器探针的 user-data-dir 等）
 tools/_*/
