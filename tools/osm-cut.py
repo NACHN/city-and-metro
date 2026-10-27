@@ -39,9 +39,9 @@ ROAD_DROP = {"service", "track", "driveway", "parking_aisle", "raceway", "busway
 # 步行网：决定 15 分钟步行接驳能不能走（geo.streets）
 STREET_KINDS = {"footway", "path", "pedestrian", "steps", "cycleway", "bridleway", "corridor"}
 RAIL_KINDS = {"rail", "subway", "light_rail", "monorail", "narrow_gauge", "tram"}
-# 水系折线的默认宽度（格）。对照广州小图：真实折线多在 0.05–0.09 格（12–22 m）——
+# 水系折线的默认宽度（格）。对照广州小图：真实折线多在 0.04–0.09 格（10–22 m）——
 # 大江大河在 OSM 里是 natural=water 多边形，折线只负责窄河涌，所以这里不能按「河宽 600 m」给。
-WATERWAY_DEFAULT_WIDTH = {"river": 0.35, "canal": 0.25, "stream": 0.08, "ditch": 0.04, "drain": 0.04}
+WATERWAY_DEFAULT_WIDTH = {"river": 0.09, "canal": 0.07, "stream": 0.04, "ditch": 0.02, "drain": 0.02}
 
 PARK_KINDS = ("park", "garden", "playground", "recreation_ground", "common")
 WOOD_LANDUSE = ("forest", "wood", "scrub", "meadow", "orchard")
@@ -94,6 +94,10 @@ def classify(tags):
     rail = tags.get("railway")
     if rail in RAIL_KINDS:
         return {"layer": "rail"}
+    if tags.get("natural") == "coastline":
+        # 海岸线不是水面，是一条「水在左侧」的线。以前没有这个分支，整条丢，
+        # 于是上海的长江口、杭州湾、南汇东滩这些靠海岸线界定的海面全都不存在。
+        return {"layer": "coastline"}
     if tags.get("natural") == "water" or tags.get("waterway") == "riverbank" or tags.get("landuse") in WATER_LANDUSE:
         return {"layer": "water"}
     ww = tags.get("waterway")
@@ -109,9 +113,9 @@ def classify(tags):
             # OSM 里珠江下游的分汊（白坭水道、虎门水道、黄埔水道…）大多是 waterway=river 的**线**，
             # 没有 width 标签，但打着 ship/boat 通航标记 —— 按通航等级给宽度，才不至于把珠江画成发丝。
             if tags.get("ship") == "yes":
-                w = 3.2      # 800 m，可通海轮的主航道
+                w = 2.4      # 600 m，可通海轮的主航道
             elif tags.get("boat") == "yes":
-                w = 1.5      # 375 m，可通内河船
+                w = 0.8      # 200 m，可通内河船
             else:
                 w = WATERWAY_DEFAULT_WIDTH[ww]
         w = min(max(w, 0.02), 12.0)   # 上限 3 km，避免单个错标把整张图淹掉
@@ -134,15 +138,22 @@ def classify(tags):
 
 # ---- 第一步：裁 bbox -------------------------------------------------------
 
-class Cutter(osmium.SimpleHandler):
-    """一趟走完三个回调：PBF 中节点、路、关系的顺序天然满足依赖。"""
+class IdScan(osmium.SimpleHandler):
+    """第 1 趟：只收集 id，不写文件。
 
-    def __init__(self, bbox, writer):
+    为什么不能边扫边写：跨边界的水面是一个 relation，外环由几十段路拼成。
+    以前「路只要有一个节点在框内就收、节点只收框内的」—— 框外那半圈路整条丢掉，
+    框内的路被截断到边界，环永远合不拢，join_rings 返回空，整块水面静默消失。
+    狮子洋就是这么丢的：38 段成员只剩 12 段。
+    """
+
+    def __init__(self, bbox):
         super().__init__()
         self.s, self.w_, self.n, self.e = bbox
-        self.writer = writer
         self.node_ids = set()
         self.way_ids = set()
+        self.rel_ids = set()
+        self.member_ways = set()
         self.count = {"node": 0, "way": 0, "relation": 0}
 
     def inside(self, loc):
@@ -151,34 +162,84 @@ class Cutter(osmium.SimpleHandler):
     def node(self, n):
         if self.inside(n.location):
             self.node_ids.add(n.id)
-            self.writer.add_node(n)
             self.count["node"] += 1
-            if self.count["node"] % 2000000 == 0:
-                print("  已收 %d 万节点…" % (self.count["node"] // 10000), flush=True)
 
     def way(self, w):
         if any(n.ref in self.node_ids for n in w.nodes):
             self.way_ids.add(w.id)
+            self.count["way"] += 1
+
+    def relation(self, r):
+        mem = [m.ref for m in r.members if m.type == "w"]
+        if any(m in self.way_ids for m in mem):
+            self.rel_ids.add(r.id)
+            # 只对「面状关系」补全成员：公交/地铁 route 关系有上百段成员，补全了也没人用
+            if r.tags.get("type") in ("multipolygon", "boundary"):
+                self.member_ways.update(mem)
+            self.count["relation"] += 1
+
+
+class WayRefScan(osmium.SimpleHandler):
+    """第 2 趟：把要保留的关系的成员路的全部节点 id 捞出来。"""
+
+    def __init__(self, want):
+        super().__init__()
+        self.want = want
+        self.nodes = set()
+
+    def way(self, w):
+        if w.id in self.want:
+            self.nodes.update(n.ref for n in w.nodes)
+
+
+class Writer(osmium.SimpleHandler):
+    """第 3 趟：写。节点必须排在路前面，所以只能最后一遍。"""
+
+    def __init__(self, writer, node_ids, way_ids, rel_ids):
+        super().__init__()
+        self.writer = writer
+        self.node_ids = node_ids
+        self.way_ids = way_ids
+        self.rel_ids = rel_ids
+        self.count = {"node": 0, "way": 0, "relation": 0}
+
+    def node(self, n):
+        if n.id in self.node_ids:
+            self.writer.add_node(n)
+            self.count["node"] += 1
+
+    def way(self, w):
+        if w.id in self.way_ids:
             self.writer.add_way(w)
             self.count["way"] += 1
 
     def relation(self, r):
-        if any(m.type == "w" and m.ref in self.way_ids for m in r.members):
+        if r.id in self.rel_ids:
             self.writer.add_relation(r)
             self.count["relation"] += 1
 
 
 def cut(pbf, bbox, dest):
+    scan = IdScan(bbox)
+    scan.apply_file(pbf)
+    # 关系成员路整条保留（哪怕全在框外），否则跨边界的水面环合不拢
+    keep_ways = set(scan.way_ids) | scan.member_ways
+    extra = scan.member_ways - scan.way_ids
+    need_nodes = set()
+    if extra:
+        wc = WayRefScan(scan.member_ways)
+        wc.apply_file(pbf)
+        need_nodes = wc.nodes - scan.node_ids
     writer = osmium.SimpleWriter(dest)
-    cutter = Cutter(bbox, writer)
     try:
-        cutter.apply_file(pbf)
+        wr = Writer(writer, scan.node_ids | need_nodes, keep_ways, scan.rel_ids)
+        wr.apply_file(pbf)
     finally:
         writer.close()
-    print("裁剪：%s -> %s（%s）" % (pbf, dest, cutter.count))
-    return cutter.count
-
-
+    print("裁剪：%s -> %s（节点 %d+%d，路 %d+%d，关系 %d）"
+          % (pbf, dest, scan.count["node"], len(need_nodes),
+             scan.count["way"], len(extra), scan.count["relation"]))
+    return wr.count
 # ---- 第二步：分类出 GeoJSON ----------------------------------------------
 
 def ring_area(ring):
@@ -316,6 +377,8 @@ class Collector(osmium.SimpleHandler):
         self.wanted = wanted_way_ids or set()   # 需要留坐标的关系成员路
         self.way_geom = {}
         self.rels = []                          # (tags, [(role, way_id)])
+        self.water_raw = []                     # (名字, [环, ...])：原始坐标，合并完再简化
+        self.coast_raw = []                     # 海岸线折线（经纬度），用来拼海面
         self.stats = {}
         self.missing_loc = 0
 
@@ -359,11 +422,19 @@ class Collector(osmium.SimpleHandler):
             tol = TOL_BY_ROAD_CLASS.get(cls.get("class"), SIMPLIFY_TOL)
         else:
             tol = TOL_LAYER.get(layer, SIMPLIFY_TOL)
+        if layer == "coastline":
+            self.coast_raw.append(pts)
+            return
         if layer in ("road", "rail", "street", "waterway"):
             geom = {"type": "LineString", "coordinates": to_lonlat(simplify(to_cells(pts), tol))}
         else:
             closed = pts[0] == pts[-1] and len(pts) >= 4
             if not closed:
+                return
+            if layer == "water":
+                # 水面先记原始环，等全部收齐再统一合并，合并之后才简化。
+                # 逐片简化会在共边上留缝，缝一多整条河就碎成点；原始环共边是同一批 OSM 节点，合并才严丝合缝。
+                self.water_raw.append((tags.get("name") or tags.get("name:zh") or "", [[pts]]))
                 return
             xy = to_cells(pts)
             ring = simplify_ring(xy, tol)
@@ -400,7 +471,122 @@ class Collector(osmium.SimpleHandler):
         self.stats[cls["layer"]] = self.stats.get(cls["layer"], 0) + 1
 
 
-def collect(area_pbf, dest_geojson):
+def coast_sea(chains, bbox, samples):
+    """用海岸线拼海面。
+
+    OSM 的 coastline 是折线，本身不是面。把海岸线 + bbox 四条边一起 polygonize，
+    得到若干个"面"，再逐个判断它是陆还是海。
+
+    判断不用"水在左侧"那条规则 —— 实测有相当一部分线段方向是反的，
+    结果把整块陆地也标成了海（上海那张图 5 个面全中，水面变成 2,888 km² = 整个框）。
+    改用更硬的证据：**面里有道路的就是陆地**。海面不会有路，崇明这种有村道的岛也不会被误判。
+    """
+    from shapely.geometry import LineString, Point, box as sbox
+    from shapely.ops import unary_union, polygonize
+    s_, w_, n_, e_ = bbox
+    rect = sbox(w_, s_, e_, n_)
+    lines_ = []
+    for c in chains:
+        if len(c) < 2:
+            continue
+        try:
+            ln = LineString(c).intersection(rect)
+        except Exception:
+            continue
+        if ln.is_empty:
+            continue
+        lines_.append(ln)
+    if not lines_:
+        print("海岸线：0 条落在框内")
+        return []
+    faces = list(polygonize(unary_union(lines_ + [rect.exterior])))
+    if not faces:
+        print("海岸线：%d 段，拼不出闭合面" % len(lines_))
+        return []
+    out = []
+    land = 0
+    for f in faces:
+        b = f.bounds
+        hits = 0
+        for px, py in samples:
+            if px < b[0] or px > b[2] or py < b[1] or py > b[3]:
+                continue
+            if f.contains(Point(px, py)):
+                hits += 1
+                if hits >= 3:
+                    break
+        if hits >= 3:
+            land += 1
+            continue
+        out.append([list(f.exterior.coords)] + [list(r.coords) for r in f.interiors])
+    print("海岸线：%d 段 -> %d 个面，陆地 %d 个，海面 %d 个" % (len(lines_), len(faces), land, len(out)))
+    return out
+
+
+
+def union_water(raw):
+    """把水面原始环合并成一片片，然后才简化。
+
+    raw = [(名字, [多边形, ...])]，多边形 = [外环, 内环...]，都是经纬度点列。
+    为什么必须"先合并再简化"：OSM 里一条河常被切成几十个彼此贴着的 natural=water way，
+    共边是同一批节点。先合并，缝根本不存在；先简化再合并，每条边各简化各的，
+    缝几十米宽，怎么合都合不上（实测 4,842 片只合掉 36 片）。
+    """
+    from shapely.geometry import Polygon, mapping
+    from shapely.ops import unary_union
+    from shapely import make_valid
+    if not raw:
+        return []
+    geoms = []
+    named = []
+    for name, polys in raw:
+        for rings in polys:
+            try:
+                g = Polygon(rings[0], rings[1:])
+            except Exception:
+                continue
+            if not g.is_valid:
+                g = make_valid(g)
+            if g.geom_type not in ("Polygon", "MultiPolygon"):
+                continue
+            if g.is_empty or g.area <= 0:
+                continue
+            geoms.append(g)
+            if name:
+                named.append((name, g.representative_point(), g.area, g.bounds))
+    if not geoms:
+        return []
+    # 只焊接真贴着的片：这一段相邻水面片之间的缝中位 7.6 m、p10 3.6 m，
+    # 焊 5 m 能把一条河的碎片接上；焊 60 m 会把番禺的鱼塘连成整片（实测水面涨到 1,066 km²）。
+    d = 0.02 / float(PROJ["kx"])   # 5 m：把同一条河的碎片焊上（相邻片缝中位 7.6 m、p10 3.6 m）
+    if d > 0:
+        merged = unary_union([g.buffer(d, quad_segs=1) for g in geoms]).buffer(-d, quad_segs=1)
+    else:
+        merged = unary_union(geoms)
+    parts = list(merged.geoms) if merged.geom_type.startswith("Multi") else [merged]
+    tol = 0.08 / float(PROJ["kx"])
+    out = []
+    for part in parts:
+        if part.is_empty or part.area <= 0:
+            continue
+        p = part.simplify(tol, preserve_topology=True)
+        if p.is_empty or p.area <= 0:
+            p = part
+        bx0, by0, bx1, by1 = p.bounds
+        best, besta = "", -1.0
+        for nm, pt, a, bb in named:
+            if bb[0] > bx1 or bb[2] < bx0 or bb[1] > by1 or bb[3] < by0:
+                continue
+            if a > besta and p.contains(pt):
+                best, besta = nm, a
+        out.append({"type": "Feature",
+                    "properties": {"layer": "water", "name": best, "osm_id": "union", "kind": "water"},
+                    "geometry": mapping(p)})
+    print("水面合并：%d 片 -> %d 片（有名字的 %d 个）" % (len(geoms), len(out), len(named)))
+    return out
+
+
+def collect(area_pbf, dest_geojson, bbox=None, sea=False):
     # 第一趟只为了知道「哪些路是关系多边形的成员」
     wanted = set()
 
@@ -420,10 +606,23 @@ def collect(area_pbf, dest_geojson):
 
     # 关系多边形：先用成员路坐标拼环，再按外环面积排序、内环归到包含它的外环里
     poly = 0
+    lost = []
     for cls, tags, members in col.rels:
         outers = join_rings([col.way_geom[r] for role, r in members if role != "inner" and r in col.way_geom])
         inners = join_rings([col.way_geom[r] for role, r in members if role == "inner" and r in col.way_geom])
         if not outers:
+            # 拼不成闭合环就等于整块丢掉 —— 这件事必须喊出来，不能静默
+            nm = tags.get('name', '') or tags.get('name:zh', '')
+            lost.append((nm or '无名', cls['layer'], len(members),
+                         sum(1 for _r, _m in members if _m not in col.way_geom)))
+            continue
+        if cls["layer"] == "water":
+            # 与 way 同样处理：外环 + 落在它里面的内环（岛屿），原始坐标记下来
+            raw = []
+            for o in outers:
+                holes = [h for h in inners if point_in_ring(h[0], o)]
+                raw.append([[list(p) for p in o]] + [[list(p) for p in h] for h in holes])
+            col.water_raw.append((tags.get("name") or tags.get("name:zh") or "", raw))
             continue
         polys = []
         tol_r = TOL_LAYER.get(cls["layer"], SIMPLIFY_TOL)
@@ -449,9 +648,29 @@ def collect(area_pbf, dest_geojson):
         col.stats[cls["layer"] + "(relation)"] = col.stats.get(cls["layer"] + "(relation)", 0) + 1
         poly += 1
 
+    if sea and bbox and col.coast_raw:
+        samples = []
+        for _f in col.features[::200]:
+            _g = _f["geometry"]
+            if _f["properties"].get("layer") not in ("road", "rail", "street"):
+                continue
+            if _g["type"] != "LineString" or not _g["coordinates"]:
+                continue
+            _c = _g["coordinates"]
+            samples.append(_c[0])
+            samples.append(_c[len(_c) // 2])
+
+        sea = coast_sea(col.coast_raw, bbox, samples)
+        if sea:
+            col.water_raw.append(("", sea))
+    col.features = union_water(col.water_raw) + col.features
     with open(dest_geojson, "w", encoding="utf-8") as fh:
         json.dump({"type": "FeatureCollection", "features": col.features}, fh, ensure_ascii=False)
     print("要素 %d（其中关系多边形 %d），缺坐标点 %d" % (len(col.features), poly, col.missing_loc))
+    if lost:
+        print("  ! 关系多边形 %d 个拼不成闭合环，整块丢掉：" % len(lost))
+        for nm, layer, cnt, miss in lost[:10]:
+            print("      %-14s %-6s 成员 %3d 段，缺 %3d 段" % (nm, layer, cnt, miss))
     print("层：" + " · ".join("%s %d" % (k, v) for k, v in sorted(col.stats.items())))
     print("-> %s (%.1f MB)" % (dest_geojson, os.path.getsize(dest_geojson) / 1048576.0))
     return col.stats
@@ -464,6 +683,7 @@ def main(argv):
     ap.add_argument("--out", required=True)
     ap.add_argument("--proj", default="113.08,23.34,409.6,443", help="lon0,lat0,kx,ky（必须与 gen-geo 一致）")
     ap.add_argument("--stats-only", action="store_true")
+    ap.add_argument("--sea", action="store_true", help="用 coastline 拼海面（实验性，默认关）")
     args = ap.parse_args(argv[1:])
     lon0, lat0, kx, ky = (float(v) for v in args.proj.split(","))
     PROJ.update({"lon0": lon0, "lat0": lat0, "kx": kx, "ky": ky})
@@ -476,7 +696,7 @@ def main(argv):
         print("复用已有裁剪结果 %s" % area)
     if args.stats_only:
         return 0
-    collect(area, os.path.join(args.out, "features.geojson"))
+    collect(area, os.path.join(args.out, "features.geojson"), bbox, args.sea)
     return 0
 
 
