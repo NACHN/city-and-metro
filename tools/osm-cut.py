@@ -327,8 +327,15 @@ def simplify_ring(ring, tol=SIMPLIFY_TOL):
     return out
 
 
-def join_rings(lines):
-    """把 relation 的 outer/inner 线段接成闭合环。端点完全重合才算接上（OSM 里同一节点坐标一致）。"""
+def join_rings(lines, close_open=False):
+    """把 relation 的 outer/inner 线段接成闭合环。端点完全重合才算接上（OSM 里同一节点坐标一致）。
+
+    `close_open`：接不上的开口链要不要把首尾直接连起来当成环。街区/行政边界这类关系
+    常常有一部分在框外，成员路根本不在裁剪出来的小 pbf 里，接不上就整块丢掉 —— 结果
+    是贴在边缘的镇（安亭、佘山、大团……）没有边界，格子掉进「外围地区」。真实的多边形
+    本来就该被框线切断，用首尾连线补上比丢掉更接近事实（缺口都在框边一带）。
+    水面不开这个开关：开口的水面连起来会凭空合出一片湖。
+    """
     lines = [list(l) for l in lines if len(l) >= 2]
     rings = []
     while lines:
@@ -352,6 +359,8 @@ def join_rings(lines):
                 break
         if len(cur) >= 4 and cur[0] == cur[-1]:
             rings.append(cur)
+        elif close_open and len(cur) >= 4:
+            rings.append(cur + [cur[0]])
     return rings
 
 
@@ -524,15 +533,26 @@ def coast_sea(chains, bbox, samples):
 
 
 
-def load_water_extra(path):
+def load_water_extra(path, bbox=None):
     """读一份 WKT 水域（水利/测绘专题数据），返回 [多边形, ...]，多边形 = [外环, 内环...]。
 
     OSM 在城市河道上普遍只画中心线或零碎水面，专题数据里的水面是完整的多边形，
     正好补这个洞。文件可以是每行一条记录，前面带制表符分隔的字段（导出成 CSV 的样子），
     只需要 WKT 那一段。
+
+    专题面常常整条河一起给（上海那张「长江」只有 19% 落在框内，框内还断成两截）。
+    必须在注入前先裁到框内：`gen-geo` 的 `clipRing` 是 Sutherland–Hodgman，对断开的多块
+    会沿着框边把它们桥接成一个环，实测面积多出 26%（0.0314 → 0.0396 度²，多出来的
+    约 86 km² 全是陆地）。裁到框内之后 `clipRing` 就是空操作，桥接不会发生。
+    裁出来的边与框线重合，`union_water` 的 30 m 焊接会把它收进去 0.12 格，看不见。
+    `bbox` = (south, west, north, east)。
     """
     from shapely import wkt as swkt
+    from shapely.geometry import box as sbox
     out = []
+    clipped = None
+    if bbox:
+        clipped = sbox(bbox[1], bbox[0], bbox[3], bbox[2])
     with open(path, encoding="utf-8") as fh:
         for line in fh:
             k = line.find("MultiPolygon")
@@ -562,7 +582,19 @@ def load_water_extra(path):
             for p in polys:
                 if p.geom_type != "Polygon" or p.is_empty or p.area <= 0:
                     continue
-                out.append([list(p.exterior.coords)] + [list(r.coords) for r in p.interiors])
+                if clipped is not None:
+                    if not p.intersects(clipped):
+                        continue
+                    p = p.intersection(clipped)
+                    if p.is_empty or p.area <= 0:
+                        continue
+                    polys2 = list(p.geoms) if p.geom_type.startswith("Multi") else [p]
+                else:
+                    polys2 = [p]
+                for q in polys2:
+                    if q.geom_type != "Polygon" or q.is_empty or q.area <= 0:
+                        continue
+                    out.append([list(q.exterior.coords)] + [list(r.coords) for r in q.interiors])
     print("外加水面：%s -> %d 个多边形" % (path, len(out)))
     return out
 
@@ -630,7 +662,7 @@ def union_water(raw):
     return out
 
 
-def collect(area_pbf, dest_geojson, bbox=None, sea=False, extra=None):
+def collect(area_pbf, dest_geojson, bbox=None, sea=False, extra=None, extra_name=""):
     # 第一趟只为了知道「哪些路是关系多边形的成员」
     wanted = set()
 
@@ -652,8 +684,9 @@ def collect(area_pbf, dest_geojson, bbox=None, sea=False, extra=None):
     poly = 0
     lost = []
     for cls, tags, members in col.rels:
-        outers = join_rings([col.way_geom[r] for role, r in members if role != "inner" and r in col.way_geom])
-        inners = join_rings([col.way_geom[r] for role, r in members if role == "inner" and r in col.way_geom])
+        _close = cls["layer"] != "water"
+        outers = join_rings([col.way_geom[r] for role, r in members if role != "inner" and r in col.way_geom], _close)
+        inners = join_rings([col.way_geom[r] for role, r in members if role == "inner" and r in col.way_geom], _close)
         if not outers:
             # 拼不成闭合环就等于整块丢掉 —— 这件事必须喊出来，不能静默
             nm = tags.get('name', '') or tags.get('name:zh', '')
@@ -708,9 +741,11 @@ def collect(area_pbf, dest_geojson, bbox=None, sea=False, extra=None):
         if sea:
             col.water_raw.append(("", sea))
     if extra:
-        _w = load_water_extra(extra)
+        _w = load_water_extra(extra, bbox)
         if _w:
-            col.water_raw.append(("", _w))
+            # 带上名字：合并后的水面按「代表点落在哪个具名水面里」取名，无名的大片会被
+            # 旁边那条小河的名字认领（上海那张 398 km² 的长江口一度被标成「川杨河」）。
+            col.water_raw.append((extra_name, _w))
     col.features = union_water(col.water_raw) + col.features
     with open(dest_geojson, "w", encoding="utf-8") as fh:
         json.dump({"type": "FeatureCollection", "features": col.features}, fh, ensure_ascii=False)
@@ -733,6 +768,7 @@ def main(argv):
     ap.add_argument("--stats-only", action="store_true")
     ap.add_argument("--sea", action="store_true", help="用 coastline 拼海面（实验性，默认关）")
     ap.add_argument("--water-extra", default=None, help="额外的 WKT 水域文件，补进水面")
+    ap.add_argument("--water-extra-name", default="", help="上面那份水域的名字（写进地图标注）")
     args = ap.parse_args(argv[1:])
     lon0, lat0, kx, ky = (float(v) for v in args.proj.split(","))
     PROJ.update({"lon0": lon0, "lat0": lat0, "kx": kx, "ky": ky})
@@ -745,7 +781,8 @@ def main(argv):
         print("复用已有裁剪结果 %s" % area)
     if args.stats_only:
         return 0
-    collect(area, os.path.join(args.out, "features.geojson"), bbox, args.sea, args.water_extra)
+    collect(area, os.path.join(args.out, "features.geojson"), bbox, args.sea,
+            args.water_extra, args.water_extra_name)
     return 0
 
 

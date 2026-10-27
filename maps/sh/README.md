@@ -40,13 +40,19 @@ proj  121.22,31.433,380.53,443.39            # lon0,lat0,格/经度,格/纬度�
   未列出的道路随所在片区开放。
 - **13 条史实事件 + 7 条历史参考任务**：1 / 2 / 3 / 4 号线、8 号线与世博、10 号线与虹桥枢纽、11 号线与嘉定。
 - 人口曲线取地图范围口径：1990 年 940 万 → 2020 年 2010 万（不是全市 2490 万，崇明与金山不在这张图里）。
+- **长江口来自水利专题面**（`water_extra.wkt`，GB 210101 / HYDC FB010001 / NAME 长江）：OSM 在长江口只有
+  中心线（`长江南港`、`长江南槽` 两条 `ship=yes` 的水道，各 600 m 宽），切出来整个口门是陆地，长兴、横沙
+  也跟宝山连成一片。专题面注进来以后水面从 79 km² 涨到 413 km²，长兴、横沙变成两座岛，南港、北港分开。
+  专题面 81% 在图外（一直给到 120.55°E / 32.0°N），注入前按框裁掉 —— 框内断成两块，`gen-geo` 的矩形裁环
+  会把两块沿框边桥接起来，面积多 26%，所以裁剪必须自己做，不能留给 `clipRing`。
+  **杭州湾与南汇外海仍是陆地**：这份数据只覆盖长江水体，南汇嘴以东的海域不在其中。
 
 ## 已知差异
 
 1. **起步就是堵的**：1990 年只有 3,781 个路网节点、两条越江隧道，市区密度又比广州高，
    实测车均速 14.4 km/h、拥堵 1.94（gz 1990 是 1.04）。这是史实方向，但对玩家偏硬。
-2. **地价梯度 1.69×**（gz 3.32×）：与广州大图同一个毛病 —— 面积放大后核心与外围的密度差被摊平，
-   TOD 溢价偏小。尚未标定。
+2. **地价梯度 1.91×**（gz 3.32×）：与广州大图同一个毛病 —— 面积放大后核心与外围的密度差被摊平，
+   TOD 溢价偏小。尚未标定。（长江口成水以后比成水前的 1.69× 略高：水面不再算可建地。）
 
 ## 验收
 
@@ -54,8 +60,10 @@ proj  121.22,31.433,380.53,443.39            # lon0,lat0,格/经度,格/纬度�
 node scripts/build.mjs                        # 61 文件 / 9 图 / 0 警告
 node scripts/map-source.mjs check             # 9/9
 node scripts/validate-map.mjs                 # 9/9
-node tools/map-check.mjs sh                   # 机场可地下设站、7 个历史任务锚点 0 死局
-node scripts/smoke.mjs --maps=sh --months=2   # 三模式 4e3294a1a09834c8 / b2b1e159949fbb35 / fe8ab53a672fedde
+node tools/map-check.mjs sh                   # 机场可地下设站、7 个历史任务锚点 0 死局；开局可设站 9,014 格
+node scripts/smoke.mjs --maps=sh --months=2   # 三模式 aa6513ab862f8419 / 0a298c03ecdfb5d3 / 8c35168f49ad1940
+node tools/region-cells.mjs sh                # 片区 33，空片区 1（滨江森林公园在框外）
+node tools/water-cover.mjs sh                 # 水面 1,092 片，水系线落在水面内 8.1%
 node tools/month-breakdown.mjs sh --months=2  # 建局 4.3 s，节点 3,584 / 弧 6,694
 node tools/preview-map.mjs sh out.ppm         # 底图预览（PPM）
 ```
@@ -64,12 +72,16 @@ node tools/preview-map.mjs sh out.ppm         # 底图预览（PPM）
 
 ```bash
 python tools/osm-cut.py --bbox 31.0000,121.2200,31.4330,121.8507 --out maps/_raw/sh \
-  --proj 121.22,31.433,380.53,443.39          # 约 17 min，内存里只存 id 集合
+  --proj 121.22,31.433,380.53,443.39 \
+  --water-extra maps/sh/water_extra.wkt --water-extra-name 长江   # 约 17 min（含裁剪；只重跑收集约 40 s）
 node scripts/gen-geo.mjs --from maps/_raw/sh/features.geojson --map sh --w 240 --h 192 \
   --proj 121.22,31.433,380.53,443.39 --out js/geo_sh.js
 python tools/_sh-source.py                    # 经纬度表 → maps/sh/source.json
 node scripts/map-source.mjs build sh --in-place
 node tools/preview-map.mjs sh out.ppm
 ```
+
+`--water-extra-name` 别省：合并后的水面按「代表点落在哪个具名水面里」取名，不带名字时那片
+398 km² 的长江口会被旁边的「川杨河」认领。
 
 `maps/_raw/` 是原始数据与切图产物，已在 `.gitignore` 里，不入库。
