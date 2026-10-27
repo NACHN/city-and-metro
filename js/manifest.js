@@ -21,6 +21,8 @@
     { id: 'gz2', geo: 'gz2', data: 'gz2', climate: 'mild' },
     // 上海大图（sh，240×192 / 60×48 km）：1990 年起，跨江与浦东开发
     { id: 'sh', geo: 'sh', data: 'sh', climate: 'mild' },
+    // 乌鲁木齐（wlmq，136×108 / 34×27 km）：2000 年起，带状河谷城市
+    { id: 'wlmq', geo: 'wlmq', data: 'wlmq', climate: 'cold' },
     { id: 'hz', geo: 'hz', data: 'hz', climate: 'cold' },
     { id: 'hk', geo: 'hk', data: 'hk', climate: 'mild' },
     { id: 'tp', geo: 'tp', data: 'tp', climate: 'mild' },
