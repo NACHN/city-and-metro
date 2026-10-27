@@ -23,7 +23,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // 逻辑模块的加载顺序与 index.html 一致；渲染 / 界面 / 声音相关模块不参与
 const FILES = [
   'js/util.js', 'js/config.js', 'js/manifest.js', 'js/news.js',
-  'js/geo_gz.js', 'js/geo.js', 'js/data_gz.js', 'js/data_tutorial.js',
+  'js/geo_gz.js', 'js/geo.js', 'js/data_gz.js', 'js/geo_gz2.js', 'js/data_gz2.js', 'js/data_tutorial.js',
   'js/geo_hz.js', 'js/data_hz.js', 'js/geo_hk.js', 'js/data_hk.js',
   'js/geo_tk.js', 'js/data_tk.js', 'js/geo_tp.js', 'js/data_tp.js',
   'js/maps.js', 'js/facility.js', 'js/city.js', 'js/metro.js', 'js/sim.js',
@@ -44,6 +44,8 @@ const modeArg = arg('modes', null);
 const impArg = arg('impedance', null);
 // 难度预设（config.js 的 CM.PRESETS）：用 --preset=normal 之类替代 --modes，走新的开关体系
 const presetArg = arg('preset', null);
+// 路径惰性容差口径（A/B 用）：--tolkm=0.45 按公里累加；--hop=0.15 复刻旧的每跳固定分钟
+const tolKmArg = arg('tolkm', null), hopArg = arg('hop', null);
 
 globalThis.window = globalThis;
 globalThis.self = globalThis;
@@ -88,6 +90,8 @@ function advanceMonth(g) {
 function runMap(mapId, mode) {
   CM.useMap(mapId);
   if (impArg) CM.CFG.choice.impedance = impArg;
+  if (tolKmArg !== null) { CM.CFG.road.routeTolKm = Number(tolKmArg); CM.CFG.road.routeTol = 0; }
+  if (hopArg !== null) { CM.CFG.road.routeTol = Number(hopArg); CM.CFG.road.routeTolKm = 0; }
   const g = presetArg ? CM.Game.create({ map: mapId, preset: presetArg, name: 'smoke' })
     : CM.Game.create({ map: mapId, mode: mode, name: 'smoke' });
   g.model.solveNow(2);

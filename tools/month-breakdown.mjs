@@ -42,7 +42,13 @@ for (const f of ['js/maps.js', 'js/facility.js', 'js/city.js', 'js/metro.js', 'j
 
 const CM = globalThis.CM;
 CM.useMap(MAP);
-if (Number.isFinite(TOL)) CM.CFG.road.routeTol = TOL;
+if (Number.isFinite(TOL)) { CM.CFG.road.routeTolKm = TOL; CM.CFG.road.routeTol = 0; }
+// --hop=：复刻「每跳固定分钟」的老口径（routeTolKm 归零），用于 A/B
+const HOP = +(argv.find((a) => a.startsWith('--hop=')) || '').split('=')[1];
+if (Number.isFinite(HOP)) { CM.CFG.road.routeTol = HOP; CM.CFG.road.routeTolKm = 0; }
+// --lazy=：懒分配判定的门槛（分钟/公里）；0 = 老的百分比口径
+const LZ = +(argv.find((a) => a.startsWith('--lazy=')) || '').split('=')[1];
+if (Number.isFinite(LZ)) CM.CFG.road.lazyTolKm = LZ;
 
 const t0 = performance.now();
 const g = CM.Game.create({ map: MAP, preset: 'normal', name: 'mb' });
@@ -83,9 +89,16 @@ CM.Model.prototype.iterate = function* (net, P, p, opts) {
   const key = P.dt + '|' + p;
   const first = !seenKeys.has(key);
   seenKeys.add(key);
-  const name = first ? (replayKeys.has(key) ? 'cycle0 · 重放树' : (capKeys.has(key) ? 'cycle0 · 重建树' : 'cycle0 · 其它')) : '后续 cycle（懒分配）';
+  // 名字要按**实际**命中来取，不能假设「第一个 cycle 之后都是懒分配」：
+  // 懒判定有 2% 的弧变动上限与连懒 3 轮的上限，后面的 cycle 经常还是全量建树。
+  const lz0 = P.lazyStreak || 0;
   const t = performance.now();
-  try { yield* it0.call(this, net, P, p, opts); } finally { add(name, performance.now() - t); }
+  try { yield* it0.call(this, net, P, p, opts); } finally {
+    const lazy = (P.lazyStreak || 0) > lz0;
+    const name = first ? (replayKeys.has(key) ? 'cycle0 · 重放树' : (capKeys.has(key) ? 'cycle0 · 重建树' : 'cycle0 · 其它'))
+      : (lazy ? '后续 cycle（懒分配）' : '后续 cycle（重建树）');
+    add(name, performance.now() - t);
+  }
 };
 
 wrapGen(CM.Model.prototype, 'refreshCityGen', 'A 城市与需求刷新（合计）');
@@ -136,5 +149,11 @@ for (let i = 1; i <= MONTHS; i++) {
   }
   const acc = ACC['A 城市与需求刷新（合计）'] || 0;
   console.log(`   （其中 monthGen 合计 ${(tCity / 1000).toFixed(2)} s，refreshCityGen ${(acc / 1000).toFixed(2)} s；月末预建 ${(msPb / 1000).toFixed(2)} s 在后台）`);
+  // 结果侧的三个数：容差改动只能影响「路径怎么走」，所以看车时、车速与分担率有没有漂
+  const d = m.daily || {};
+  const carKm = d.carPkm || 0, carH = (d.carTime || 0) / 60;
+  console.log(`   结果：出行 ${Math.round(d.trips || 0)} · 地铁分担 ${(100 * (d.metroShare || 0)).toFixed(2)}%`
+    + ` · 车公里 ${Math.round(carKm).toLocaleString()} · 车时 ${Math.round(d.carTime || 0).toLocaleString()} 车分钟`
+    + ` · 车均速 ${(carKm / Math.max(1e-9, carH)).toFixed(2)} km/h · 拥堵 ${(d.cong || 1).toFixed(4)} · 全方式 ${(d.avgTime || 0).toFixed(1)} 分钟`);
   console.log('');
 }

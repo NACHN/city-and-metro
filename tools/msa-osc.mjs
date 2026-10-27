@@ -42,7 +42,9 @@ for (const f of ['js/maps.js', 'js/facility.js', 'js/city.js', 'js/metro.js', 'j
 
 const CM = sb.CM;
 CM.useMap(MAP);
-if (Number.isFinite(TOL)) CM.CFG.road.routeTol = TOL;
+if (Number.isFinite(TOL)) { CM.CFG.road.routeTol = TOL; CM.CFG.road.routeTolKm = 0; }
+const KM = +(argv.find((a) => a.startsWith('--km=')) || '').split('=')[1];
+if (Number.isFinite(KM)) { CM.CFG.road.routeTolKm = KM; CM.CFG.road.routeTol = 0; }
 const g = CM.Game.create({ map: MAP, preset: 'normal', name: 'osc' });
 const m = g.model;
 let n0 = 0; while (!m.settled && n0++ < 900) m.step(4000);
@@ -54,7 +56,7 @@ const nA = m.road.nA;
 const sum = (a) => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i]; return s; };
 const dot = (a, b) => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; };
 
-console.log(`[${MAP}] ${ONLY} · ${ROUNDS} 轮 · tol=${CM.CFG.road.routeTol} 分钟 · 弧 ${nA} · 小区 ${m.Z}`);
+console.log(`[${MAP}] ${ONLY} · ${ROUNDS} 轮 · 容差 ${CM.CFG.road.routeTolKm} 分钟/公里 + ${CM.CFG.road.routeTol} 分钟/跳 · 弧 ${nA} · 小区 ${m.Z}`);
 console.log('轮  gap       变动弧   反号率   平均相对变化   Σv         拥堵');
 let prevV = Float32Array.from(P.arcVol), prevD = null;
 for (let k = 1; k <= ROUNDS; k++) {

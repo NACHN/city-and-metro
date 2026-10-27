@@ -26,11 +26,18 @@
   // Keep the hot shortest-path loop outside the yielding orchestration. This is
   // the same binary heap, relaxation order and numeric precision as before.
   function roadTree(road, rd, time, origin, work, heap) {
-    const dist = work.dist, dkm = work.dkm, pred = work.pred, order = work.order;
+    const dist = work.dist, dkm = work.dkm, pred = work.pred, order = work.order, tolA = work.tolA;
     const start = rd.start, node = rd.nodes, initial = rd.times, km = rd.km;
-    const tol = (CFG.road && CFG.road.routeTol) || 0;
+    // 路径惰性容差：只有比当前路径短出「这段路自己该有的容差」，才换父弧。
+    // 容差按**路段长度**给（分钟/公里），沿路径累加。路网是已知的，路口到路口的长度就在 arcKm 里，
+    // 所以「一段 10 km 的路多走 3 分钟」和「一段 250 m 的路多走 0.08 分钟」是同一件事 ——
+    // 这就是 1 km 走 15 分钟与 10 km 走 15 分钟意义不同的地方：同样多 1 分钟，短路段是「慢了」，
+    // 长路段只是「路上多耗了一点」。老做法每跳给固定分钟数，等于让容差取决于地图把路切成多少个路口
+    // （加密一处路口，那一段的容差就翻倍），跟路程本身没关系。
+    const tolKm = (CFG.road && CFG.road.routeTolKm) || 0;
+    const tol0 = (CFG.road && CFG.road.routeTol) || 0;
     const outStart = road.outStart, outArc = road.outArc, arcTo = road.arcTo, arcKm = rd.arcKm;
-    dist.fill(INF); heap.clear();
+    dist.fill(INF); tolA.fill(0); heap.clear();
     // Each directed arc can relax once after its source is settled. Reserve the
     // queue once, then keep its size local to avoid millions of property writes.
     // 定长数组 + fill() 会得到 holey-double，V8 每次读写都要查 hole；用定长 typed array 更快且数值完全一致
@@ -41,6 +48,7 @@
       const v = node[k], t = initial[k];
       if (t < dist[v]) {
         dist[v] = t; dkm[v] = km[k]; pred[v] = -1;
+        tolA[v] = tol0 + tolKm * km[k];
         let i = count++;
         while (i > 0) { const p = (i - 1) >> 1; if (keys[p] <= t) break; keys[i] = keys[p]; values[i] = values[p]; i = p; }
         keys[i] = t; values[i] = v;
@@ -65,10 +73,10 @@
       order[no++] = u;
       for (let k = outStart[u]; k < outStart[u + 1]; k++) {
         const a = outArc[k], v = arcTo[a], nd = du + time[a];
-        // 路径惰性：只有比当前路径短出 tol 才换父弧。人不会为 0.01 分钟改走另一条路，
-        // 而这个「随便换」正是 MSA 在均衡附近来回翻的根源。
-        if (nd < dist[v] - tol) {
-          dist[v] = nd; dkm[v] = dkm[u] + arcKm[a]; pred[v] = a;
+        // 这一跳的容差 = 基础容差 + 长度 × 每分钟每公里；累加到父节点的容差上。
+        const dv = dist[v], ta = tolA[u] + tol0 + tolKm * arcKm[a];
+        if (nd < dv - ta) {
+          dist[v] = nd; dkm[v] = dkm[u] + arcKm[a]; pred[v] = a; tolA[v] = ta;
           let i = count++;
           while (i > 0) { const p = (i - 1) >> 1; if (keys[p] <= nd) break; keys[i] = keys[p]; values[i] = values[p]; i = p; }
           keys[i] = nd; values[i] = v;
@@ -1403,7 +1411,7 @@
     // ---- 汽车分配 ----
     const road = this.road, nN = road.nN, nA = road.nA;
     let work = buf.roadWork;
-    if (!work || work.aux.length !== nA || work.dist.length !== nN) work = buf.roadWork = { aux: new Float32Array(nA), dist: new Float64Array(nN), dkm: new Float32Array(nN), pred: new Int32Array(nN), order: new Int32Array(nN), accN: new Float64Array(nN) };
+    if (!work || work.aux.length !== nA || work.dist.length !== nN) work = buf.roadWork = { aux: new Float32Array(nA), dist: new Float64Array(nN), dkm: new Float32Array(nN), pred: new Int32Array(nN), order: new Int32Array(nN), accN: new Float64Array(nN), tolA: new Float32Array(nN) };
     const aux = work.aux;
     aux.fill(0); work.accN.fill(0);
     const rd = this.roadData, connStart = rd.start;
@@ -1414,9 +1422,15 @@
     // 沿用上一轮的树、skim 与流量，只重算方式选择与客流。（配合每 N 轮强制一次全量，避免长期漂移）
     if (!opts.lazyCar && !fullSkim && P.timeFull && P.arcTime && (P.lazyStreak || 0) < LAZY_MAX) {
       let moved = 0;
+      // 「这条路变了没有」的判据：车行时间的变化是否已经超过这条路上的人肯为它改道的量。
+      // 按百分比判等于是「相对速度变了 1% 就算变」：250 m 的路 1% 只有 1 秒，10 km 的路 1% 是 20 秒，
+      // 而两条路对路径选择的份量是一样的（都只是「一段路」）。所以门槛也按长度给：
+      // 变化超过 lazyTolKm × 弧长，才算这一段真的变了。lazyTolKm = 0 时退回老的百分比口径。
+      const lzKm = (CFG.road && CFG.road.lazyTolKm) || 0;
+      const arcKm = rd.arcKm;
       for (let a = 0; a < nA; a++) {
-        const base = P.timeFull[a] || 1;
-        if (Math.abs(P.arcTime[a] - P.timeFull[a]) / base > LAZY_EPS) moved++;
+        const dtm = Math.abs(P.arcTime[a] - P.timeFull[a]);
+        if (lzKm > 0 ? dtm > lzKm * arcKm[a] : dtm / (P.timeFull[a] || 1) > LAZY_EPS) moved++;
       }
       // 用「变动路段占比」而不是最大值：MSA 迭代里总有个别低流量路段的相对变化很大，
       // 按最大值判定几乎永远不会懒，按占比才反映「绝大多数最短路没动」这个事实。
@@ -1624,7 +1638,7 @@
     const w = this._pbWork && this._pbWork.dist.length === nN ? this._pbWork : (this._pbWork = {
       dist: new Float64Array(nN), dkm: new Float32Array(nN),
       pred: new Int32Array(nN), order: new Int32Array(nN),
-      accN: new Float64Array(nN), aux: new Float64Array(nA),
+      accN: new Float64Array(nN), aux: new Float64Array(nA), tolA: new Float32Array(nN),
       heapK: new Float64Array(nA + 4), heapV: new Int32Array(nA + 4),
     });
     const road = this.road, rd = this.roadData;
