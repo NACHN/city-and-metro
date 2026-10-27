@@ -405,8 +405,10 @@
     // 不再重建。实测 gz2 上 8 个时段 10.9 s → 2.1 s。代价是内存：起点数 × 节点数 × 2 B × 8。
     // 弧号每月会重排，按**顶点对**重映射（顶点号来自城市网格，跨月稳定）；映射不到的弧只废掉
     // 它那一根子树（标记 -2），不影响整棵树。
-    // treeCacheRefresh：每重建一次最多复用几个月；超过就重新建树并刷新缓存（防长期漂移）。
-    perf: { solverBudgetMs: 5, chunkBudgetMs: 6, cacheMaxPx: 24e6, freeCycle: true, freeCycleMaxMB: 220, treeCache: true, treeCacheMaxMB: 320, treeCacheRefresh: 3, maxCars: 320, maxPeds: 180, maxWalkers: 120, maxRiders: 120, trainVoices: 3, maxOneShots: 6 },
+    // prebuild：月末收敛后用**最终弧时**重建树缓存，下个月初直接命中。实测下个月初的 gap 为 0.00%，
+    //   所以重放与重建逐位相同；关掉就退回「月初第一轮建树」，那套树天生旧一个 MSA 收敛周期
+    //   （wd-0/wd-2 的 gap 会到 6.8%~14.8%）。预建在后台分片跑，玩家提前推进则本轮退回全量重建。
+    perf: { solverBudgetMs: 5, chunkBudgetMs: 6, cacheMaxPx: 24e6, freeCycle: true, freeCycleMaxMB: 220, treeCache: true, treeCacheMaxMB: 320, prebuild: true, maxCars: 320, maxPeds: 180, maxWalkers: 120, maxRiders: 120, trainVoices: 3, maxOneShots: 6 },
   };
 
   // 地价与容积率的联动（顶层配置，不随地图导出）：

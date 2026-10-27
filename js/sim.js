@@ -538,6 +538,7 @@
 
   Model.prototype.wake = function () {
     this.settled = false; this.quietCycles = 0; this.gen = null; this.solveCycles = 0;
+    this.prebuilding = false;   // 进行中的月末预建随 gen 一起丢弃，缓存会保持 fresh = false
     // 输入变了：所有时段都不再「稳定」，否则下一轮会被当成无需重算而跳过
     this.invalidateStable();
   };
@@ -792,14 +793,6 @@
   // 使其不会读到新旧混合的小区/需求/路网状态；计算结果与一次性执行相同。
   Model.prototype.refreshCityGen = function* (C) {
     this.refreshing = true;
-    // 一个月一次：跨月树缓存的年龄 +1。不能放在 syncRoad 里 —— 小图的路网常年不变，
-    // 那条分支一个月都不会走一次，缓存就永不过期了。
-    if (this.treeCache) {
-      const c = this.treeCache, lim = (CFG.perf && CFG.perf.treeCacheRefresh) || 3;
-      c.age++;
-      // 复用到期：这个月全部时段都重建（重建的结果同时也刷新了缓存），不能只刷新第一个时段
-      if (c.age > lim) { c.age = 0; c.rebuilding = true; } else c.rebuilding = false;
-    }
     try {
       this.buildZones();
       yield* this.buildDemandGen();
@@ -1502,6 +1495,8 @@
       if (this.quietCycles >= 2 || this.solveCycles >= cap) {
         this.settled = true;
         this.settledAt = { year: this.year, fare: this.fare.flat, city: this.city.version, road: this.city.roadVersion, net: this.net, od: this.od };
+        // 收敛完就把树按**最终弧时**重建一遍，下个月初直接命中（gap = 0）。后台分片跑。
+        yield* this.prebuildGen();
         yield;
       }
     }
@@ -1517,13 +1512,13 @@
       }
       return;
     }
-    if (this.settled) {
+    if (this.settled && !this.prebuilding) {
       const at = this.settledAt;
       if (at.year === this.year && at.fare === this.fare.flat && at.city === this.city.version && at.road === this.city.roadVersion && at.net === this.net && at.od === this.od) return;
       this.wake();
     }
     if (!this.gen) this.gen = this.liveLoop();
-    while (!this.settled && performance.now() - t0 < budget) this.gen.next();
+    while ((!this.settled || this.prebuilding) && performance.now() - t0 < budget) this.gen.next();
   };
   // 快速收敛（读档、跳月等场合），同步执行；dts 为要求解的日类型（默认工作日与周末）
   Model.prototype.solveNow = function (cycles, dts, opts) {
@@ -1595,10 +1590,68 @@
   };
   Model.prototype.treeReplayFor = function (dt, p) {
     const c = this.treeCache;
-    if (!c) return null;
-    if (c.rebuilding) return null;         // 这个月是「刷新月」：全部重建
+    // 只认「月末预建已经跑完」的缓存：那时候的树是用**当前**弧时建的，
+    // 下个月初沿用就是逐位精确的（实测 gap = 0.00%，见 tools/tree-lazy-probe.mjs）。
+    // 预建被打断（玩家提前推进）时 c.fresh 是 false，这里返回 null，月初退回全量重建 ——
+    // 也就是原来的行为，不会引入误差。
+    if (!c || !c.fresh) return null;
     const list = c.per[dt + '|' + p];
     return list || null;
+  };
+
+  // 月末预建：收敛后用**最终弧时**把 8 个时段的树全部重建一遍。
+  // 为什么必须在这里做：月初第一轮的时间就是「上月末收敛值」，而现在缓存的树是
+  // 「上个月月初」建的，中间隔了一整个 MSA 收敛周期 —— wd-0/wd-2 的 gap 会到 6.8%~14.8%。
+  // 在月末建，下个月初的输入与建树时的输入逐位相同，gap 归零。
+  Model.prototype.prebuildGen = function* () {
+    const perf = CFG.perf || {};
+    if (perf.treeCache === false || perf.prebuild === false) return;
+    if (!this.treeCacheBudget()) return;
+    const nN = this.road.nN, nA = this.road.nA, Z = this.Z;
+    if (nN > 65000 || nA > 32000) return;
+    let c = this.treeCache;
+    if (!c) {
+      if (Z * nN * 2 * 8 > this.treeCacheBudget()) return;
+      c = this.treeCache = { per: Object.create(null), nA: nA, age: 0 };
+    }
+    // 建树专用缓冲：不借用 iterate 的工作区，预建被丢弃时不会污染下一轮重放
+    const w = this._pbWork && this._pbWork.dist.length === nN ? this._pbWork : (this._pbWork = {
+      dist: new Float64Array(nN), dkm: new Float32Array(nN),
+      pred: new Int32Array(nN), order: new Int32Array(nN),
+      accN: new Float64Array(nN), aux: new Float64Array(nA),
+      heapK: new Float64Array(nA + 4), heapV: new Int32Array(nA + 4),
+    });
+    const road = this.road, rd = this.roadData;
+    c.fresh = false;
+    this.prebuilding = true;
+    try {
+      for (const dt of DT) {
+        for (let p = 0; p < NP; p++) {
+          const P = this.ctxs[dt].per[p];
+          if (!P) continue;
+          const time = P.arcTime;
+          const list = new Array(Z).fill(null);
+          for (let o = 0; o < Z; o++) {
+            if (rd.start[o] === rd.start[o + 1]) continue;
+            const no = roadTree(road, rd, time, o, w, this.heap);
+            const a = new Int16Array(no), ord = w.order, pr = w.pred;
+            for (let i = 0; i < no; i++) a[i] = pr[ord[no - 1 - i]];
+            list[o] = { no: no, arcs: a };
+            if ((o & 7) === 7) yield;
+          }
+          c.per[dt + '|' + p] = list;
+          c.nA = nA;
+          c.nodeVert = Int32Array.from(road.nodeVert);
+          c.arcFrom = Int32Array.from(road.arcFrom);
+          c.arcTo = Int32Array.from(road.arcTo);
+          c.arcLen = Float32Array.from(road.arcLen);
+          yield;
+        }
+      }
+      c.fresh = true;          // 全部完成才认；中断时保持 false
+    } finally {
+      this.prebuilding = false;
+    }
   };
   // 路网换了：旧树的弧号还认不认得出。
   // 先试「旧弧号原样仍然成立」（新路只在末尾追加时就是这种情况，比较前缀即可）；

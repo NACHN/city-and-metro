@@ -28,7 +28,9 @@ let rep = 0, cap = 0;
 const r0 = CM.Model.prototype.treeReplayFor, c0 = CM.Model.prototype.treeCaptureFor;
 CM.Model.prototype.treeReplayFor = function (...a) { const v = r0.apply(this, a); if (v) rep++; return v; };
 CM.Model.prototype.treeCaptureFor = function (...a) { const v = c0.apply(this, a); if (v) cap++; return v; };
+// 只跑到「收敛」（= 玩家等待的那一段）；预建是后台的事，单独计
 const settle = () => { let guard = 0; while (!m.settled && guard++ < 600) m.step(2000); };
+const settleRest = () => { let guard = 0; while ((!m.settled || m.prebuilding) && guard++ < 3000) m.step(2000); };
 settle();
 console.log(`[${MAP}] 缓存${OFF ? '关' : '开'} · 小区 ${m.Z} · 节点 ${m.road.nN} · 弧 ${m.road.nA}`);
 console.log('月  缓存   复用/重建   月步进      客流        地铁分担   车时');
@@ -40,10 +42,13 @@ for (let i = 1; i <= MONTHS; i++) {
   const sc0 = m.sinceChange, age0 = m.treeCache ? m.treeCache.age : -1;
   settle();
   const ms = performance.now() - t0;
+  const tpb = performance.now();
+  settleRest();
+  const msPb = performance.now() - tpb;
   const c = m.treeCache;
   const d = m.daily || {};
-  console.log(`${String(i).padStart(2)}  ${c ? ('age' + c.age).padEnd(6) : '无    '} ${String(rep).padStart(3)}/${String(cap).padEnd(4)}`
+  console.log(`${String(i).padStart(2)}  ${c ? (c.fresh ? 'fresh ' : 'stale ') : '无    '} ${String(rep).padStart(3)}/${String(cap).padEnd(4)}`
     + `  ${ms.toFixed(0).padStart(6)} ms  ${Math.round(d.trips || 0).toLocaleString().padStart(10)}`
-    + `  ${((d.metroShare || 0) * 100).toFixed(3).padStart(7)}%  ${(d.commute || 0).toFixed(4).padStart(8)}` + '  sinceChange ' + sc0 + '→' + m.sinceChange + ' 缓存年龄 ' + age0 + '→' + (m.treeCache ? m.treeCache.age : -1));
+    + `  ${((d.metroShare || 0) * 100).toFixed(3).padStart(7)}%  ${(d.commute || 0).toFixed(4).padStart(8)}` + '  预建 ' + msPb.toFixed(0) + 'ms' + (m.treeCache && m.treeCache.fresh ? ' ✓' : ' ✗'));
 }
 if (m.treeCache && m.treeCache.lastRemap) console.log('最近一次重映射', JSON.stringify(m.treeCache.lastRemap));
