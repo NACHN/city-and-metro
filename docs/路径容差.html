@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>路径容差：按公里，不按路口 · 城市与地铁</title>
+<style>
+  :root{
+    --bg:#0e1014; --panel:#151a21; --panel2:#1b212a; --line:#2a323d;
+    --tx:#e7eaee; --tx2:#a8b3c0; --tx3:#6f7b8a;
+    --amber:#ef9f27; --amber-d:#633806; --blue:#378add; --blue-d:#0c447c;
+    --teal:#5dcaa5; --teal-d:#0f4a3c; --purple:#afa9ec; --red:#e24b4a; --red-d:#5c1f1f;
+    --mono:ui-monospace,SFMono-Regular,"Cascadia Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);
+    font:13px/1.75 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1000px;margin:0 auto;padding:44px 24px 110px}
+  h1{font-size:27px;font-weight:500;margin:0 0 8px;letter-spacing:.2px}
+  h2{font-size:18px;font-weight:500;margin:46px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  h3{font-size:14px;font-weight:500;margin:26px 0 8px;color:var(--tx)}
+  p{margin:10px 0;color:var(--tx2)}
+  b,strong{color:var(--tx);font-weight:500}
+  code{font-family:var(--mono);font-size:12px;background:#1d242e;border:1px solid var(--line);
+    border-radius:4px;padding:1px 5px;color:#c9d6e4}
+  pre{font-family:var(--mono);font-size:12px;line-height:1.7;background:#12171d;border:1px solid var(--line);
+    border-radius:8px;padding:12px 14px;overflow:auto;color:#c3cfdb;margin:12px 0}
+  pre .c{color:#6f7b8a}
+  pre .k{color:#afa9ec}
+  pre .n{color:#9fe0c6}
+  .lead{font-size:14px;color:var(--tx2);margin-bottom:4px}
+  .muted{color:var(--tx3);font-size:12px}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:22px 0 8px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .stat .k{font-size:11px;color:var(--tx3);letter-spacing:.3px}
+  .stat .v{font-size:20px;font-weight:500;margin-top:2px;font-variant-numeric:tabular-nums}
+  .stat .v s{color:var(--tx3);font-size:13px;text-decoration-thickness:1px}
+  .stat .u{font-size:11px;color:var(--tx3);margin-left:3px;font-weight:400}
+  .stat .d{font-size:11px;margin-top:2px;color:var(--tx3)}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:12.5px}
+  th{text-align:left;font-weight:500;color:var(--tx3);font-size:11.5px;letter-spacing:.3px;
+    border-bottom:1px solid var(--line);padding:7px 10px 7px 0}
+  td{border-bottom:1px solid #1e242c;padding:8px 10px 8px 0;color:var(--tx2);vertical-align:top}
+  td b{color:var(--tx)}
+  tr:last-child td{border-bottom:none}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px 18px;margin:14px 0}
+  .card .h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:2px}
+  .card .h .n{font-family:var(--mono);font-size:11px;color:var(--tx3);border:1px solid var(--line);
+    border-radius:5px;padding:0 6px}
+  .card .h .t{font-size:14.5px;font-weight:500}
+  .tag{font-size:11px;padding:1px 8px;border-radius:20px;border:1px solid var(--line);
+    background:#1d242e;color:var(--tx3);white-space:nowrap}
+  .tag.ok{color:#9fe0c6;border-color:#255447;background:#10241e}
+  .tag.warn{color:#f0c88a;border-color:#5a4318;background:#241a0c}
+  .tag.bad{color:#f0a3a2;border-color:#5c2b2b;background:#241212}
+  .kv{display:grid;grid-template-columns:92px 1fr;gap:6px 10px;font-size:12.5px;margin-top:10px}
+  .kv .k{color:var(--tx3)}
+  .kv .v{color:var(--tx2)}
+  .kv .v b{color:var(--tx)}
+  .fig{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px 8px;margin:16px 0}
+  .fig .cap{font-size:11.5px;color:var(--tx3);margin:2px 0 10px}
+  .note{border-left:2px solid var(--amber-d);padding:2px 0 2px 12px;color:var(--tx2);margin:14px 0}
+  .bad{border-left-color:var(--red-d)}
+  .good{border-left-color:var(--teal-d)}
+  ul{margin:8px 0 8px 18px;padding:0;color:var(--tx2)}
+  li{margin:4px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>路径容差：按公里，不按路口</h1>
+<p class="lead">惰性容差原来是「每跳 0.15 分钟」。改成「每公里 0.6 分钟」之后，同一个体感在 250 m 的支路和 10 km 的快速路上是同一个尺度。</p>
+
+<div class="stats">
+  <div class="stat"><div class="k">口径</div><div class="v">0.6<span class="u">分钟/公里</span></div><div class="d">原 0.15 分钟/跳</div></div>
+  <div class="stat"><div class="k">gz2 车公里（第 3 月）</div><div class="v">93.07<span class="u">百万</span></div><div class="d">旧口径 92.87 · 严格 93.64</div></div>
+  <div class="stat"><div class="k">六图地铁分担漂移</div><div class="v">&lt;0.01<span class="u">pp</span></div><div class="d">拥堵指数 &lt;0.3%</div></div>
+  <div class="stat"><div class="k">月步进</div><div class="v">4.73<span class="u">s</span></div><div class="d">旧口径 4.83 s</div></div>
+</div>
+
+<h2>1 · 老口径的两个毛病</h2>
+<p>容差的作用是：只有当另一条路<strong>明显更短</strong>时才换父弧。人不会为 0.01 分钟改走另一条路，而这个「随便换」正是 MSA 在均衡附近来回翻的根源。问题出在「每跳给固定分钟数」这个写法上。</p>
+
+<div class="note bad">
+<b>毛病一：容差随地图切分变化。</b>每跳 0.15 分钟，20 跳的行程就攒到 3 分钟 —— 但「20 跳」不是路程，是这张地图把这条路切成了多少个路口。同一段 5 km 的路，切成 10 段和切成 40 段，容差差 4 倍。路网数据一加密，模型行为就变了，这不是模型该有的自由度。
+</div>
+
+<div class="note bad">
+<b>毛病二：同样 1 分钟在不同长度上意思不同。</b>1 km 的路从 15 分钟变 16 分钟，多数人会考虑换路；10 km 的路从 15 分钟变 20 分钟，没人动。前者是「这条路堵了」，后者只是「这一趟多耗了点」。差的不是分钟数，是<strong>分摊到每一公里的分钟数</strong>。
+</div>
+
+<h2>2 · 两条体感定出 0.6</h2>
+<p>路口到路口的长度本来就在路网里（<code>arcKm</code>），不需要估计。于是容差直接写成 <b>分钟/公里</b>，按用户给的两条体感来定系数：</p>
+
+<div class="fig">
+<svg viewBox="0 0 940 250" width="100%" height="250" role="img" aria-label="1 公里与 10 公里路段的惰性容差带">
+  <defs>
+    <marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 z" fill="#a8b3c0"/>
+    </marker>
+  </defs>
+  <!-- 轴：0..7 分钟 -->
+  <g font-family="ui-monospace,Menlo,monospace" font-size="10.5" fill="#6f7b8a">
+    <line x1="120" y1="34" x2="880" y2="34" stroke="#2a323d"/>
+    <g stroke="#2a323d">
+      <line x1="120" y1="30" x2="120" y2="38"/><line x1="228.6" y1="30" x2="228.6" y2="38"/>
+      <line x1="337.1" y1="30" x2="337.1" y2="38"/><line x1="445.7" y1="30" x2="445.7" y2="38"/>
+      <line x1="554.3" y1="30" x2="554.3" y2="38"/><line x1="662.9" y1="30" x2="662.9" y2="38"/>
+      <line x1="771.4" y1="30" x2="771.4" y2="38"/><line x1="880" y1="30" x2="880" y2="38"/>
+    </g>
+    <text x="120" y="24" text-anchor="middle">0</text><text x="228.6" y="24" text-anchor="middle">1</text>
+    <text x="337.1" y="24" text-anchor="middle">2</text><text x="445.7" y="24" text-anchor="middle">3</text>
+    <text x="554.3" y="24" text-anchor="middle">4</text><text x="662.9" y="24" text-anchor="middle">5</text>
+    <text x="771.4" y="24" text-anchor="middle">6</text><text x="880" y="24" text-anchor="middle">7 min</text>
+  </g>
+
+  <!-- 行 A：1 km -->
+  <g font-size="12.5">
+    <text x="8" y="82" fill="#e7eaee" font-weight="500">1 km 的路</text>
+    <text x="8" y="99" fill="#6f7b8a" font-size="11">15 → 16 分钟</text>
+    <rect x="120" y="68" width="65.1" height="26" rx="4" fill="#0f4a3c" stroke="#5dcaa5"/>
+    <text x="152.6" y="86" text-anchor="middle" fill="#9fe0c6" font-size="11">0.6 min</text>
+    <line x1="186" y1="81" x2="860" y2="81" stroke="#5dcaa5" stroke-dasharray="3 4" opacity=".5"/>
+    <circle cx="228.6" cy="81" r="4" fill="#e24b4a"/>
+    <text x="242" y="85" fill="#f0a3a2" font-size="11.5">+1 分钟 → 超出容差带，换路</text>
+  </g>
+
+  <!-- 行 B：10 km -->
+  <g font-size="12.5">
+    <text x="8" y="152" fill="#e7eaee" font-weight="500">10 km 的路</text>
+    <text x="8" y="169" fill="#6f7b8a" font-size="11">15 → 20 分钟</text>
+    <rect x="120" y="138" width="651.4" height="26" rx="4" fill="#241a0c" stroke="#ef9f27"/>
+    <text x="445.7" y="156" text-anchor="middle" fill="#f0c88a" font-size="11">6.0 min（0.6 × 10）</text>
+    <circle cx="662.9" cy="151" r="4" fill="#5dcaa5"/>
+    <text x="120" y="186" fill="#9fe0c6" font-size="11.5">+5 分钟落在带内 → 不换路</text>
+  </g>
+
+  <g font-size="11" fill="#6f7b8a">
+    <text x="120" y="226">容差带 = 0.6 分钟/公里 × 这段路的长度；沿路径累加：整趟的带 = 0.6 × 行程公里数。</text>
+    <text x="120" y="242">两头都对得上的系数区间是 0.5 ~ 1.0 分钟/公里（0.5×10 = 5，刚好等于「＋5 分钟」，取大一点才真不换）。</text>
+  </g>
+</svg>
+<div class="cap">同样多 1 分钟，短路段是「慢下来了」，长路段只是「路上多耗一点」。容差带的宽度该跟距离成比例。</div>
+</div>
+
+<h2>3 · 怎么实现</h2>
+<p>树里除了 <code>dist</code>，再带一份 <code>tolA</code>（到这个节点为止攒下的容差）。每跳的容差 = <code>routeTolKm × 这条弧的长度</code>，累加到父节点上；只有新路径短出的量<strong>超过自己这条路径攒下的容差</strong>，才允许改父弧。</p>
+
+<pre><span class="c">// js/sim.js · roadTree</span>
+<span class="k">const</span> tolKm = CFG.road.routeTolKm, tol0 = CFG.road.routeTol;
+
+<span class="c">// 起点连接的接驳腿也算一份</span>
+tolA[v] = tol0 + tolKm * km[k];
+
+<span class="c">// 松弛</span>
+<span class="k">const</span> nd = du + time[a];
+<span class="k">const</span> ta = tolA[u] + tol0 + tolKm * arcKm[a];   <span class="c">// 这一跳的带，累加</span>
+<span class="k">if</span> (nd &lt; dist[v] - ta) {
+  dist[v] = nd; dkm[v] = dkm[u] + arcKm[a]; pred[v] = a; tolA[v] = ta;
+}</pre>
+
+<p>为什么拿「候选路径自己的带」去比：一条绕远的候选路，路程更长，带也更宽 —— 它必须省出更多分钟才划算。反过来，短路径的带很窄，只要有一点便宜就会被采纳。<strong>两个方向都偏向短路径</strong>，正是想要的。</p>
+<p class="muted">副作用：<code>dist</code> 仍然是「沿所选路径的真实时间累加」，只是不保证是最小值 —— skim 不会凭空变出一个不存在的时间，月末预建树、跨月重放的前提（同一组弧、同一组时间）也不受影响。</p>
+
+<h2>4 · 验证：换了单位，没换标定</h2>
+<p>三个口径在 gz2 上各推 3 个月，看第 3 个月的结果。<b>严格</b> = 容差 0；<b>旧</b> = 0.15 分钟/跳；<b>新</b> = 0.6 分钟/公里。</p>
+
+<table>
+<tr><th>口径</th><th class="num">车公里</th><th class="num">车时（万车分钟）</th><th class="num">车均速</th><th class="num">拥堵指数</th><th class="num">全方式用时</th><th class="num">月步进</th></tr>
+<tr><td><b>严格最短路</b></td><td class="num">93,636,199</td><td class="num">15,662.6</td><td class="num">35.87 km/h</td><td class="num">1.2463</td><td class="num">20.9 min</td><td class="num">4.83 / 8.78 / 5.32 s</td></tr>
+<tr><td><b>旧：0.15 / 跳</b></td><td class="num">92,868,433</td><td class="num">15,856.8</td><td class="num">35.14 km/h</td><td class="num">1.2685</td><td class="num">21.2 min</td><td class="num">4.83 / 8.73 / 5.32 s</td></tr>
+<tr><td><b>新：0.6 / 公里</b></td><td class="num">93,067,496</td><td class="num">15,883.5</td><td class="num">35.16 km/h</td><td class="num">1.2660</td><td class="num">21.2 min</td><td class="num">4.73 / 8.67 / 5.24 s</td></tr>
+</table>
+
+<p>结论：新口径和旧口径<strong>落在同一个标定点上</strong>（gz2 平均每跳 354 m，0.15 / 0.354 ≈ 0.42 分钟/公里，本来就是新口径的同一个数），但表达成了不依赖路段切分的单位。相对严格最短路，两者都是车公里 −0.7%、车时 +1.2%：容差带换来的是「少绕路」，代价是「路上多耗一点」。</p>
+
+<div class="card">
+<div class="h"><span class="n">A</span><span class="t">为什么 0.45 / 0.75 / 1.2 三个值的差别不到 0.01%</span></div>
+<p>近均衡时，备选路径之间的时间差本来就只有零点几分钟；容差带一旦超过这个量级，可选集合就饱和了 —— 再放宽也只是在几条几乎一样长的路之间换选择。所以这个系数<strong>由体感定，不由性能定</strong>。这也解释了老口径里 0.3 之后反号率就饱和在 13% 附近的现象。</p>
+</div>
+
+<h3>六图回归</h3>
+<p>其余五张图（gz / tutorial / hz / hk / tk / tp）各推 2 个月，新旧口径对比：地铁分担变化 <b>&lt;0.01 个百分点</b>，拥堵指数变化普遍 <b>&lt;0.3%</b>（一处 +1.27%，两轮之间正常的月度波动量级），资金与满意度不变，耗时不变。指纹 <code>7f7a5097876d1fed</code> → <code>ddfae415ada9815f</code>。</p>
+
+<h3>一个没采纳的推测</h3>
+<p>同样的「按距离不按比例」逻辑，本来也可以套在<strong>懒分配判定</strong>上（「这一段的弧时变化是否超过 0.45 × 弧长」才算这条路变了）。实现了、跑了、没有收益：gz2 月步进 4.73 s vs 4.74 s。用 <code>tools/lazy-gate.mjs</code> 看门槛的实际计数就明白为什么 ——</p>
+
+<table>
+<tr><th>轮</th><th class="num">按 1% 相对口径</th><th class="num">0.45/km</th><th class="num">0.6/km</th><th class="num">1.0/km</th><th>门槛（2% × 14746）</th></tr>
+<tr><td>全量之后第 1 轮</td><td class="num">1,208</td><td class="num">337</td><td class="num">302</td><td class="num">219</td><td><span class="tag bad">294</span></td></tr>
+<tr><td>第 2 轮</td><td class="num">1,167</td><td class="num">257</td><td class="num">210</td><td class="num">177</td><td><span class="tag ok">294</span></td></tr>
+</table>
+
+<p>卡住的不是「单条弧算不算变了」，而是<strong>一次全量分配之后有 8% 的弧都动了</strong>，远超 2% 的上限。改单条弧的口径只能在 337 → 302 之间挪，跨不过 294。所以这个开关留着但关着（<code>lazyTolKm: 0</code>）。</p>
+
+<div class="note">
+<b>顺带定位到剩下的那 2.5 秒。</b>月步进里 <code>后续 cycle（重建树）</code> 占 2.53 s（53%），而 <code>后续 cycle（懒分配）</code> 只占 0.59 s —— 4 轮里通常有 2 轮仍在全量建树。要动它得改 2% 这个上限本身（或接受更旧的树），不是改容差口径。
+</div>
+
+<h2>5 · 风险与边界</h2>
+<ul>
+<li>整趟的带 = 0.6 × 行程公里数。gz2 的行程里程中位数是 50 km，也就是一条 50 km 的行程最多容忍 30 分钟的绕远。实测这条带几乎不绑紧（相对严格最短路只有 +1.2% 车时），但要记住这是「上限」不是「均值」。</li>
+<li>容差按<strong>长度</strong>给，不按时间给，所以严重拥堵时（同样长度、时间翻倍）带不会跟着放大 —— 这是刻意的：堵车时人更容易换路，不是更不愿意。</li>
+<li><code>routeTol: 0</code> 保留了「每跳基础容差」的口子（配 <code>routeTolKm</code> 一起用），但默认不用：基础容差等于又回到「跟跳数有关」。</li>
+</ul>
+
+<p class="muted">复现：<code>node tools/arc-stats.mjs gz2</code>（长度分布）、<code>node tools/month-breakdown.mjs gz2 --months=3 --tol=0.6</code>（月步进 + 结果，<code>--tol=0</code> 严格、<code>--hop=0.15</code> 旧口径）、<code>node scripts/smoke.mjs --months=2 --tolkm=0.6</code>（六图指纹）、<code>node tools/lazy-gate.mjs gz2</code>（懒判定门槛）。</p>
+
+</div>
+</body>
+</html>
