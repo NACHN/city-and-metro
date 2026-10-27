@@ -1586,6 +1586,7 @@
         nodeVert: Int32Array.from(this.road.nodeVert),
         arcFrom: Int32Array.from(this.road.arcFrom),
         arcTo: Int32Array.from(this.road.arcTo),
+        arcLen: Float32Array.from(this.road.arcLen),
       };
     }
     const key = dt + '|' + p;
@@ -1604,6 +1605,9 @@
   // 不行就按**顶点对**重映射 —— 顶点号来自城市网格，跨月稳定，而 link.key 里含折点数，
   // 一条路被延伸或拆分就会变，按 key 比会把「路还在、只是编号变了」误判成消失。
   // 映射不到的弧标记 -2：只废掉它下面那一根子树，整棵树其余部分继续用。
+  // 弧身份键：顶点对 + 弧长（米）。顶点号来自城市网格，跨月稳定；弧长用来区分平行弧。
+  function arcKey(from, to, len) { return from + ',' + to + ',' + Math.round(len); }
+
   Model.prototype.syncTreeCache = function (oldRoad, newRoad) {
     const c = this.treeCache;
     if (!c) return;
@@ -1617,14 +1621,18 @@
     let lost = 0;
     let lut = null;
     if (!same) {
+      // 顶点对不够：立交、跨线桥会让同一对端点之间有两条弧（广州大图 176 对）。
+      // 只按顶点对建索引，后一条会覆盖前一条，旧树的弧号就会被翻到错误的平行弧上
+      // （高架桥当成地面道路），距离随之算错。加上弧长才能唯一确定 —— 路还是那条路，
+      // 长度跨月稳定。
       const byPair = new Map();
-      for (let a = 0; a < nNew; a++) byPair.set(newRoad.arcFrom[a] * 65536 + newRoad.arcTo[a], a);
+      for (let a = 0; a < nNew; a++) byPair.set(arcKey(newRoad.arcFrom[a], newRoad.arcTo[a], newRoad.arcLen[a]), a);
       lut = new Int32Array(nOld).fill(-2);
       for (let a = 0; a < nOld; a++) {
         const vf = c.nodeVert[c.arcFrom[a]], vt = c.nodeVert[c.arcTo[a]];
         const nf = newRoad.vertNode[vf], nt = newRoad.vertNode[vt];
         if (nf < 0 || nt < 0) { lost++; continue; }
-        const hit = byPair.get(nf * 65536 + nt);
+        const hit = byPair.get(arcKey(nf, nt, c.arcLen[a]));
         if (hit === undefined) { lost++; continue; }
         lut[a] = hit;
       }
