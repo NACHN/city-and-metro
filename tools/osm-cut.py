@@ -533,8 +533,11 @@ def coast_sea(chains, bbox, samples):
 
 
 
-def load_water_extra(path, bbox=None):
-    """读一份 WKT 水域（水利/测绘专题数据），返回 [多边形, ...]，多边形 = [外环, 内环...]。
+def load_water_extra(path, bbox=None, default_name=""):
+    """读一份 WKT 水域（水利/测绘专题数据），返回 [(名字, [多边形, ...]), ...]，多边形 = [外环, 内环...]。
+
+    记录的名字写在它上面一行 `# 名称：X`（没有就用 `default_name`）—— 一个文件里往往
+    既有河道又有海域，各自的名字决定了合并之后那片水叫什么。
 
     OSM 在城市河道上普遍只画中心线或零碎水面，专题数据里的水面是完整的多边形，
     正好补这个洞。文件可以是每行一条记录，前面带制表符分隔的字段（导出成 CSV 的样子），
@@ -553,8 +556,16 @@ def load_water_extra(path, bbox=None):
     clipped = None
     if bbox:
         clipped = sbox(bbox[1], bbox[0], bbox[3], bbox[2])
+    rec_name = default_name
+    pending = None
     with open(path, encoding="utf-8") as fh:
         for line in fh:
+            mk = line.find("# 名称：")
+            if mk < 0:
+                mk = line.find("# 名称:")
+            if mk >= 0:
+                pending = line[mk:].split("：")[-1].split(":")[-1].strip()
+                continue
             k = line.find("MultiPolygon")
             if k < 0:
                 k = line.find("Polygon")
@@ -578,6 +589,7 @@ def load_water_extra(path, bbox=None):
             except Exception as exc:
                 print("  WKT 解析失败：%s" % exc)
                 continue
+            rings_here = []
             polys = list(g.geoms) if g.geom_type.startswith("Multi") else [g]
             for p in polys:
                 if p.geom_type != "Polygon" or p.is_empty or p.area <= 0:
@@ -594,8 +606,13 @@ def load_water_extra(path, bbox=None):
                 for q in polys2:
                     if q.geom_type != "Polygon" or q.is_empty or q.area <= 0:
                         continue
-                    out.append([list(q.exterior.coords)] + [list(r.coords) for r in q.interiors])
-    print("外加水面：%s -> %d 个多边形" % (path, len(out)))
+                    rings_here.append([list(q.exterior.coords)] + [list(r.coords) for r in q.interiors])
+            if rings_here:
+                out.append((rec_name if pending is None else pending, rings_here))
+                pending = None
+    print("外加水面：%s -> %d 个多边形（%d 条记录：%s）" % (
+        path, sum(len(v) for _, v in out), len(out),
+        "、".join((nm or "无名") for nm, _ in out) or "无"))
     return out
 
 
@@ -741,11 +758,10 @@ def collect(area_pbf, dest_geojson, bbox=None, sea=False, extra=None, extra_name
         if sea:
             col.water_raw.append(("", sea))
     if extra:
-        _w = load_water_extra(extra, bbox)
-        if _w:
-            # 带上名字：合并后的水面按「代表点落在哪个具名水面里」取名，无名的大片会被
-            # 旁边那条小河的名字认领（上海那张 398 km² 的长江口一度被标成「川杨河」）。
-            col.water_raw.append((extra_name, _w))
+        # 逐条带上名字：合并后的水面按「代表点落在哪个具名水面里」取名，无名的大片会被
+        # 旁边那条小河的名字认领（上海那张 398 km² 的长江口一度被标成「川杨河」）。
+        for _nm, _polys in load_water_extra(extra, bbox, extra_name):
+            col.water_raw.append((_nm, _polys))
     col.features = union_water(col.water_raw) + col.features
     with open(dest_geojson, "w", encoding="utf-8") as fh:
         json.dump({"type": "FeatureCollection", "features": col.features}, fh, ensure_ascii=False)
