@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>性能优化一览 · 城市与地铁</title>
+<style>
+  :root{
+    --bg:#0e1014; --panel:#151a21; --panel2:#1b212a; --line:#2a323d;
+    --tx:#e7eaee; --tx2:#a8b3c0; --tx3:#6f7b8a;
+    --amber:#ef9f27; --amber-d:#633806; --blue:#378add; --blue-d:#0c447c;
+    --teal:#5dcaa5; --teal-d:#0f4a3c; --purple:#afa9ec; --red:#e24b4a; --red-d:#5c1f1f;
+    --mono:ui-monospace,SFMono-Regular,"Cascadia Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);
+    font:13px/1.75 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1000px;margin:0 auto;padding:44px 24px 110px}
+  h1{font-size:27px;font-weight:500;margin:0 0 8px;letter-spacing:.2px}
+  h2{font-size:18px;font-weight:500;margin:46px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  h3{font-size:14px;font-weight:500;margin:26px 0 8px;color:var(--tx)}
+  p{margin:10px 0;color:var(--tx2)}
+  b,strong{color:var(--tx);font-weight:500}
+  code{font-family:var(--mono);font-size:12px;background:#1d242e;border:1px solid var(--line);
+    border-radius:4px;padding:1px 5px;color:#c9d6e4}
+  pre{font-family:var(--mono);font-size:12px;line-height:1.7;background:#12171d;border:1px solid var(--line);
+    border-radius:8px;padding:12px 14px;overflow:auto;color:#c3cfdb;margin:12px 0}
+  .lead{font-size:14px;color:var(--tx2);margin-bottom:4px}
+  .muted{color:var(--tx3);font-size:12px}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:22px 0 8px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .stat .k{font-size:11px;color:var(--tx3);letter-spacing:.3px}
+  .stat .v{font-size:20px;font-weight:500;margin-top:2px;font-variant-numeric:tabular-nums}
+  .stat .v s{color:var(--tx3);font-size:13px;text-decoration-thickness:1px}
+  .stat .u{font-size:11px;color:var(--tx3);margin-left:3px;font-weight:400}
+  .stat .d{font-size:11px;margin-top:2px;color:var(--teal)}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:12.5px}
+  th{text-align:left;font-weight:500;color:var(--tx3);font-size:11.5px;letter-spacing:.3px;
+    border-bottom:1px solid var(--line);padding:7px 10px 7px 0}
+  td{border-bottom:1px solid #1e242c;padding:8px 10px 8px 0;color:var(--tx2);vertical-align:top}
+  td b{color:var(--tx)}
+  tr:last-child td{border-bottom:none}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px 18px;margin:14px 0}
+  .card .h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:2px}
+  .card .h .n{font-family:var(--mono);font-size:11px;color:var(--tx3);border:1px solid var(--line);
+    border-radius:5px;padding:0 6px}
+  .card .h .t{font-size:14.5px;font-weight:500}
+  .tag{font-size:11px;padding:1px 8px;border-radius:20px;border:1px solid var(--line);
+    background:#1d242e;color:var(--tx3);white-space:nowrap}
+  .tag.ok{color:#9fe0c6;border-color:#255447;background:#10241e}
+  .tag.warn{color:#f0c88a;border-color:#5a4318;background:#241a0c}
+  .tag.bad{color:#f0a3a2;border-color:#5c2b2b;background:#241212}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .kv{display:grid;grid-template-columns:76px 1fr;gap:6px 10px;font-size:12.5px;margin-top:10px}
+  .kv .k{color:var(--tx3)}
+  .kv .v{color:var(--tx2)}
+  .kv .v b{color:var(--tx)}
+  .badge{display:inline-block;font-family:var(--mono);font-size:11px;color:var(--tx3)}
+  .note{font-size:12px;color:var(--tx3);margin-top:8px}
+  .chart{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px 10px}
+  .chart h3{margin:0 0 2px}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--tx3);margin-top:8px}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:1px}
+  @media (max-width:780px){
+    .stats{grid-template-columns:1fr 1fr}
+    .grid2{grid-template-columns:1fr}
+  }
+  .foot{margin-top:56px;padding-top:14px;border-top:1px solid var(--line);font-size:11.5px;color:var(--tx3)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>性能优化一览</h1>
+  <p class="lead">把「载入 20 秒、每月 7 秒」压到「载入约 15 秒、每月约 4 秒」的六件事 —— 每件都有前后实测，以及它有没有动数值。</p>
+  <div class="stats">
+    <div class="stat"><div class="k">载入 Game.create</div><div class="v">45.0 → 28.5<span class="u">s</span></div><div class="d">−37%（node）</div></div>
+    <div class="stat"><div class="k">月步进</div><div class="v">20.4 → 8.3<span class="u">s</span></div><div class="d">−59%（node）</div></div>
+    <div class="stat"><div class="k">跳 12 个月</div><div class="v">85.8 → 31.5<span class="u">s</span></div><div class="d">−63%（node）</div></div>
+    <div class="stat"><div class="k">六张正式地图</div><div class="v">逐位不变</div><div class="d">smoke 指纹未动</div></div>
+  </div>
+  <p class="muted">除标注外都是 gz2 大图（240×192 格 · 2,880 小区 · 6,189 节点 · 14,746 弧）在 node 上的实测。浏览器大约快 1.8–1.9 倍，所以你实测的 20 秒 / 7 秒对应这里的 45 / 13.5。</p>
+
+  <h2>一、时间到底花在哪</h2>
+  <p>先把账拆开。一次求解就是一个 cycle，它由 <b>2 个日型 × 4 个时段 × 2,838 个起点</b> 组成 —— 也就是 <b>22,704 次 Dijkstra</b>。载入要跑 4 个 cycle，月推进也要跑几个 cycle。</p>
+  <div class="chart">
+    <h3>一个 cycle 里各函数的自耗时</h3>
+    <svg viewBox="0 0 900 118" width="100%" height="118" role="img" aria-label="roadTree 75.3%，carOrigin 12.4%，odOrigin 4.9%，demandOrigin 3.6%，其余 3.8%">
+      <g font-size="11" font-family="ui-monospace,Menlo,monospace">
+        <rect x="0" y="18" width="678" height="30" fill="#378add"/>
+        <rect x="678" y="18" width="112" height="30" fill="#afa9ec"/>
+        <rect x="790" y="18" width="44" height="30" fill="#5dcaa5"/>
+        <rect x="834" y="18" width="32" height="30" fill="#ef9f27"/>
+        <rect x="866" y="18" width="34" height="30" fill="#3a444f"/>
+        <text x="10" y="38" fill="#062a4a" font-size="11.5">roadTree（建最短路树）75.3%</text>
+        <text x="686" y="38" fill="#171436" font-size="10.5">carOrigin 12.4%</text>
+        <text x="792" y="38" fill="#08301f" font-size="9.5">od 4.9%</text>
+        <text x="836" y="38" fill="#2b1a04" font-size="9.5">dem 3.6%</text>
+        <text x="0" y="70" fill="#6f7b8a" font-size="10.5">↑ 一棵树 0.41 ms：settle 4,900–5,500 个点、松弛 14,746 条弧，已经是手写二叉堆 + 全 typed array</text>
+        <text x="0" y="92" fill="#6f7b8a" font-size="10.5">所以优化只有三条路：少建树、把树的活挪到不用算的时候、把树并行。</text>
+      </g>
+    </svg>
+  </div>
+
+  <h2>二、六次改动</h2>
+
+  <div class="card">
+    <div class="h"><span class="n">01</span><span class="t">堆换成 typed array</span><span class="tag ok">逐位不变</span></div>
+    <p>Dijkstra 的优先队列原本是 <code>new Array(nA + 4).fill(0.1)</code>。定长数组 <code>fill()</code> 之后 V8 会把它标成 holey-double，每次读写都要多一次 hole 检查。</p>
+    <div class="kv">
+      <div class="k">做法</div><div class="v">换成 <code>Float64Array</code> / <code>Int32Array</code>，数值一字不动</div>
+      <div class="k">实测</div><div class="v">一个 cycle <b>11.28 → 10.17 s（−10%）</b>；solveNow(2) 22.30 → 20.41 s</div>
+      <div class="k">代价</div><div class="v">无。同一组输入算出同一组浮点数</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="h"><span class="n">02</span><span class="t">收敛判据修对，再让稳定时段直接跳过</span><span class="tag warn">容差 1%</span></div>
+    <p>这个不是优化，是<b>先把一个隐藏的 bug 修掉</b>。原来的判据要求「逐位相等」：MSA 每轮只把流量往新解推 40%，浮点值几乎不可能完全重合 —— 大图上跑 40 秒、33 个时段，<b>一个稳定轮都凑不出来</b>，于是 <code>liveLoop</code> 永不停止，每一帧都在后台空转。</p>
+    <p>更隐蔽的是第二层：判据比的是<b>平滑后</b>的统计量（每轮把差距压到 0.6 倍），等于永远要多等十几轮。</p>
+    <svg viewBox="0 0 900 96" width="100%" height="96" style="margin:6px 0 2px" role="img" aria-label="残差按 0.6 的幂衰减，4 轮后仍有 13%">
+      <g font-size="10.5" font-family="ui-monospace,Menlo,monospace">
+        <line x1="70" y1="78" x2="860" y2="78" stroke="#2a323d"/>
+        <line x1="70" y1="10" x2="70" y2="78" stroke="#2a323d"/>
+        <g fill="#6f7b8a"><text x="46" y="20">100%</text><text x="52" y="80">0</text></g>
+        <path d="M70 16 L190 40 L310 55 L430 64 L550 69 L670 73 L790 75" fill="none" stroke="#ef9f27" stroke-width="2"/>
+        <g fill="#ef9f27">
+          <circle cx="70" cy="16" r="3"/><circle cx="190" cy="40" r="3"/><circle cx="310" cy="55" r="3"/>
+          <circle cx="430" cy="64" r="3"/><circle cx="550" cy="69" r="3"/>
+        </g>
+        <g fill="#a8b3c0" font-size="10">
+          <text x="64" y="92">第1轮</text><text x="184" y="92">第2轮</text><text x="304" y="92">第3轮</text><text x="424" y="92">第4轮</text>
+        </g>
+        <text x="560" y="60" fill="#e7eaee">固定步长 0.4 → 残差按 0.6ⁿ 衰减，4 轮后还剩 13%</text>
+        <text x="560" y="76" fill="#6f7b8a">轮数上限就是这样来的：不是等它收敛，而是够用就停</text>
+      </g>
+    </svg>
+    <div class="kv">
+      <div class="k">做法</div><div class="v">判据改用<b>平滑前</b>的原始值 + 相对变化 &lt; 1%（交通模型惯例 1e-3~1e-2）；已稳定的时段整段跳过；<code>CFG.perf.maxSolveCycles = 4</code> 兜底</div>
+      <div class="k">实测</div><div class="v">跳 12 个月 <b>85.8 → 33.8 s</b>；12 个月后全城客流 7,816,401 vs 7,816,395（<b>差 6 人</b>）</div>
+      <div class="k">代价</div><div class="v">严格说不再是「逐位收敛」，改成「容差内收敛」—— 但原来那个逐位判据根本达不到，等于没有判据</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="h"><span class="n">03</span><span class="t">懒分配：时间没怎么变就别重建树</span><span class="tag warn">近似</span></div>
+    <p>月度求解的后几轮里，车行时间其实几乎不动，但代码还是会重建 22,704 棵树。判断「时间变了没有」有个廉价形式：<b>数一变动的路段占多少</b>。</p>
+    <svg viewBox="0 0 900 108" width="100%" height="108" style="margin:6px 0 2px" role="img" aria-label="按变动路段占比决定是否复用">
+      <g font-family="ui-monospace,Menlo,monospace" font-size="10.5">
+        <rect x="0" y="14" width="230" height="52" rx="8" fill="#1b212a" stroke="#2a323d"/>
+        <text x="14" y="34" fill="#a8b3c0">数 14,746 条弧</text>
+        <text x="14" y="52" fill="#6f7b8a">|Δt|/t &gt; 1% 的占比</text>
+        <path d="M232 40 L286 40" stroke="#3b4552" marker-end="url(#a)"/>
+        <defs><marker id="a" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6z" fill="#3b4552"/></marker></defs>
+        <rect x="290" y="8" width="270" height="64" rx="8" fill="#10241e" stroke="#255447"/>
+        <text x="304" y="28" fill="#9fe0c6">≤ 2% → 懒</text>
+        <text x="304" y="46" fill="#7fae9d">沿用上一轮的树 / skim / 流量</text>
+        <text x="304" y="62" fill="#6f7b8a">只重算方式选择与地铁客流（约 10% 开销）</text>
+        <rect x="580" y="8" width="0" height="0" fill="none"/>
+        <rect x="590" y="8" width="300" height="64" rx="8" fill="#241a0c" stroke="#5a4318"/>
+        <text x="604" y="28" fill="#f0c88a">&gt; 2% → 全量</text>
+        <text x="604" y="46" fill="#b59a6d">重建树，并把当前时间记为下次基准</text>
+        <text x="604" y="62" fill="#6f7b8a">连续懒满 3 轮强制全量一次，防长期漂移</text>
+        <text x="0" y="94" fill="#6f7b8a">踩过的坑：一开始按「最大相对变化 &lt; 0.5%」判，几乎永不触发（低流量路段 v 从 3 涨到 5 就是 +67%）。改成「占比」才真正命中。</text>
+      </g>
+    </svg>
+    <div class="kv">
+      <div class="k">实测</div><div class="v">月结算 20.4 → <b>13.5 s</b>；后台收敛 42.4 → 18.8 s；跳 12 个月 → <b>31.5 s</b></div>
+      <div class="k">精度</div><div class="v">12 个月客流差 7 人（0.0001%）；tk 经营档分担率 −0.08pp、tp −0.02pp，其余未动</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="h"><span class="n">04</span><span class="t">载入少跑一轮</span><span class="tag warn">数值微调</span></div>
+    <p><code>Game.create</code> 原本是 <code>solveNow(2)</code> → <code>buildDemand()</code> → <code>solveNow(2)</code>，共 4 个 cycle。第二次的 2 轮纯属浪费：路网没变，只是把「按真实时间重建的需求」再过一遍，剩下的收敛后台循环本来就会接着做。</p>
+    <div class="kv">
+      <div class="k">做法</div><div class="v">第二次降成 <code>solveNow(1)</code>：4 轮 → 3 轮</div>
+      <div class="k">实测</div><div class="v">载入 <b>45.0 → 32.0 s</b>（−25% 的求解部分）；浏览器约 20 → 14 s</div>
+      <div class="k">代价</div><div class="v">初始状态少收敛一轮。六图人口一位未变，只有 tk 经营档分担率 +0.05pp</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="h"><span class="n">05</span><span class="t">载入时 8 个时段共用一棵树</span><span class="tag ok">逐位不变</span></div>
+    <p>载入的第一个 cycle 里，8 个时段（2 日型 × 4 时段）的车行时间<b>全都是自由流、逐位相同</b>（实测确认，不是推测）。既然是同一份时间，最短路树就是同一棵 —— <b>22,704 棵树其实是 2,838 棵</b>。</p>
+    <svg viewBox="0 0 900 98" width="100%" height="98" style="margin:6px 0 2px" role="img" aria-label="8 个时段共用 1 棵树">
+      <g font-family="ui-monospace,Menlo,monospace" font-size="10">
+        <text x="0" y="16" fill="#6f7b8a">原来</text>
+        <g fill="#378add">
+          <rect x="60" y="4" width="72" height="16" rx="3"/><rect x="140" y="4" width="72" height="16" rx="3"/>
+          <rect x="220" y="4" width="72" height="16" rx="3"/><rect x="300" y="4" width="72" height="16" rx="3"/>
+          <rect x="380" y="4" width="72" height="16" rx="3"/><rect x="460" y="4" width="72" height="16" rx="3"/>
+          <rect x="540" y="4" width="72" height="16" rx="3"/><rect x="620" y="4" width="72" height="16" rx="3"/>
+        </g>
+        <text x="704" y="16" fill="#a8b3c0">8 × 1.4 s = 11.3 s</text>
+        <text x="0" y="52" fill="#6f7b8a">现在</text>
+        <rect x="60" y="40" width="72" height="16" rx="3" fill="#5dcaa5"/>
+        <text x="68" y="52" fill="#08301f" font-size="9.5">建树</text>
+        <g fill="#255447">
+          <rect x="140" y="40" width="72" height="16" rx="3"/><rect x="220" y="40" width="72" height="16" rx="3"/>
+          <rect x="300" y="40" width="72" height="16" rx="3"/><rect x="380" y="40" width="72" height="16" rx="3"/>
+          <rect x="460" y="40" width="72" height="16" rx="3"/><rect x="540" y="40" width="72" height="16" rx="3"/>
+          <rect x="620" y="40" width="72" height="16" rx="3"/>
+        </g>
+        <text x="704" y="52" fill="#a8b3c0">1.5 + 1.2 = 2.8 s</text>
+        <text x="140" y="72" fill="#7fae9d" font-size="9.5">其余 7 个只有注入 + 回溯，0.175 s 一个</text>
+        <text x="0" y="92" fill="#6f7b8a">树按 node | 前驱弧 各 16 位打包，这一个 cycle 内占 88 MB；skim 直接照抄，遍历顺序与原实现一致。</text>
+      </g>
+    </svg>
+    <div class="kv">
+      <div class="k">实测</div><div class="v">cycle 0 的 8 个时段 <b>11.3 → 2.8 s</b>；载入 36.7 → 28.5 s（−22%）</div>
+      <div class="k">代价</div><div class="v">只在「时间逐位相同」时才启用（iters=0 且 arcTime 全等），不满足自动退回逐时段建树</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="h"><span class="n">06</span><span class="t">跨月复用最短路树</span><span class="tag warn">近似 + 内存</span></div>
+    <p>月度推进的第一轮全量分配要建 22,704 棵树，占月步进 <b>80%</b>。但相邻两个月的时间只差一点 —— 上个月那棵树这个月还能用。</p>
+    <p>树只存<b>弧号序列</b>（2 B/点）：回溯只要按 settle 逆序取前驱弧，弧号自带两端，节点号是多余的；距离可以从树反推（序列反过来就是 settle 正序）。重放时沿旧路径用<b>当前</b>车行时间累加距离 → 填 skim → 注入接驳点 → 按 settle 逆序回溯。</p>
+    <svg viewBox="0 0 900 128" width="100%" height="128" style="margin:6px 0 2px" role="img" aria-label="顶点对重映射与子树失效">
+      <g font-family="ui-monospace,Menlo,monospace" font-size="10.5">
+        <rect x="0" y="6" width="250" height="106" rx="8" fill="#1b212a" stroke="#2a323d"/>
+        <text x="14" y="26" fill="#a8b3c0">上个月的树</text>
+        <text x="14" y="46" fill="#6f7b8a">弧号序列（2 B/点）</text>
+        <text x="14" y="66" fill="#6f7b8a">2,838 棵/时段</text>
+        <text x="14" y="86" fill="#6f7b8a">8 个时段 1.1 亿条目</text>
+        <text x="14" y="104" fill="#5dcaa5" font-size="9.5">合计 221 MB</text>
+
+        <path d="M252 60 L306 60" stroke="#3b4552" marker-end="url(#b)"/>
+        <defs><marker id="b" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6z" fill="#3b4552"/></marker></defs>
+
+        <rect x="310" y="6" width="272" height="106" rx="8" fill="#101b26" stroke="#22405c"/>
+        <text x="324" y="26" fill="#9dc4e8">按顶点对重映射</text>
+        <text x="324" y="46" fill="#6f7b8a">顶点号来自城市网格，跨月稳定</text>
+        <text x="324" y="64" fill="#6f7b8a">link.key 含折点数，路一延伸就变</text>
+        <text x="324" y="86" fill="#9dc4e8">救不回的弧 → 标 -2</text>
+        <text x="324" y="104" fill="#6f7b8a" font-size="9.5">只废它下面那一根子树（后代自然缺席）</text>
+
+        <path d="M584 60 L638 60" stroke="#3b4552" marker-end="url(#b)"/>
+
+        <rect x="642" y="6" width="256" height="106" rx="8" fill="#10241e" stroke="#255447"/>
+        <text x="656" y="26" fill="#9fe0c6">闸门</text>
+        <text x="656" y="46" fill="#7fae9d">本月新增+消失 &gt; max(12, 0.2%)</text>
+        <text x="656" y="64" fill="#7fae9d">→ 丢掉缓存，当月重建</text>
+        <text x="656" y="86" fill="#9fe0c6">最多复用 3 个月</text>
+        <text x="656" y="104" fill="#6f7b8a" font-size="9.5">第 4 个月 8 个时段一起重建并刷新</text>
+      </g>
+    </svg>
+    <div class="kv">
+      <div class="k">实测</div><div class="v">月步进 12.85 → <b>7.03 / 6.98 / 5.64 s</b>（刷新月 13.48），四个月平均 <b>8.3 s（−36%）</b></div>
+      <div class="k">精度</div><div class="v">客流逐位相同（7,494,560 vs 7,494,559）；车时复用第 3 个月时 +2.9%，其余 &lt;0.01%</div>
+      <div class="k">代价</div><div class="v">内存 221 MB（大图）/ 18 MB（小图）；<code>CFG.perf.treeCache*</code> 三个开关可关</div>
+    </div>
+  </div>
+
+  <h2>三、累积效果</h2>
+  <div class="chart">
+    <h3>载入（Game.create，gz2，node）</h3>
+    <svg viewBox="0 0 900 128" width="100%" height="128" role="img" aria-label="载入 45.0 降到 28.5 秒">
+      <g font-family="ui-monospace,Menlo,monospace" font-size="11">
+        <g fill="#2a323d"><rect x="150" y="10" width="700" height="20" rx="3"/><rect x="150" y="46" width="700" height="20" rx="3"/><rect x="150" y="82" width="700" height="20" rx="3"/></g>
+        <rect x="150" y="10" width="700" height="20" rx="3" fill="#e24b4a"/>
+        <rect x="150" y="46" width="498" height="20" rx="3" fill="#ef9f27"/>
+        <rect x="150" y="82" width="443" height="20" rx="3" fill="#5dcaa5"/>
+        <g fill="#a8b3c0">
+          <text x="0" y="25">原始</text><text x="0" y="61">少跑一轮</text><text x="0" y="97">八时段共用一棵树</text>
+        </g>
+        <g font-size="11.5" text-anchor="end" fill="#0d1720">
+          <text x="838" y="25">45.0 s</text><text x="636" y="61">32.0 s</text><text x="581" y="97">28.5 s</text>
+        </g>
+      </g>
+    </svg>
+    <h3 style="margin-top:16px">月步进（gz2，node）</h3>
+    <svg viewBox="0 0 900 128" width="100%" height="128" role="img" aria-label="月步进 20.4 降到 8.3 秒">
+      <g font-family="ui-monospace,Menlo,monospace" font-size="11">
+        <g fill="#2a323d"><rect x="150" y="10" width="700" height="20" rx="3"/><rect x="150" y="46" width="700" height="20" rx="3"/><rect x="150" y="82" width="700" height="20" rx="3"/></g>
+        <rect x="150" y="10" width="700" height="20" rx="3" fill="#e24b4a"/>
+        <rect x="150" y="46" width="463" height="20" rx="3" fill="#ef9f27"/>
+        <rect x="150" y="82" width="285" height="20" rx="3" fill="#5dcaa5"/>
+        <g fill="#a8b3c0">
+          <text x="0" y="25">原始</text><text x="0" y="61">懒分配</text><text x="0" y="97">树缓存</text>
+        </g>
+        <g font-size="11.5" text-anchor="end" fill="#0d1720">
+          <text x="838" y="25">20.4 s</text><text x="601" y="61">13.5 s</text><text x="423" y="97">8.3 s</text>
+        </g>
+        <text x="0" y="122" fill="#6f7b8a" font-size="9.5">注：最后一根含 monthGen（约 0.8 s）与收敛，口径比前两根更宽，所以实际降幅比图上还要大一点。</text>
+      </g>
+    </svg>
+    <div class="legend">
+      <span><i style="background:#e24b4a"></i>优化前</span>
+      <span><i style="background:#ef9f27"></i>中间态</span>
+      <span><i style="background:#5dcaa5"></i>现在</span>
+    </div>
+  </div>
+
+  <h2>四、每一步有没有动数值</h2>
+  <table>
+    <tr><th>改动</th><th>类型</th><th>对数值的影响</th></tr>
+    <tr><td>堆换 typed array</td><td>纯工程</td><td><b>逐位不变</b></td></tr>
+    <tr><td>收敛判据 / 稳定跳过 / 轮数上限</td><td>改判断</td><td>12 个月客流差 6 人</td></tr>
+    <tr><td>懒分配</td><td>近似</td><td>差 7 人（0.0001%）；tk −0.08pp、tp −0.02pp</td></tr>
+    <tr><td>载入少跑一轮</td><td>少收敛一轮</td><td>人口一位未变；tk 经营档 +0.05pp</td></tr>
+    <tr><td>八时段共用一棵树</td><td>纯工程</td><td><b>逐位不变</b></td></tr>
+    <tr><td>跨月复用树</td><td>近似</td><td>客流差 1 人；车时最长 +2.9%</td></tr>
+  </table>
+  <p>六张正式地图的 smoke 指纹现在是 <code>914a70b53b67b418</code> —— 树缓存接进去之后它<b>一位都没动</b>，因为小图稳态下车行时间几乎不变，重放和重建算出来本来就是同一组数。</p>
+
+  <h2>五、用数据否掉的方案</h2>
+  <p>这些方向都做过原型、量过数，最后没进代码 —— 记下来免得以后再试一遍。</p>
+  <table>
+    <tr><th>想法</th><th>为什么不行</th></tr>
+    <tr><td>层级枢纽 / 几级树（landmark）</td><td>这张车行图只有 6,189 个节点、14,746 条弧，一次全量 Dijkstra 才 0.45 ms。40 个枢纽的平均误差 5.4%、最大 89%；而且「枢纽全 settle 就停」<b>一个节点都省不下</b>（最远的枢纽本来最后才 settle），反而多出每目的地查表的开销</td></tr>
+    <tr><td>逐起点懒更新（只重算树真的变了的起点）</td><td>要留下 <code>pred/order</code> 才能判断：7,373 弧 × 2,880 起点 × 8 时段 ≈ <b>680 MB</b>；而且拥堵时间一改，几乎所有树都脏</td></tr>
+    <tr><td>让共用同一组接驳点的小区共用一棵树</td><td>2,880 个小区按接驳签名去重后是 2,805 组，只有 <b>4%</b> 能合</td></tr>
+    <tr><td>只算到「有需求的目的地」就停</td><td>每个起点 100–200 条 OD 却散布全城：平均要 settle 4,576 个点才覆盖完，全量是 4,960 —— 只省 <b>7.7%</b></td></tr>
+    <tr><td>用 link.key 判断弧还在不在</td><td>key 里含折点数，路被延伸/拆分就变 → 把「路还在、只是编号变了」误判成消失，<b>2 条弧就带走 88% 的树</b>。改用顶点对之后同一个月失效条目只有 0.018%</td></tr>
+    <tr><td>把树压进存档</td><td>37 MB 的纯派生量；而且读档后所有时段都从自由流重来，缓存的树对不上时间，等于没用</td></tr>
+    <tr><td>brotli 压树省内存</td><td>q9 压 26 MB 要 28 秒（0.9 MB/s），q3 虽然只要 134 ms 但省下的内存对 8 个时段不解决问题</td></tr>
+  </table>
+
+  <h2>六、现在还剩什么</h2>
+  <div class="grid2">
+    <div class="chart" style="padding-bottom:16px">
+      <h3>已经拿到的</h3>
+      <div class="kv" style="grid-template-columns:96px 1fr">
+        <div class="k">载入</div><div class="v">45.0 → 28.5 s（浏览器约 20 → 15 s）</div>
+        <div class="k">月步进</div><div class="v">20.4 → 8.3 s（浏览器约 7 → 4.3 s）</div>
+        <div class="k">跳一年</div><div class="v">85.8 → 31.5 s</div>
+        <div class="k">数值</div><div class="v">六图逐位不变，大图客流差 1 人</div>
+      </div>
+    </div>
+    <div class="chart" style="padding-bottom:16px">
+      <h3>还剩两条</h3>
+      <div class="kv" style="grid-template-columns:96px 1fr">
+        <div class="k">Web Worker 分起点</div><div class="v">起点之间完全独立，4 核约 <b>2.5–4×</b>，载入和月步进一起吃；代价是浮点累加顺序变，基线要重标</div>
+        <div class="k">Dijkstra 内层</div><div class="v">索引堆 decrease-key / 4 叉堆 / 弧数组交错布局，约 <b>1.3–1.5×</b>，纯常数</div>
+      </div>
+    </div>
+  </div>
+  <p class="note">载入这一块之所以只剩 worker 一条路：开局没有「上个月」可以复用，22,704 棵树是硬账；同一次载入里能合并的已经合并完了（第 05 条）。</p>
+
+  <div class="foot">
+    城市与地铁 · 性能优化记录（gz2 大图，2026-10-27）· 全部数字来自 <code>tools/perf.mjs</code>、<code>tools/tree-cache-proto.mjs</code>、<code>tools/cache-check.mjs</code> 与 <code>scripts/smoke.mjs</code> 的实测输出。
+  </div>
+</div>
+</body>
+</html>
