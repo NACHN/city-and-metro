@@ -28,6 +28,7 @@
   function roadTree(road, rd, time, origin, work, heap) {
     const dist = work.dist, dkm = work.dkm, pred = work.pred, order = work.order;
     const start = rd.start, node = rd.nodes, initial = rd.times, km = rd.km;
+    const tol = (CFG.road && CFG.road.routeTol) || 0;
     const outStart = road.outStart, outArc = road.outArc, arcTo = road.arcTo, arcKm = rd.arcKm;
     dist.fill(INF); heap.clear();
     // Each directed arc can relax once after its source is settled. Reserve the
@@ -64,7 +65,9 @@
       order[no++] = u;
       for (let k = outStart[u]; k < outStart[u + 1]; k++) {
         const a = outArc[k], v = arcTo[a], nd = du + time[a];
-        if (nd < dist[v]) {
+        // 路径惰性：只有比当前路径短出 tol 才换父弧。人不会为 0.01 分钟改走另一条路，
+        // 而这个「随便换」正是 MSA 在均衡附近来回翻的根源。
+        if (nd < dist[v] - tol) {
           dist[v] = nd; dkm[v] = dkm[u] + arcKm[a]; pred[v] = a;
           let i = count++;
           while (i > 0) { const p = (i - 1) >> 1; if (keys[p] <= nd) break; keys[i] = keys[p]; values[i] = values[p]; i = p; }
@@ -1434,8 +1437,11 @@
       if ((o & 1) === 1) yield;
     }
     if (group && !group.ref) { group.ref = P; group.refT = P.skimT; group.refK = P.skimK; } else if (P.arcVol) {
-      // 沿用的流量直接当作本轮分配结果（aux 不再参与）
-      stable = false;   // 沿用结果不算稳定，避免被当成「已收敛」而永久冻结
+      // 沿用的流量直接当作本轮分配结果（aux 不再参与）。这里**不要**把 stable 置 false：
+      // 懒分配的语义就是「输入没变、输出必然不变」，那就是稳定的。早前为了防止「懒过一次
+      // 就永久冻结」加了 stable = false，结果「连续两轮稳定」永远不成立，只能靠轮数上限硬刹，
+      // 后 2-3 轮纯粹空转（实测 32 次求解里 24 次是懒、0 次跳过）。有地铁的时段由地铁自己的
+      // eq() 检查继续把 stable 拉回来，所以删掉它不会让地铁少收敛。
     }
     const lam = P.iters === 0 ? 1 : (opts.lam || CFG.road.msa);
     const A = CFG.road.bprA, capF = this.capF || 1;
