@@ -13,14 +13,19 @@ const root = path.resolve(HERE, '..');
 const mapId = process.argv[2] || 'gz2';
 const out = process.argv[3] || path.join(HERE, '_preview_' + mapId + '.ppm');
 
-// 大图（gz2）已停放，生成物在 maps/gz2/parked/；启用后会自动优先用 js/ 里的那份
-const PARKED = (rel) => {
-  const parked = path.join(root, 'maps', 'gz2', 'parked', path.basename(rel));
-  return fs.existsSync(path.join(root, rel)) ? path.join(root, rel) : parked;
+// 只加载请求的那张图（外加广州，因为 CM.GEO 是广州单例，其它模块默认读它）。
+// 以前这里把 gz2 写死进清单，结果新加的图（sh）根本进不来 —— useMap 找不到就退回广州，
+// 预览出来的是广州底图。现在按 mapId 找文件，停放的地图（maps/<id>/parked/）也认。
+const pick = (rel) => {
+  const direct = path.join(root, rel);
+  if (fs.existsSync(direct)) return direct;
+  const parked = path.join(root, 'maps', mapId, 'parked', path.basename(rel));
+  return fs.existsSync(parked) ? parked : null;
 };
-const FILES = ['js/util.js', 'js/config.js', 'js/manifest.js', 'js/geo_gz.js', PARKED('js/geo_gz2.js'), 'js/geo.js',
-  'js/data_gz.js', PARKED('js/data_gz2.js'), 'js/data_tutorial.js', 'js/data_hz.js', 'js/data_hk.js', 'js/data_tk.js', 'js/data_tp.js',
-  'js/maps.js', 'js/facility.js', 'js/city.js'];
+const FILES = ['js/util.js', 'js/config.js', 'js/manifest.js', 'js/geo_gz.js', 'js/geo.js',
+  pick('js/geo_' + mapId + '.js'), 'js/data_gz.js', pick('js/data_' + mapId + '.js'),
+  'js/data_tutorial.js', 'js/data_hz.js', 'js/data_hk.js', 'js/data_tk.js', 'js/data_tp.js',
+  'js/maps.js', 'js/facility.js', 'js/city.js'].filter(Boolean);
 const sb = { console: { log() {}, warn() {}, error() {} } };
 sb.window = sb; vm.createContext(sb);
 for (const f of FILES) {
