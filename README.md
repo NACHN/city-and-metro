@@ -85,6 +85,7 @@
 | --- | --- |
 | [PRD](./PRD.md) | 当前玩法、交互、兼容与验收要求 |
 | [地图设计指南](./地图设计指南.md) | 地图选区、数据、历史、经营校准与接入标准 |
+| [地图制作流程](./地图制作流程.md) | 从 OSM 切图到验收的实操步骤、参数换算与踩坑清单 |
 | [TOD 与经济系统方案](./TOD与经济系统方案.md) | 地价 / 容积率 / 物业系统与经营账目（地价—拆迁—物业—容积率已落地） |
 | [车型与线路标准方案](./车型与线路标准方案.md) | A/B/C/D 制式、站台锁定、车辆购置与改扩建（方案稿，未实现） |
 | [开发进度](./开发进度.md) | 两份方案的 TODO 清单：已完成归档、待拍板项与统一验收门槛 |
@@ -92,6 +93,7 @@
 | [js/news.js](./js/news.js) | 游戏内面向玩家的更新公告 |
 | [js/maps.js](./js/maps.js) / [js/config.js](./js/config.js) | 地图登记与共用参数 |
 | [scripts/smoke.mjs](./scripts/smoke.mjs) | 无头冒烟与数值回归：固定地图 × 模式逐日推进 N 月，输出状态指纹（`node scripts/smoke.mjs`） |
+| [scripts/new-map.mjs](./scripts/new-map.mjs) | 新地图的第一公里：中心经纬度 + 尺寸 → bbox / 投影参数与后续命令（`node scripts/new-map.mjs --id xx --lat 31.2 --lon 121.5`） |
 | [tools/editor.html](./tools/editor.html) | 地图编辑器（地图优先画布 + 数据抽屉，开发内部用，不随站点发布） |
 
 运行资源位于 `index.html`、`css/`、`js/`、`img/`；各城场景使用 `data_*.js`，地理使用 `geo_*.js`，可编辑的地图源在 `maps/<id>/source.json`。执行 `node scripts/build.mjs` 生成发布目录 `dist/`（含地图数据校验），不需要依赖安装。
