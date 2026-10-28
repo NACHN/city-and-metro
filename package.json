@@ -1,6 +1,6 @@
 {
   "name": "city-and-metro",
-  "version": "2.8.4",
+  "version": "2.9.0",
   "private": true,
   "description": "《城市与地铁》——浏览器里的地铁规划与城市经营游戏。零运行时依赖，构建只做资源拷贝与校验。",
   "scripts": {

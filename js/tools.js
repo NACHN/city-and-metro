@@ -533,7 +533,15 @@
   Tools.prototype.dragTo = function (sx, sy) {
     const g = this.game(), d = this.drag, w = this.world(sx, sy);
     g.liveEdit(function (net) {
-      if (d.kind === 'station') { const s = net.stations[d.id]; if (s) { s.x = w.x; s.y = w.y; } }
+      if (d.kind === 'station') {
+        const s = net.stations[d.id];
+        if (s) {
+          const dx = w.x - s.x, dy = w.y - s.y;
+          s.x = w.x; s.y = w.y;
+          // 显式站台跟着站体一起走（它们是这个枢纽的一部分）；没偏移的站台本来就跟着站心
+          if (s.plats) for (const p of s.plats) { if (p.x != null) p.x += dx; if (p.y != null) p.y += dy; }
+        }
+      }
       else if (d.kind === 'bend') { const s = net.segments[d.seg]; if (s && s.pts[d.k]) s.pts[d.k] = [w.x, w.y]; }
       else if (d.kind === 'mid') { const s = net.segments[d.seg]; if (s) { s.pts = s.pts || []; s.pts.splice(d.k, 0, [w.x, w.y]); d.kind = 'bend'; } }
     });

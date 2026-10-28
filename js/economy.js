@@ -1,7 +1,7 @@
 'use strict';
 // 经营：资金、拨款、票款、运营费用、满意度、失败判定；任务：历史参考任务与动态任务
 (function (CM) {
-  const U = CM.U, CFG = CM.CFG, D = CM.DATA;
+  const U = CM.U, CFG = CM.CFG, D = CM.DATA, M = CM.Metro;
 
   // 月度账本。科目严格区分：
   //   财政收入 grant 拨款 · fare 票款 · reward 任务奖励
@@ -15,7 +15,8 @@
   }
   // land 是场站用地（D7）：与拆迁并列的第二笔土地账。它按需生成、不进 blankMonth，
   // 所以没有用地支出的月份序列化保持不变（既有存档与指纹不受影响）。
-  const BUILD_KINDS = ['construction', 'demolition', 'upgrade', 'relocation', 'land'];
+  // fleet 是车辆购置（V2，仅 caps.fleet）：设备投资，与土建并列算资本支出
+  const BUILD_KINDS = ['construction', 'demolition', 'upgrade', 'relocation', 'land', 'fleet'];
   const MONEY_EPS = 1e-7;   // 内部单位是万元；只忽略浮点误差，不能把不足 0.5 万的真实债务清零
   Economy.BUILD_KINDS = BUILD_KINDS;
   Economy.MONEY_EPS = MONEY_EPS;
@@ -79,7 +80,7 @@
     if (daily && compiled) {
       const oi = this.opsIndex(year);
       ops += daily.carKm * CFG.ops.carKmCost * oi;
-      for (const s of compiled.stations) ops += CFG.ops.stationDaily[s.size] * oi;
+      for (const s of compiled.stations) ops += M.stationOps(s.size) * oi;
     }
     this.income('fare', fareWan);
     this.spend('ops', ops);
@@ -187,6 +188,36 @@
   };
   Economy.prototype.startMonth = function (y, m) { this.openMonth(y, m); this.payGrant(y, m); };
   // 封账：记录期末并归档；之后的收支一律记入下一个月
+  // 车辆购置（V2，仅 caps.fleet）：月末对比「已配属」与「需求」，差额按制式单价计入资本支出。
+  // 只升不降——降频不退车：车可以调给别的线，游戏里不做二手交易，所以不返还款。
+  // 钱不够就这个月先不买（下个月再试），避免一次购车把资金瞬间打到破产。
+  Economy.prototype.fleetMonth = function (need, year, mn) {
+    if (!this.caps || !this.caps.fleet || !need) return null;
+    if (!this.fleetMap) this.fleetMap = {};
+    const ci = this.costIndex(year);
+    let units = 0, cost = 0;
+    const bought = [];
+    for (const lid in need) {
+      const n = need[lid];
+      const have = this.fleetMap[lid] || 0;
+      if (!(n.units > have)) continue;
+      const add = n.units - have;
+      const c = M.fleetPrice(add, n.carUnit) * ci;
+      if (!this.canAfford(cost + c)) continue;      // 这条线这个月买不起，下月再试
+      this.fleetMap[lid] = n.units;
+      units += add; cost += c;
+      bought.push({ line: lid, name: n.name, add: add, cost: c });
+    }
+    if (cost <= 0.5) return null;
+    this.spend('fleet', cost);
+    const desc = bought.map(function (b) { return b.name + ' ' + b.add + ' 辆'; }).join('、');
+    this.log('fleet', -cost, 'gen', '购置车辆 ' + units + ' 辆（' + desc + '）', { y: year, m: mn, d: 1 });
+    this.cur.fleetNote = desc;
+    return { units: units, cost: cost, bought: bought };
+  };
+  // 已配属车辆数（存档里没有 fleetMap 时按 0 计）
+  Economy.prototype.fleetOf = function (lineId) { return (this.fleetMap && this.fleetMap[lineId]) || 0; };
+
   Economy.prototype.closeMonth = function () {
     this.cur.end = this.funds;
     this.cur.capexEnd = this.capex;
@@ -467,7 +498,9 @@
       capex: this.capex, bonds: this.bonds, bondIssued: this.bondIssued, overdue: this.overdue, overdueParts: this.overdueParts || null, overdueMonths: this.overdueMonths, flow: this.flow, bondSeq: this.bondSeq, svc: this._svc == null ? null : this._svc,
       fisc: this.fisc || null, subsidy: this.batchOn() ? (this.subsidyLevel || 'standard') : undefined,
       // 票价管制的冷却起点：没有就是 undefined（不写进存档，旧存档字节不变）
-      fareLast: this.fareLast == null ? undefined : this.fareLast };
+      fareLast: this.fareLast == null ? undefined : this.fareLast,
+      // 车辆配属台账：没买过车就是 undefined，不进存档（旧模式与旧档字节不变）
+      fleetMap: this.fleetMap || undefined };
   };
   Economy.restore = function (s, caps) {
     const e = new Economy(s.mode, s.cur.y, s.cur.m, caps);

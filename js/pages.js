@@ -186,6 +186,21 @@
     return p;
   };
 
+  // 把 fromId 并入 toId，合成一个换乘枢纽：走建设草案（可撤销），不产生造价
+  UI.prototype.mergeStationInto = function (toId, fromId) {
+    const self = this, g = this.g(), net = g.draft ? g.draft.net : g.net;
+    const A = net.stations[fromId], B = net.stations[toId];
+    if (!A || !B) return;
+    const probe = M.mergeStations(M.clone(net), fromId, toId);
+    if (probe.error) { this.toast(probe.error, 'bad'); return; }
+    this.confirm('把「' + A.name + '」并入「' + B.name + '」？',
+      '两站合成一个换乘枢纽：各自的站台留在原位，轨道与线路走向完全不变，换乘改走站内通道（约 ' + probe.xfer.toFixed(1) + ' 分钟）。'
+      + '车站规模与出入口取两者较大者。不产生造价（通道工程暂不计价），进入建设草案，可撤销。',
+      '并入', function () {
+        g.edit(function (n) { M.mergeStations(n, fromId, toId); });
+        self.toast('已在草案中把「' + A.name + '」并入「' + B.name + '」', 'info');
+      }, false);
+  };
   UI.prototype.page_station = function (id) {
     const g = this.g(), self = this;
     const net = g.draft ? g.draft.net : g.net;
@@ -224,7 +239,7 @@
     /* ================= 经济：左收支、右地价 ================= */
     if (g.econ.caps.land && official) {
       const oi = g.econ.opsIndex(g.clock.y);
-      const opsM = CFG.ops.stationDaily[official.size] * oi * 30;          // 万元/月
+      const opsM = M.stationOps(official.size) * oi * 30;          // 万元/月
       const pr = official.prop || g.propertyOf(official);
       const propNet = pr ? (pr.rent - pr.maint) : 0;
       const net = propNet - opsM;
@@ -461,12 +476,12 @@
       const rename = function () { const v = nameIn.value.trim(), c = latest(); if (!v || !c || v === c.name) return; g.edit(function (n) { n.stations[id].name = v; }); self.toast('已在草案中更名为「' + v + '」', 'info'); };
       nameIn.addEventListener('keydown', function (e) { if (e.isComposing || e.keyCode === 229) return; if (e.key === 'Enter') { e.preventDefault(); rename(); } });
       b.appendChild(h('div', { class: 'field' }, h('label', null, '站名'), h('div', { class: 'row' }, nameIn, h('button', { class: 'btn sm', onclick: rename }, '更名'))));
-      const mc = CFG.metro, yy = g.clock.y, ORD = ['S', 'M', 'L'];
+      const mc = CFG.metro, yy = g.clock.y, ORD = CFG.metro.sizeOrd || ['S', 'M', 'L'];
       const costOf = function (sz) { return M.stationCost(s.type, sz, yy); };
       const capTxt = function (v) { return v >= 10000 ? (v / 10000) + ' 万人次/时' : U.fmtInt(v) + ' 人次/时'; };
       const sizeNote = function () {
-        // 只留「容量 · 编组 · 费用」三件事，运营成本在右侧「经济」里已有，这里不再重复
-        const head = capTxt(mc.stationCap[s.size]) + ' · ' + mc.carsBySize[s.size] + ' 节编组';
+        // 这里只说站厅：容量与费用。站台长度与限界在下面的「站台」段，是另一件事
+        const head = '站厅 ' + capTxt(mc.stationCap[s.size]);
         let cost;
         if (!official) cost = '建设 ' + U.fmtMoney(costOf(s.size));
         else if (official.type !== s.type) cost = '改建 ' + U.fmtMoney(costOf(s.size));
@@ -476,12 +491,13 @@
         }
         return head + ' · ' + cost;
       };
-      const sizeSeg = h('div', { class: 'seg-ctl' });
+      const sizeSeg = h('div', { class: 'seg-ctl', style: { flexWrap: 'wrap' } });
       for (const sz of ORD) sizeSeg.appendChild(h('button', {
         class: s.size === sz ? 'on' : '',
+        'data-tip': mc.sizeName[sz] + '站厅 · 高峰 ' + capTxt(mc.stationCap[sz]) + ' · ' + U.fmtMoney(costOf(sz)),
         onclick: function () { const c = latest(); if (c && c.size !== sz) g.edit(function (n) { n.stations[id].size = sz; }); },
       }, mc.sizeName[sz]));
-      b.appendChild(h('div', { class: 'field' }, h('label', null, '车站规模'), sizeSeg));
+      b.appendChild(h('div', { class: 'field' }, h('label', null, '站厅规模'), sizeSeg));
       b.appendChild(h('div', { class: 'note' }, sizeNote()));
       const tc = h('div', { class: 'seg-ctl' });
       for (const t of ['underground', 'surface', 'elevated']) tc.appendChild(h('button', {
@@ -490,6 +506,102 @@
       }, CFG.metro.typeName[t], official && official.type === t && s.type !== t ? h('small', null, '（已建）') : null));
       b.appendChild(h('div', { class: 'field' }, h('label', null, '车站形式'), tc));
       if (official) b.appendChild(h('div', { class: 'note' }, '改建按新建计费；选回已建形式即撤销改建。'));
+
+      // —— 站台：同一车站里每条线可以停在不同层（天地换乘） ——
+      const stLines = M.linesAt(net, id);
+      if (stLines.length) {
+        b.appendChild(h('div', { class: 'st-sub', style: { marginTop: '14px' } }, '站台'));
+        for (const lid of stLines) {
+          const L = net.lines[lid];
+          if (!L) continue;
+          const cur = M.platLvl(net, id, lid);
+          const seg = h('div', { class: 'seg-ctl' });
+          seg.appendChild(h('button', {
+            class: cur === s.type ? 'on' : '',
+            onclick: function () { g.edit(function (n) { M.setPlatLvl(n, id, lid, null); }); },
+          }, '跟随站体'));
+          for (const t of ['underground', 'surface', 'elevated']) seg.appendChild(h('button', {
+            class: cur === t ? 'on' : '',
+            onclick: function () { g.edit(function (n) { M.setPlatLvl(n, id, lid, t); }); },
+          }, CFG.metro.typeName[t]));
+          const fld = h('div', { class: 'field' }, h('label', null, L.name), seg);
+          // 站台被长度卡住时，给出「加长到几编」的选项（按增量计价）
+          const ms2 = M.stdOf(L), maxC = ms2.cars[1], defLen = (CFG.metro.platLenBySize || {})[s.size] || 114;
+          const curLen = M.platLen(net, id, lid);
+          const ownPl = M.platAt(net, id, lid);
+          if (curLen / ms2.carLen < maxC) {
+            const lrow = h('div', { class: 'seg-ctl', style: { marginTop: '4px' } });
+            lrow.appendChild(h('button', {
+              class: !(ownPl && ownPl.len > 0) ? 'on' : '',
+              onclick: function () { g.edit(function (n) { M.setPlatLen(n, id, lid, null); }); },
+            }, '按规模 ' + defLen + ' m'));
+            for (let c2 = 1; c2 <= maxC; c2++) {
+              const len2 = Math.ceil(c2 * ms2.carLen * 10) / 10;
+              if (len2 <= defLen + 0.1) continue;
+              const add2 = (len2 - defLen) * M.platPerM(s.type) * M.costIndex(g.clock.y);
+              lrow.appendChild(h('button', {
+                class: curLen === len2 ? 'on' : '',
+                'data-tip': '加长站台 +' + Math.round(len2 - defLen) + ' m · 约 ' + U.fmtMoney(add2),
+                onclick: function () { g.edit(function (n) { M.setPlatLen(n, id, lid, len2); }); },
+              }, c2 + ' 编 ' + len2 + ' m'));
+            }
+            fld.appendChild(lrow);
+          }
+          b.appendChild(fld);
+        }
+        b.appendChild(h('div', { class: 'note' }, stLines.length > 1
+          ? '几条线可以停在不同层：高架线走自己的高架站台、地下线走地下站台（天地换乘），不必把两条线拧到同一层。同层同位置即共用站台。'
+          : '这条线在这里的站台层次。默认跟随车站形式。'));
+        b.appendChild(h('div', { class: 'note' }, '站台长度 ' + (M.platLen(net, id, stLines[0])) + ' m（按车站规模）· ' + stLines.map(function (lid2) {
+          const L2 = net.lines[lid2];
+          return (L2 ? L2.name : '') + ' 最多 ' + M.platCars(net, id, lid2, M.stdOf(L2)) + ' 节';
+        }).join(' · ')));
+        // —— 限界：车站能容纳的最大车宽。窄站停宽车要加宽站台（动结构，比延长贵） ——
+        const gCur = M.stationGauge(net, id), gNeed = M.gaugeNeedAt(net, id), gFits = M.gaugeFits(net, id);
+        b.appendChild(h('div', { class: 'note' }, '限界 ' + gCur.toFixed(1) + ' m'
+          + (s.gw > 0 ? '（' + CFG.metro.sizeName[s.size] + '站基准 ' + M.gaugeBase(s.size).toFixed(1) + ' m，已加宽）' : '（' + CFG.metro.sizeName[s.size] + '站基准）')
+          + ' · 可停 ' + (gFits.length ? gFits.join(' / ') : '—')));
+        if (gNeed > gCur + 1e-6) {
+          const wl = M.widestLineAt(net, id), wms = wl ? M.stdOf(net.lines[wl]) : null;
+          const grow = h('div', { class: 'seg-ctl' });
+          for (const k of (CFG.metro.stdOrder || ['C', 'L', 'B', 'A', 'D'])) {
+            const d = CFG.metro.std[k];
+            if (!d || d.gw <= gCur + 1e-6) continue;
+            const cost = M.gaugeCost(s.size, s.type, d.gw) * M.costIndex(g.clock.y);
+            grow.appendChild(h('button', {
+              class: Math.abs((s.gw || 0) - d.gw) < 0.01 ? 'on' : '',
+              'data-tip': '加宽 +' + (d.gw - gCur).toFixed(1) + ' m · 约 ' + U.fmtMoney(cost),
+              onclick: function () { g.edit(function (n) { M.setStationGauge(n, id, d.gw); }); },
+            }, '加宽至 ' + d.gw.toFixed(1) + ' m（停 ' + k + '）'));
+          }
+          if (s.gw > 0) grow.appendChild(h('button', {
+            onclick: function () { g.edit(function (n) { M.setStationGauge(n, id, null); }); },
+          }, '回到 ' + M.gaugeBase(s.size).toFixed(1) + ' m'));
+          b.appendChild(h('div', { class: 'field' }, h('label', null, (wms ? wms.name : '这条线') + ' 需要 ' + gNeed.toFixed(1) + ' m'), grow));
+          b.appendChild(h('div', { class: 'note' }, '限界由站台结构决定：' + CFG.metro.sizeName[s.size] + '站只有 ' + gCur.toFixed(1) + ' m。加宽要动柱网与结构，比加长贵；也可以把车站升级一个规模，或让这条线改用更窄的车。'));
+        }
+        if (stLines.length > 1) b.appendChild(h('div', { class: 'note' }, '站内换乘约 ' + M.xferMin(net, id).toFixed(1) + ' 分钟（上下楼 + 站内走行；共用一块站台则只需等车）。共用一块站台要求两条线用同款车——车宽不同，限界与站台门对不上。'));
+      }
+
+      // —— 枢纽：把附近的站并成一个换乘枢纽（站台各留原位，线路走向完全不变） ——
+      const hubM = CFG.metro.hubMergeM || 400, near = [];
+      for (const oid in net.stations) {
+        if (oid === id) continue;
+        const o = net.stations[oid];
+        const dd = U.dist(o.x, o.y, s.x, s.y) * CFG.CELL_M;
+        if (dd <= hubM) near.push({ id: oid, st: o, d: dd });
+      }
+      if (near.length) {
+        near.sort(function (a, c) { return a.d - c.d; });
+        b.appendChild(h('div', { class: 'st-sub', style: { marginTop: '14px' } }, '枢纽'));
+        const row = h('div', { class: 'seg-ctl', style: { flexWrap: 'wrap' } });
+        for (const n of near) row.appendChild(h('button', {
+          class: 'btn sm',
+          onclick: function () { self.mergeStationInto(id, n.id); },
+        }, n.st.name + ' · ' + Math.round(n.d) + ' m'));
+        b.appendChild(row);
+        b.appendChild(h('div', { class: 'note' }, '把附近的车站并成一个换乘枢纽：两站各自的站台留在原位，换乘改走站内通道，比站外换乘便宜；线路走向、轨道几何完全不变。车站规模与配套取两者较大者。'));
+      }
 
       // —— 车站配套 ——
       if (g.econ.caps.land && CFG.stationFacility && official) {
@@ -656,7 +768,7 @@
     const g = this.g(), self = this, model = g.model, mnet = model.net, C = mnet.C, sd = model.dailyStale ? null : (model.stDailyWk || model.stDaily), mc = CFG.metro;
     if (!sd || k >= sd.peak.length) return null;
     const st = C.stations[k], cap = mc.stationCap[st.size], stR = sd.peak[k] / cap;
-    const ord = ['S', 'M', 'L'], next = function (sz) { return ord[Math.min(2, ord.indexOf(sz) + 1)]; };
+    const ord = CFG.metro.sizeOrd || ['S', 'M', 'L'], next = function (sz) { return ord[Math.min(ord.length - 1, ord.indexOf(sz) + 1)]; };
     const trains = [];
     for (const r of C.stationRoutes[k]) {
       const rt = C.routes[r], re = mnet.rideEdge[r], n = rt.stIdx.length;
@@ -678,22 +790,31 @@
     const item = function (level, title, text, actions) { box.appendChild(h('div', { class: 'diag-item lv-' + level }, h('b', null, title), h('div', { class: 'small' }, text), actions.filter(Boolean).length ? h('div', { class: 'row', style: { flexWrap: 'wrap', gap: '6px', marginTop: '6px' } }, actions.filter(Boolean)) : null)); };
     const divert = h('button', { class: 'btn sm ghost', onclick: function () { self.showDiversion(st); } }, '查看可分流方向');
     if (stR > 0.8) {
-      const up = st.size !== 'L' ? h('button', { class: 'btn sm primary', onclick: function () { g.edit(function (n) { if (n.stations[id]) n.stations[id].size = next(st.size); }); self.toast('已在草案中把「' + st.name + '」升级为' + mc.sizeName[next(st.size)] + '车站', 'info'); } }, '升级为' + mc.sizeName[next(st.size)] + '车站') : null;
-      item(stR > 1 ? 'bad' : 'warn', stR > 1 ? '车站容量不足' : '车站接近饱和', '工作日高峰小时进出站与换乘约 ' + U.fmtInt(sd.peak[k]) + ' 人次，' + mc.sizeName[st.size] + '车站能力 ' + U.fmtInt(cap) + ' 人次/时（' + U.fmtPct(stR, 0) + '）。' + (stR > 1 ? '乘客在闸机、楼梯与换乘通道排队，进出站变慢。' : '') + (st.size === 'L' ? '已是大型车站，只能通过新线路分流。' : ''), [up, divert]);
+      const ORDZ = CFG.metro.sizeOrd || ['S', 'M', 'L'], atTop = st.size === ORDZ[ORDZ.length - 1];
+      const up = !atTop ? h('button', { class: 'btn sm primary', onclick: function () { g.edit(function (n) { if (n.stations[id]) n.stations[id].size = next(st.size); }); self.toast('已在草案中把「' + st.name + '」的站厅升级为' + mc.sizeName[next(st.size)], 'info'); } }, '扩容为' + mc.sizeName[next(st.size)] + '站厅') : null;
+      item(stR > 1 ? 'bad' : 'warn', stR > 1 ? '车站容量不足' : '车站接近饱和', '工作日高峰小时进出站与换乘约 ' + U.fmtInt(sd.peak[k]) + ' 人次，' + mc.sizeName[st.size] + '车站能力 ' + U.fmtInt(cap) + ' 人次/时（' + U.fmtPct(stR, 0) + '）。' + (stR > 1 ? '乘客在闸机、楼梯与换乘通道排队，进出站变慢。' : '') + (atTop ? '站厅已是最大规模，只能靠新线路分流或加宽换乘通道。' : ''), [up, divert]);
     }
     for (const t of trains) {
       const rt = t.rt, w = t.w, A = C.stations[w.a], B = C.stations[w.b];
-      const minCars = rt.cars, limiting = rt.stIds.filter(function (sid) { return mc.carsBySize[C.stations[C.sIndex.get(sid)].size] === minCars; });
+      const minCars = rt.cars, msT = M.stdOf(rt.line);
+      // 卡编组的是「站台长度 ÷ 车长」，不是站厅大小 —— 站厅扩容不会让站台变长
+      const limiting = rt.stIds.filter(function (sid) { return net.stations[sid] && M.platCars(net, sid, rt.lineId, msT) === minCars; });
+      const stdDef = (CFG.metro.std || {})[rt.std || 'B'];
+      const atStdMax = minCars >= ((stdDef && stdDef.cars[1]) || 8);   // 该制式的最长编组
       const atMax = w.freq >= mc.fMax - 0.5;
       const helpsHere = limiting.indexOf(id) >= 0;
+      const wantCars = Math.min(msT.cars[1], minCars + 1);
+      const lenNeed = Math.ceil(wantCars * msT.carLen * 10) / 10;
       const segRef = rt.segRefs[w.leg];
       const locate = h('button', { class: 'btn sm', onclick: function () { self.flyTo((A.x + B.x) / 2, (A.y + B.y) / 2, Math.max(self.R.cam.zoom, 20)); if (segRef) self.select({ kind: 'seg', id: segRef.id }); } }, '定位瓶颈区间');
-      const lengthen = minCars < 8 ? h('button', { class: 'btn sm primary', onclick: function () {
-        g.edit(function (n) { for (const sid of limiting) if (n.stations[sid]) n.stations[sid].size = next(n.stations[sid].size); });
-        self.toast('已在草案中升级 ' + limiting.length + ' 座车站，' + rt.line.name + ' 可加长到 ' + mc.carsBySize[next(C.stations[C.sIndex.get(limiting[0])].size)] + ' 节编组', 'info');
-      } }, '加长编组：升级 ' + limiting.length + ' 座' + mc.sizeName[C.stations[C.sIndex.get(limiting[0])].size] + '车站') : null;
+      const lengthen = (!atStdMax && limiting.length) ? h('button', { class: 'btn sm primary', onclick: function () {
+        g.edit(function (n) { for (const sid of limiting) M.setPlatLen(n, sid, rt.lineId, lenNeed); });
+        self.toast('已在草案中把 ' + limiting.length + ' 座车站的站台加长到 ' + lenNeed + ' m，' + rt.line.name + ' 可到 ' + wantCars + ' 节编组', 'info');
+      } }, '加长站台：' + limiting.length + ' 座加到 ' + lenNeed + ' m') : null;
       item('bad', '列车运力不足 · ' + rt.label, A.name + '—' + B.name + ' 区间工作日' + (w.p === 0 ? '早' : '晚') + '高峰断面约 ' + U.fmtInt(w.load) + ' 人/时，超过运力 ' + U.fmtInt(w.capH) + ' 人/时（' + U.fmtNum(w.freq, 1) + ' 列/时' + (atMax ? '，已达发车上限' : '') + '，' + minCars + ' 节编组）。' +
-        (minCars < 8 ? '编组受沿线最小车站限制，' + (helpsHere ? '本站是限制编组的车站之一，需与其余 ' + (limiting.length - 1) + ' 座同时升级。' : '只升级本站不能解决，需要升级限制编组的车站。') : '已是最长编组，只能修建平行线路分流。'), [locate, lengthen, divert]);
+        (atStdMax ? '已达到' + (rt.std || 'B') + ' 型的最长编组，只能加密发车或修建平行线路分流。'
+          : (limiting.length ? '编组受沿线站台长度限制（' + msT.name + ' ' + msT.carLen + ' m 车长），' + (helpsHere ? '本站的站台是瓶颈之一，需与其余 ' + (limiting.length - 1) + ' 座一起加长。' : '只加长本站不能解决，要把瓶颈车站的站台一起加长。')
+            : '编组受制式上限限制，只能修建平行线路分流。')), [locate, lengthen, divert]);
     }
     return box;
   };
@@ -784,6 +905,117 @@
     if (tp.topo === 'invalid') el.appendChild(h('div', { class: 'callout bad' }, tp.reason));
     else if (tp.topo === 'path' || tp.topo === 'branch') el.appendChild(h('div', { class: 'note', style: { marginBottom: '2px' } }, '拖动地图上线路端点的「+」手柄可直接延长；在车站详情中可从中间站绘制支线。'));
 
+    /* ================= 运营组织：干线由玩家指定，不再由拓扑猜 ================= */
+    // 支线的现状是「按拓扑自动判」：root 取建线时第一段的起点。若 root 落在分岔之后，
+    // 真正贯通的那条干线在交路里根本不存在（被拆成两条「往 root」的车），玩家看到的就是
+    // 「主线被判成支线」。这里给两个端点一个显式选择：干线排第一条交路，其余端点各一条支线交路。
+    if (tp.topo === 'branch' && (tp.leaves || []).length > 2) {
+      const leaves = tp.leaves.slice();
+      const nameOf = function (id) { const st = net.stations[id]; return st ? st.name : '?'; };
+      const chosen = (line.end && line.end.length === 2 && leaves.indexOf(line.end[0]) >= 0 && leaves.indexOf(line.end[1]) >= 0) ? line.end.slice() : null;
+      const sug = tp.trunkEnd || [leaves[0], leaves[1]];
+      const curA = chosen ? chosen[0] : sug[0], curB = chosen ? chosen[1] : sug[1];
+      const apply = function (a, b, msg) {
+        let err = null;
+        applyLine(function (n) { const r = M.setEnd(n, lid, a, b); if (r && r.error) err = r.error; });
+        self.toast(err || msg, err ? 'bad' : 'info');
+      };
+      const chipRow = function (label, cur, which) {
+        const wrap = h('div', { class: 'seg-ctl', style: { flexWrap: 'wrap' } });
+        for (const id of leaves) wrap.appendChild(h('button', {
+          class: id === cur ? 'on' : '',
+          onclick: function () {
+            let a = which === 'a' ? id : curA, b = which === 'b' ? id : curB;
+            if (a === b) { for (const x of leaves) if (x !== id) { if (which === 'a') b = x; else a = x; break; } }
+            apply(a, b, '干线设为「' + nameOf(a) + ' ⇄ ' + nameOf(b) + '」');
+          },
+        }, nameOf(id)));
+        return h('div', { class: 'field' }, h('label', null, label), wrap);
+      };
+      el.appendChild(this.sec('ln-trunk', '干线', nameOf(curA) + ' ⇄ ' + nameOf(curB), function () {
+        const box = h('div');
+        box.appendChild(h('div', { class: 'note' },
+          '这条线有 ' + leaves.length + ' 个端点。干线是其中最长的服务交路，其余端点按支线各开一条交路。'
+          + (chosen ? '' : '当前按走向自动判为「' + nameOf(sug[0]) + ' ⇄ ' + nameOf(sug[1]) + '」，可以改。')));
+        box.appendChild(chipRow('干线起点', curA, 'a'));
+        box.appendChild(chipRow('干线终点', curB, 'b'));
+        const branches = leaves.filter(function (id) { return id !== curA && id !== curB; }).map(nameOf);
+        box.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } },
+          branches.length ? '支线交路：往 ' + branches.join('、') + '（各自跑到「' + nameOf(curA) + '」）' : '没有支线。'));
+        if (chosen) {
+          box.appendChild(h('div', { class: 'row', style: { marginTop: '8px' } },
+            h('button', {
+              class: 'btn sm', onclick: function () {
+                applyLine(function (n) { M.setEnd(n, lid, null, null); });
+                self.toast('已恢复自动判断干线', 'info');
+              },
+            }, '恢复自动')));
+        }
+        return box;
+      }, true));
+    }
+
+    /* ================= 线路组织：断开 / 并入（只改轨道归属，不产生造价） ================= */
+    if (segs.length && tp.topo !== 'invalid') {
+      const deg = new Map();
+      for (const s of segs) { deg.set(s.a, (deg.get(s.a) || 0) + 1); deg.set(s.b, (deg.get(s.b) || 0) + 1); }
+      const pass = M.sortIds(Array.from(deg.keys()).filter(function (id) { return deg.get(id) === 2 && net.stations[id]; }));
+      const others = Object.keys(net.lines).map(function (id) { return net.lines[id]; })
+        .filter(function (L) { return L.id !== lid && M.lineSegs(net, L.id).length; });
+      const doSplit = function (sid) {
+        const nm = net.stations[sid].name;
+        self.confirm('在「' + nm + '」断开？',
+          line.name + ' 会分成两条：区间多的一半保留原编号，另一半成为新线路；「' + nm + '」成为两条线的换乘站。'
+          + '只改运营归属，不产生造价，确认后立即生效、不能撤销。',
+          '断开', function () {
+            let err = null;
+            applyLine(function (n) { const r = M.splitAtLine(n, lid, sid); if (r && r.error) err = r.error; });
+            self.toast(err || ('已在「' + nm + '」断开为两条线'), err ? 'bad' : 'info');
+          }, true);
+      };
+      const doMerge = function (L) {
+        // 制式不同 → 断面与站台都要重建，得先说清楚，不能写「不产生造价」
+        const gwA = M.stdOf(line).gw, gwB = M.stdOf(L).gw;
+        const diffStd = Math.abs(gwA - gwB) > 0.01;
+        const narrow = diffStd && gwA < gwB;
+        self.confirm('并入「' + L.name + '」？',
+          '本线的 ' + segs.length + ' 段轨道、' + tp.stations.length + ' 座车站会并入「' + L.name + '」，编号、名称与颜色都保留对方的，本条线路随即撤销。'
+          + (diffStd
+            ? '两条线的制式不同（' + line.name + ' 车宽 ' + gwA.toFixed(1) + ' m，「' + L.name + '」' + gwB.toFixed(1) + ' m），合并后整条线按「' + L.name + '」的制式运营：'
+              + (narrow ? '本线这几段断面偏窄，确认前要先重挖，费用按新建的 75% 逐段计。' : '本线断面偏宽，窄车跑宽隧道不额外收费，只是浪费。')
+              + '车站限界不足的地方也需要加宽。'
+            : '只改运营归属，不产生造价。')
+          + '确认后立即生效、不能撤销。合并后是一条多枝的线，哪两端贯通由「干线」决定。',
+          '并入', function () {
+            let err = null, topo = null;
+            applyLine(function (n) {
+              const r = M.mergeLines(n, lid, L.id);
+              if (r && r.error) err = r.error; else if (r) topo = r.topo;
+            });
+            if (err) { self.toast(err, 'bad'); return; }
+            self.toast(topo === 'loop' ? ('「' + line.name + '」已并入「' + L.name + '」，合并后成为环线') : ('「' + line.name + '」已并入「' + L.name + '」'), 'info');
+            self.openPage('line', L.id, { replaceTop: true });
+          }, true);
+      };
+      el.appendChild(this.sec('ln-org', '线路组织', others.length ? '可并入 ' + others.length + ' 条' : '', function () {
+        const box = h('div');
+        box.appendChild(h('div', { class: 'note' }, '这两件事只改轨道的线路归属，本身不产生造价；但并入制式不同的线路要重挖区间断面（费用在草案里列）。确认后立即生效，不能撤销。'));
+        if (pass.length > 1) {
+          box.appendChild(h('div', { class: 'st-sub', style: { marginTop: '10px' } }, '在通过站断开（分成两条线）'));
+          const row = h('div', { class: 'seg-ctl', style: { flexWrap: 'wrap' } });
+          for (const sid of pass) row.appendChild(h('button', { class: 'btn sm', onclick: function () { doSplit(sid); } }, net.stations[sid].name));
+          box.appendChild(row);
+        }
+        if (others.length) {
+          box.appendChild(h('div', { class: 'st-sub', style: { marginTop: '10px' } }, '并入其它线路（保留对方的编号与颜色）'));
+          const row = h('div', { class: 'seg-ctl', style: { flexWrap: 'wrap' } });
+          for (const L of others) row.appendChild(h('button', { class: 'btn sm', onclick: function () { doMerge(L); } }, L.name));
+          box.appendChild(row);
+        }
+        return box;
+      }, false));
+    }
+
     const mnet = g.model.net;
     const routes = mnet ? mnet.C.routes.map(function (r, i) { return [r, i]; }).filter(function (a) { return a[0].lineId === lid; }) : [];
     const live = routes.length > 0 && official;
@@ -840,20 +1072,52 @@
       }, true, 'coin'));
     } else if (!official) {
       el.appendChild(h('div', { class: 'callout info' }, '这是草案中的新线路，确认建设后立即投入运营。'));
+      // 运力判定：断面来自草案预测（静止约 1 秒自动算），供给按满发车算
+      const msD = M.stdOf(line);
+      let carsD = 8;
+      for (const sid of tp.stations) if (net.stations[sid]) carsD = Math.min(carsD, M.platCars(net, sid, lid, msD));
+      carsD = Math.max(msD.cars[0], Math.min(msD.cars[1], carsD));
+      const perTrain = carsD * msD.cap;
+      const predRes = (g.draft && g.draft.pred && g.draft.pred.state === 'done') ? g.draft.pred.result : null;
+      const pk = (predRes && predRes.peak && predRes.peak.draft) ? predRes.peak.draft[lid] : null;
+      el.appendChild(this.sec('ln-fit', '运力判定', pk ? U.fmtInt(pk.load) + ' 人/时' : '待预测', function () {
+        const box = h('div');
+        if (!pk) {
+          box.appendChild(h('div', { class: 'note' }, '草案静止约 1 秒后会自动算出高峰断面。本方案（' + carsD + ' 节 · ' + msD.name
+            + '）在满发车时的最大供给约 ' + U.fmtInt(perTrain * CFG.metro.fMax * CFG.metro.targetLF) + ' 人/时。'));
+          return box;
+        }
+        const fit = self.capFit(pk.load, perTrain);
+        box.appendChild(self.kv([
+          ['高峰断面', U.fmtInt(pk.load) + ' 人/时（' + (pk.p === 0 ? '早' : '晚') + '高峰，草案预测）'],
+          ['本方案供给', carsD + ' 节 × ' + msD.cap + ' 人 × ' + CFG.metro.fMax + ' 列/时 × ' + Math.round(CFG.metro.targetLF * 100) + '% ≈ ' + U.fmtInt(fit.supp) + ' 人/时'],
+          ['每列车价', carsD + ' 节 × ' + msD.carUnit + ' 万 = ' + U.fmtMoney(M.fleetPrice(carsD, msD.carUnit) * M.costIndex(g.clock.y)) + '（车辆费按配属列数另计）'],
+          ['余量', U.fmtPct(fit.ratio - 1, 0) + '（' + fit.label + '）'],
+        ]));
+        box.appendChild(h('div', { class: 'callout ' + fit.cls }, fit.ratio >= 1
+          ? '够用：' + fit.hw.toFixed(1) + ' 分钟一班即可，不必再加密。'
+          : '不够：满发车（2 分钟）也差 ' + U.fmtInt(Math.max(0, fit.need - CFG.metro.fMax)) + ' 列/时。把编组加到 '
+            + Math.min(msD.cars[1], Math.ceil(pk.load / (msD.cap * CFG.metro.fMax * CFG.metro.targetLF)))
+            + ' 节，或换更大的制式、修平行线路分流。'));
+        box.appendChild(h('div', { class: 'note' }, '断面是「高峰小时某个区间单向的最大载客量」，与站点上下客量不是一回事：换乘站上下客很多，但断面未必是瓶颈。'));
+        return box;
+      }, true));
     }
 
     /* ================= 乘客：指标行 + 断面图 + 站序闪灯图 ================= */
     if (live) {
       const kpi = h('div', { class: 'ln-kpi' });
       const chartBox = h('div', { class: 'ln-flowbox' });
+      const fitNote = h('div', { class: 'note', style: { marginTop: '4px' } });
       el.appendChild(this.sec('ln-pax', '乘客', daily0 ? '日 ' + U.fmtPeople(board) + ' 人次' : '', function () {
         const box = h('div');
         box.appendChild(kpi);
         box.appendChild(chartBox);
         const strip = self.lineStrip(net, lid, stripOrder(tp));
         box.appendChild(strip);
-        box.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } },
-          '断面：实色为当前时段，背后半透明为全日最大；红色虚线是最大运力（高峰时段的发车 × 定员），半透明超过它就说明高峰会挤。闪灯图上的竖线是该站可换乘的其它线路。'));
+        //box.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } },
+        //  '断面：实色为当前时段，背后半透明为全日最大；红色虚线是最大运力（高峰时段的发车 × 定员），半透明超过它就说明高峰会挤。闪灯图上的竖线是该站可换乘的其它线路。'));
+        box.appendChild(fitNote);
         return box;
       }, true, 'people'));
 
@@ -866,13 +1130,29 @@
         let mxDay = 0; for (let q = 0; q < peak.up.length; q++) mxDay = Math.max(mxDay, peak.up[q], peak.dn[q]);
         const capDay = peak.cap;
         let fleet = 0; for (let p = 0; p < 4; p++) fleet = Math.max(fleet, Math.ceil(r0.cycleSec * g.model.live.per[p].freq[ri0] / 3600));
+        // 手动配属优先：按实际频率反推的话，玩家加的车永远显示不出来（频率受客流限制不会跟着涨）
+        const lineFleet = ((net.lines[lid] || {}).fleet) | 0;
+        const fleetShow = lineFleet > 0 ? lineFleet : fleet;
         kpi.replaceChildren.apply(kpi, [
           kpiItem('间隔', f > 0 ? U.fmtNum(60 / f, 1) + ' 分' : '停运', ''),
-          kpiItem('配属', fleet + ' 列', ''),
+          kpiItem('配属', fleetShow + ' 列', lineFleet > 0 ? 'good' : ''),
           kpiItem('全日最大断面', U.fmtInt(mxDay) + ' 人/时', capDay > 0 && mxDay > capDay ? 'bad' : ''),
           kpiItem('高峰满载', capDay > 0 ? U.fmtPct(mxDay / capDay, 0) : '—', capDay > 0 && mxDay > capDay ? 'bad' : (mxDay / capDay > 0.85 ? 'warn' : 'good')),
         ]);
         chartBox.replaceChildren(self.lineFlowChart(r0, ri0, W));
+        // 运力判定：断面（全日最大）比满发车的供给
+        const fit = self.capFit(mxDay, r0.cars * (r0.carCap || CFG.metro.carCap));
+        // 车队与购车价：让「够用 / 浪费」这个判断第一次带上钱
+        const fg = (M.fleetNeed(g.model, g.compiled, net) || {})[lid];
+        // 只留一个钱数：列数与辆数在「车队」那一块里，这里不重复
+        const fleetTxt = (fg && fg.units)
+          ? ' · 全线车辆约 ' + U.fmtMoney(M.fleetPrice(fg.units, fg.carUnit) * M.costIndex(g.clock.y))
+          : '';
+        fitNote.replaceChildren(h('b', null, '运力判定 ' + fit.label + '：'),
+          '高峰断面 ' + U.fmtInt(mxDay) + ' 人/时，满发车（' + CFG.metro.fMax + ' 列/时）可运 ' + U.fmtInt(fit.supp)
+          + (fit.ratio >= 1 ? '，' + fit.hw.toFixed(1) + ' 分钟一班即可（余量 ' + U.fmtPct(fit.ratio - 1, 0) + '）'
+            : '，需 ' + U.fmtInt(fit.need) + ' 列/时 —— 压到 2 分钟也不够，要加编组、换制式或修平行线路。')
+          + fleetTxt);
       };
       upd(); this.live.push(upd);
     } else if (official) {
@@ -898,6 +1178,133 @@
       b.appendChild(h('div', { class: 'field' }, h('label', null, '名称'), h('div', { class: 'row' }, nameIn, h('button', { class: 'btn sm', onclick: rename }, '更名'))));
       b.appendChild(h('div', { class: 'field' }, h('label', null, '线路颜色'),
         self.colorPicker(line.color, function (c) { applyLine(function (n) { n.lines[lid].color = c; }, true); })));
+
+      // 车型：制式 × 速度等级。建设时锁定——加编组要改站台、提速要改线形，都属于重建
+      const msL = M.stdOf(line), stdNow = CFG.metro.std[msL.type];
+      let STD_PICK = null, STD_SPD = null;   // 制式与速度等级的选择器：建在「车队」块里，车型块只留线路约束
+      b.appendChild(h('div', { class: 'st-sub', style: { marginTop: '14px' } }, '线路标准'));
+      const stdBlock = h('div');
+      {
+        const trow = h('div', { class: 'seg-ctl', style: { flexWrap: 'wrap' } });
+        // 沿线最短的那座站台决定了「这条线上这种车最多放几节」
+        let shortest = null, shortLen = 1e9;
+        for (const sid of tp.stations) { const L2 = M.platLen(net, sid, lid); if (L2 < shortLen) { shortLen = L2; shortest = sid; } }
+        // 沿线最窄的限界：车宽超过它，那座车站停不进来
+        let narrow = 99, narrowSt = null;
+        for (const sid of tp.stations) { const gg = M.stationGauge(net, sid); if (gg < narrow) { narrow = gg; narrowSt = sid; } }
+        for (const k of CFG.metro.stdOrder || ['C', 'B', 'A', 'D']) {
+          const def = CFG.metro.std[k];
+          const fitCars = shortest ? M.platCars(net, shortest, lid, M.stdOf({ std: k, kmh: def.kmh[def.kmh.length - 1] })) : def.cars[1];
+          const gBad = def.gw > narrow + 1e-6;
+          const doSet = function (n) { M.setStd(n, lid, k, msL.type === k ? msL.kmh : def.kmh[def.kmh.length - 1]); };
+          trow.appendChild(h('button', {
+            class: msL.type === k ? 'on' : '',
+            'data-tip': def.note + ' · 车宽 ' + def.gw.toFixed(1) + ' m · 车长 ' + def.carLen + ' m · 定员 ' + def.cap + ' 人/辆 · 本线最多 ' + Math.min(fitCars, def.cars[1]) + ' 节'
+              + (gBad ? ' · 有车站限界不够（最窄 ' + narrow.toFixed(1) + ' m），要先加宽' : ' · 造价 ×' + def.track.toFixed(2)),
+            onclick: function () {
+              if (k === msL.type) return;
+              // 草案新线：直接选。已建线路：改制式要进草案算改造账（限界 / 站台 / 断面都可能跟着变）
+              if (!official) { applyLine(doSet); return; }
+              self.confirm('把「' + line.name + '」改为' + def.name + '？',
+                '车宽 ' + def.gw.toFixed(1) + ' m、车长 ' + def.carLen + ' m，和现在的' + stdNow.name + '（' + stdNow.gw.toFixed(1) + ' m / ' + stdNow.carLen + ' m）不同。'
+                + '改成更宽或更长的车，站台限界、站台长度、区间断面可能都要跟着改，草案里会逐项列出费用；'
+                + '改成更窄的车不额外收费，但也退不回已建的钱。车辆本身按新编组重新购置。'
+                + (k === 'L' || msL.type === 'L' ? '直线电机（L 型）的牵引供电与其它制式不同，换过去要连牵引系统一起改。' : ''),
+                '改制式', function () { g.edit(doSet); });
+            },
+          }, def.name));
+        }
+        STD_PICK = trow;
+        const vrow = h('div', { class: 'seg-ctl' });
+        for (const v of stdNow.kmh) vrow.appendChild(h('button', {
+          class: msL.kmh === v ? 'on' : '',
+          onclick: function () {
+            const set = function (n) { M.setStd(n, lid, msL.type, v); };
+            if (!official) applyLine(set); else g.edit(set);   // 已建线路提速要改线形，进草案算账
+          },
+        }, v + ' km/h'));
+        STD_SPD = vrow;
+      }
+      let mcars = 99, mshort = null, mshortLen = 1e9;
+      for (const sid of tp.stations) { const c = M.platCars(net, sid, lid, msL), L2 = M.platLen(net, sid, lid); if (c < mcars) { mcars = c; mshort = sid; } if (L2 < mshortLen) mshortLen = L2; }
+      mcars = Math.max(1, Math.min(stdNow.cars[1], mcars));
+      const shortOf = mcars < stdNow.cars[0];
+      let narrow = 99, narrowName = '';
+      for (const sid of tp.stations) { const gg = M.stationGauge(net, sid); if (gg < narrow) { narrow = gg; narrowName = (net.stations[sid] || {}).name || ''; } }
+      // 区间断面：这条线的隧道是按哪款车挖的（合并过不同制式的线时才会与制式不符）
+      let segMin = 99, segBad = 0;
+      for (const sg of M.lineSegs(net, lid)) { const b = M.segGauge(net, sg); if (b < segMin) segMin = b; if (b < msL.gw - 1e-6) segBad++; }
+      b.appendChild(self.kv([
+        ['最短站台', mshortLen + ' m' + (shortOf ? '（' + stdNow.name + ' 常用 ' + stdNow.cars[0] + ' 节，这里只能 ' + mcars + ' 节）' : '')],
+        ['站台限界', narrow < 99 ? (narrow.toFixed(1) + ' m（最窄的是「' + narrowName + '」）' + (stdNow.gw > narrow + 1e-6 ? ' —— 停不进，需加宽' : '')) : '—'],
+        ['区间断面', segMin < 99 ? (segMin.toFixed(1) + ' m' + (segBad ? '（' + segBad + ' 段跑不了 ' + stdNow.gw.toFixed(1) + ' m 的车，需重挖）' : '')) : '—'],
+        ['造价倍率', '轨道 ×' + stdNow.track.toFixed(2) + ' · 车站 ×' + stdNow.station.toFixed(2)],
+        ['最小曲线半径', stdNow.radius + ' m'],
+      ]));
+      b.appendChild(h('div', { class: 'note' }, official
+        ? '制式与速度等级在建设时锁定：要加编组得改站台、要提速得改线形，都算重建。换制式只能拆掉重建。'
+        : '快线在站距 3 km 以上才划算（1 km 以内各制式一样快）；D 型需要大半径，进不了老城。'));
+
+      // —— 车队：不放块标题，直接给一张「车厢图」。
+      // 每个方块是一节车，宽度按车长占站台的比例画，右边标站台长——一眼看出车占满了没有。
+      const CY = g.compiled.routes.filter(function (r) { return r.lineId === lid; });
+      let cycSum = 0; for (const r of CY) cycSum += r.cycleSec;
+      const fgNow = (g.model && g.model.live) ? M.fleetNeed(g.model, g.compiled, net)[lid] : null;
+      const manualN = line.fleet > 0 ? line.fleet : 0;
+      const showN = manualN || (fgNow ? fgNow.trips : 0);
+      const maxFleet = cycSum > 0 ? Math.ceil(cycSum * CFG.metro.fMax / 3600) : 0;   // 满发车（2 分钟）所需
+      const fleetCeil = Math.max(2, maxFleet * 2);   // 手动能配到的上限：留一倍冗余，配多的车只是闲置
+      const hwOf = function (n) { return (cycSum > 0 && n > 0) ? cycSum / (60 * n) : 0; };
+      const trn = h('div', { class: 'trn' });
+      // 制式与速度等级（草案新线可选，已建线路只读，不显示）
+      if (STD_PICK) trn.appendChild(h('div', { class: 'field' }, h('label', null, '制式'), STD_PICK));
+      if (STD_SPD) trn.appendChild(h('div', { class: 'field' }, h('label', null, '速度等级'), STD_SPD));
+      // 车厢图：车厢按 carLen 分权重，剩余空间按「站台长 − 列车长」分权重，所以比例天然正确、不会溢出
+      const fPlat = mshortLen, fTrain = mcars * msL.carLen, fRest = Math.max(0, fPlat - fTrain);
+      const fBar = h('div', { class: 'trn-bar', style: { color: line.color || 'var(--accent)' } });
+      for (let ci = 0; ci < mcars; ci++) fBar.appendChild(h('i', { style: { flex: msL.carLen.toFixed(1) + ' 1 0' } }));
+      if (fRest > 0.5) fBar.appendChild(h('u', { style: { flex: fRest.toFixed(1) + ' 1 0' } }));
+      trn.appendChild(h('div', { class: 'trn-head' },
+        h('b', null, msL.kmh + ' km/h'), h('span', null, '· 定员 ' + U.fmtInt(mcars * stdNow.cap) + ' 人')));
+      trn.appendChild(h('div', { class: 'trn-row' },
+        h('span', { class: 'trn-std', style: { color: line.color || 'var(--accent)' } }, msL.type),
+        fBar,
+        h('span', { class: 'trn-len', 'data-tip': '列车 ' + fTrain.toFixed(0) + ' m × ' + mcars + ' 节 / 站台 ' + fPlat + ' m' }, fPlat + ' m')));
+      if (cycSum > 0 && fgNow) {
+        const fPrice = M.fleetPrice(fgNow.units, stdNow.carUnit) * M.costIndex(g.clock.y);
+        const fOwned = g.econ.caps.fleet ? g.econ.fleetOf(lid) : 0;
+        // 自动：只显示列数；手动：− N +（每次点按都会重渲染面板，所以不需要增量更新）
+        const nBox = h('span', { class: 'n' });
+        if (!manualN) nBox.append(h('b', null, showN), h('span', null, ' 列'));
+        else nBox.append(
+          h('button', { class: 'btn sm', 'data-tip': '减一列', onclick: function () { applyLine(function (n) { M.setFleet(n, lid, Math.max(1, manualN - 1)); }); } }, '−'),
+          h('b', null, manualN),
+          h('button', { class: 'btn sm', 'data-tip': '加一列（满发车要 ' + maxFleet + ' 列，最多配到 ' + fleetCeil + ' 列）', onclick: function () { applyLine(function (n) { M.setFleet(n, lid, Math.min(fleetCeil, manualN + 1)); }); } }, '+'));
+        trn.appendChild(h('div', { class: 'trn-sw' },
+          h('span', null, '手动配车'),
+          h('button', {
+            class: 'tsw' + (manualN ? ' on' : ''), 'aria-label': '手动配车',
+            'data-tip': manualN ? '切回自动：按客流自己决定配几列' : '切到手动：自己定列数，车队不足时发车频率上不去',
+            onclick: function () { applyLine(function (n) { M.setFleet(n, lid, manualN ? 0 : (showN || 1)); }); },
+          }),
+          nBox));
+        const hw = hwOf(showN);
+        // 客流当前需要几列（不传 net 就不会套用手动值）：用来告诉玩家「加车还有没有用」
+        const autoTrips = ((M.fleetNeed(g.model, g.compiled, null) || {})[lid] || {}).trips || 0;
+        const note = manualN > autoTrips + 0.5
+          ? '客流现在只需要 ' + autoTrips + ' 列——多配的车跑不上高峰，只是闲置（照样要花钱买）。'
+          : (manualN < autoTrips - 0.5
+            ? '比客流需要的 ' + autoTrips + ' 列少，高峰会被车队压住：车不够，客再多也发不出去。'
+            : '正好够客流用。加密发车要靠加车，加车要靠客流撑得起。');
+        trn.appendChild(h('div', { class: 'trn-note' },
+          (hw > 0 ? '最快 ' + hw.toFixed(1) + ' 分钟一班（往返 ' + Math.round(cycSum / 60) + ' 分钟）' : '还没配车')
+          + ' · 约 ' + U.fmtMoney(fPrice) + (g.econ.caps.fleet ? ' · ' + fgNow.units + ' 辆，已配 ' + fOwned : '') + '。'
+          + (manualN ? note : '')));
+      } else {
+        trn.appendChild(h('div', { class: 'trn-note' }, (official ? '还没有配车。' : '草案新线建成后按高峰客流自动配车，')
+          + '每列 ' + mcars + ' 节 · ' + U.fmtMoney(M.fleetPrice(mcars, stdNow.carUnit) * M.costIndex(g.clock.y)) + '。'));
+      }
+      b.appendChild(trn);
 
       // 全线建设方式
       if (segs.length) {
@@ -1039,7 +1446,7 @@
       const k = C ? C.sIndex.get(sid) : undefined;
       const pax = (daily && k !== undefined) ? daily.inn[k] : null;
       const stubs = others.map(function (t, i) {
-        const off = (i - (others.length - 1) / 2) * 3;
+        const off = (i - (others.length - 1) / 2) * 6;
         return '<i class="ln-stub" style="left:calc(50% + ' + off + 'px);background:' + t.color + '"></i>';
       }).join('');
       const tip = s.name + (others.length ? '（换乘 ' + others.map(function (t) { return t.name; }).join(' / ') + '）' : '') +
@@ -1069,6 +1476,19 @@
 
   // 全日峰值：四个时段里各区间断面的最大值，以及最大时段运力。
   // 「不用把时间拨到高峰」这句话的成本就在这里——一次遍历 O(4×区间数)。
+  // 运力判定：拿高峰断面比「满发车 × 目标满载」的最大供给，只给四档结论与建议间隔
+  UI.prototype.capFit = function (load, perTrain) {
+    const mc = CFG.metro, supp = perTrain * mc.fMax * mc.targetLF;
+    const ratio = supp / Math.max(1, load);
+    const need = load / Math.max(1, perTrain * mc.targetLF);
+    const hw = U.clamp(Math.ceil(60 / Math.max(0.1, need) * 2) / 2, 2, 20);
+    let cls = 'info', label = '够用';
+    if (ratio < 1) { cls = 'bad'; label = '不够'; }
+    else if (ratio < 1.6) { cls = 'info'; label = '够用'; }
+    else if (ratio < 3) { cls = 'warn'; label = '偏大'; }
+    else { cls = 'warn'; label = '浪费'; }
+    return { supp: supp, ratio: ratio, need: need, hw: hw, cls: cls, label: label };
+  };
   UI.prototype.lineDayPeak = function (r, ri) {
     const g = this.g(), mnet = g.model.net, re = mnet.rideEdge[ri], n = r.segRefs.length;
     const up = new Float32Array(n), dn = new Float32Array(n);
@@ -1141,7 +1561,7 @@
   UI.prototype.page_multi = function () {
     const g = this.g(), self = this, mu = this.multi;
     if (!mu || (!mu.stations.size && !mu.segs.size)) return null;
-    const net = g.draft ? g.draft.net : g.net, mc = CFG.metro, ord = ['S', 'M', 'L'];
+    const net = g.draft ? g.draft.net : g.net, mc = CFG.metro, ord = CFG.metro.sizeOrd || ['S', 'M', 'L'];
     const st = Array.from(mu.stations).filter(function (id) { return net.stations[id]; });
     const sg = Array.from(mu.segs).filter(function (id) { return net.segments[id]; });
     const el = h('div');
@@ -1177,6 +1597,50 @@
           const n = st.filter(function (id) { return ord.indexOf(net.stations[id].size) < ord.indexOf(sz); }).length;
           return h('button', { onclick: function () { preview('统一升级为' + mc.sizeName[sz] + '车站', function (nn) { for (const id of st) { const s = nn.stations[id]; if (s && ord.indexOf(s.size) < ord.indexOf(sz)) s.size = sz; } }, n); } }, '至少' + mc.sizeName[sz] + '（' + n + '）');
         }))));
+    }
+    if (st.length) {
+      // 站台长度：按编组加长。同一条线按自己的车长算，所以「6 编」在 B 型是 114 m、在 A 型是 132 m
+      const platTarget = function (nn, id, lid, cars) { return Math.ceil(cars * M.stdOf(nn.lines[lid]).carLen * 10) / 10; };
+      el.appendChild(h('div', { class: 'field', style: { marginTop: '10px' } }, h('label', null, '站台长度（按编组加长，超出部分计费）'),
+        h('div', { class: 'seg-ctl' }, [4, 6, 8].map(function (cars) {
+          let n = 0;
+          for (const id of st) for (const lid of M.linesAt(net, id)) if (M.platLen(net, id, lid) < platTarget(net, id, lid, cars) - 0.05) n++;
+          return h('button', {
+            'data-tip': '把所选车站的站台加长到能停 ' + cars + ' 节（每条线按自己的车长算）',
+            onclick: function () {
+              preview('站台加长到 ' + cars + ' 编', function (nn) {
+                for (const id of st) for (const lid of M.linesAt(nn, id)) M.setPlatLen(nn, id, lid, platTarget(nn, id, lid, cars));
+              }, n);
+            },
+          }, cars + ' 编（' + n + '）');
+        }))));
+      // 限界：按目标车宽加宽，只动不够的站
+      el.appendChild(h('div', { class: 'field', style: { marginTop: '10px' } }, h('label', null, '站台限界（窄站停宽车要加宽）'),
+        h('div', { class: 'seg-ctl' }, [3.0, 3.3].map(function (gw2) {
+          const n = st.filter(function (id) { return M.stationGauge(net, id) < gw2 - 1e-6; }).length;
+          const who = (CFG.metro.stdOrder || []).filter(function (k) { return CFG.metro.std[k].gw <= gw2 + 1e-6; }).pop();
+          return h('button', {
+            'data-tip': '把所选车站的站台加宽到 ' + gw2.toFixed(1) + ' m，足以停 ' + who + ' 型',
+            onclick: function () {
+              preview('限界加宽到 ' + gw2.toFixed(1) + ' m', function (nn) {
+                for (const id of st) if (M.stationGauge(nn, id) < gw2 - 1e-6) M.setStationGauge(nn, id, gw2);
+              }, n);
+            },
+          }, '到 ' + gw2.toFixed(1) + ' m · 停 ' + who + '（' + n + '）');
+        }))));
+    }
+    if (sg.length) {
+      // 区间断面：把窄断面重挖到本线车宽（合并过不同制式的线才会需要）
+      const segBad = sg.filter(function (id) { const s2 = net.segments[id]; return s2 && M.segGauge(net, s2) < M.segGaugeNeed(net, s2) - 1e-6; });
+      el.appendChild(h('div', { class: 'field', style: { marginTop: '10px' } }, h('label', null, '区间断面（窄断面跑宽车要重挖，按里程计费）'),
+        h('div', { class: 'seg-ctl' }, h('button', {
+          'data-tip': '把所选区间的断面重挖到这条线的车宽，只动不足的那些段',
+          onclick: function () {
+            preview('区间断面重挖', function (nn) {
+              for (const id of segBad) { const s2 = nn.segments[id]; if (s2) s2.gw = M.segGaugeNeed(nn, s2); }
+            }, segBad.length);
+          },
+        }, '重挖到本线车宽（' + segBad.length + '）'))));
     }
     if (sg.length) {
       el.appendChild(h('div', { class: 'field', style: { marginTop: '10px' } }, h('label', null, '统一轨道建设方式（按新建计费）'),
@@ -1927,13 +2391,17 @@
   const serviceOf = function (r) { return (r.interest || 0) + (r.principal || 0) + (r.penalty || 0); };
   UI.prototype.ledgerBlock = function () {
     const g = this.g(), E = g.econ, c = E.cur, free = E.isFree(), oi = E.opsIndex(g.clock.y), M = function (v) { return U.fmtMoney(v || 0); };
-    let st = 0; for (const s of g.compiled.stations) st += CFG.ops.stationDaily[s.size] * oi;
+    let st = 0; for (const s of g.compiled.stations) st += M.stationOps(s.size) * oi;
     const box = h('div');
     const group = function (title, rows, cls) { box.appendChild(h('div', { class: 'fl-g ' + (cls || '') }, h('div', { class: 'fl-h' }, title), this.kv(rows))); }.bind(this);
     if (!free) box.appendChild(this.kv([['期初流动资金', M(c.start)], ['期初建设专项', M(c.capexStart)]]));
     group('财政收入', [['政府拨款', '+ ' + M(c.grant)], ['票款', '+ ' + M(c.fare)], (c.property || 0) > 0.01 ? ['物业租金', '+ ' + M(c.property)] : null, (c.capture || 0) > 0.01 ? ['TOD 增值分成', '+ ' + M(c.capture)] : null, ['任务奖励', '+ ' + M(c.reward)]], 'in');
     if (!free) group('融资到账（不计入收入）', [['债券募集 → 建设专项资金', '+ ' + M(c.bond)]], 'fin');
-    group('建设支出', [['建设与拆迁', '− ' + M(buildOf(c))], !free ? ['其中由专项资金支付', M(c.capexUse)] : null], 'out');
+    const fleetC = c.fleet || 0;   // 车辆购置（V2）：算在建设支出里，但单列一行，不然「土建」会虚高
+    group('建设支出', [
+      ['土建与拆迁', '− ' + M(buildOf(c) - fleetC)],
+      fleetC > 0.01 ? ['车辆购置', '− ' + M(fleetC) + (c.fleetNote ? '（' + c.fleetNote + '）' : '')] : null,
+      !free ? ['其中由专项资金支付', M(c.capexUse)] : null], 'out');
     group('运营成本', [['列车运行与车站', '− ' + M(c.ops)], (c.propMaint || 0) > 0.01 ? ['物业维护', '− ' + M(c.propMaint)] : null,
       (c.busOps || 0) > 0.01 ? ['接驳巴士运营', '− ' + M(c.busOps)] : null,
       (c.facMaint || 0) > 0.01 ? ['车站配套维护', '− ' + M(c.facMaint)] : null], 'out');

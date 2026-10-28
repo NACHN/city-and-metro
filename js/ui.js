@@ -798,7 +798,7 @@
     const grp = function (label, ctl) { return h('div', { class: 'to-grp' }, h('span', { class: 'to-k' }, label), ctl); };
     const hint = function (icon, text) { return h('div', { class: 'to-hint' }, ic(icon), h('span', null, text)); };
     const typeCtl = grp('方式', segc(T.buildType, [['underground', '地下', '造价最高；越江为隧道，可穿越山体与保护建筑'], ['surface', '地面', '造价最低；越江为桥梁，两条地面线不能平交'], ['elevated', '高架', '造价居中；越江为桥梁']], function (v) { T.buildType = v; }));
-    const sizeCtl = function (label) { return grp(label, segc(T.stationSize, ['S', 'M', 'L'].map(function (sz) { return [sz, mc.sizeName[sz].replace('型', ''), mc.sizeName[sz] + '车站：' + U.fmtInt(mc.stationCap[sz]) + ' 人次/时 · 编组上限 ' + mc.carsBySize[sz] + ' 节 · 约 ' + U.fmtMoney(M.stationCost(T.buildType, sz, y))]; }), function (v) { T.stationSize = v; })); };
+    const sizeCtl = function (label) { const PL = mc.platLenBySize || {}; return grp(label, segc(T.stationSize, (mc.sizeOrd || ['S', 'M', 'L']).map(function (sz) { return [sz, mc.sizeName[sz].replace('型', ''), mc.sizeName[sz] + '站厅：高峰 ' + U.fmtInt(mc.stationCap[sz]) + ' 人次/时 · 站台默认 ' + (PL[sz] || 114) + ' m · 约 ' + U.fmtMoney(M.stationCost(T.buildType, sz, y))]; }), function (v) { T.stationSize = v; })); };
     el.innerHTML = '';
     if (T.tool === 'line') {
       if (!T.chain || !net.stations[T.chain]) el.appendChild(hint('route', '点击空地开始新线路 · 点击线路端点继续延长'));
@@ -1683,10 +1683,10 @@
     el.appendChild(this.predBox);
     return { title: '建设草案', el: el };
   };
-  // 车站规模卡片：容量、编组上限、建设费、日运营费。
+  // 站厅规模卡片：容量、默认站台长度、建设费、日运营费。
   // opts：{ type, cur（当前选择）, base（既有车站的已建规模，新建时为空）, rebuild（建设方式已改，按改建计费）, onPick }
   UI.prototype.sizeCards = function (opts) {
-    const g = this.g(), y = g.clock.y, mc = CFG.metro, oi = g.econ.opsIndex(y), ord = ['S', 'M', 'L'];
+    const g = this.g(), y = g.clock.y, mc = CFG.metro, oi = g.econ.opsIndex(y), ord = CFG.metro.sizeOrd || ['S', 'M', 'L'];
     const wrap = h('div');
     const cards = h('div', { class: 'size-cards' });
     const costOf = function (sz) { return M.stationCost(opts.type, sz, y); };
@@ -1701,18 +1701,21 @@
       cards.appendChild(h('button', { class: 'size-card' + (opts.cur === sz ? ' on' : ''), 'aria-pressed': opts.cur === sz ? 'true' : 'false', onclick: function () { if (opts.cur !== sz) opts.onPick(sz); } },
         h('div', { class: 'sc-h' }, h('b', null, mc.sizeName[sz]), opts.base === sz ? h('span', { class: 'sc-tag' }, '当前') : null),
         h('div', { class: 'sc-v' }, U.fmtInt(mc.stationCap[sz]), h('small', null, ' 人次/时')),
-        h('div', { class: 'sc-k' }, '编组上限 ' + mc.carsBySize[sz] + ' 节'),
-        h('div', { class: 'sc-k' }, '运营 ' + U.fmtMoney(CFG.ops.stationDaily[sz] * oi) + '/日'),
+        h('div', { class: 'sc-k' }, '站台默认 ' + ((mc.platLenBySize || {})[sz] || 114) + ' m'),
+        h('div', { class: 'sc-k' }, '运营 ' + U.fmtMoney(M.stationOps(sz) * oi) + '/日'),
         h('div', { class: 'sc-cost' }, line)));
     }
     wrap.appendChild(cards);
     // 升级前后对比与本次费用
     if (opts.base && opts.cur !== opts.base && !opts.rebuild) {
       const a = opts.base, b = opts.cur, up = ord.indexOf(b) > ord.indexOf(a);
-      const dOps = (CFG.ops.stationDaily[b] - CFG.ops.stationDaily[a]) * oi;
+      const dOps = (M.stationOps(b) - M.stationOps(a)) * oi;
       wrap.appendChild(h('div', { class: 'size-diff ' + (up ? 'up' : 'down') },
         h('div', null, h('b', null, mc.sizeName[a] + ' → ' + mc.sizeName[b]), up ? '，本次升级费用 ' + U.fmtMoney(upCost(b)) : '，缩减不退还建设费'),
-        h('div', { class: 'tiny' }, '容量 ' + U.fmtInt(mc.stationCap[a]) + ' → ' + U.fmtInt(mc.stationCap[b]) + ' 人次/时 · 编组上限 ' + mc.carsBySize[a] + ' → ' + mc.carsBySize[b] + ' 节 · 运营费 ' + (dOps >= 0 ? '+' : '−') + U.fmtMoney(Math.abs(dOps)) + '/日')));
+        h('div', { class: 'tiny' }, '站厅容量 ' + U.fmtInt(mc.stationCap[a]) + ' → ' + U.fmtInt(mc.stationCap[b]) + ' 人次/时 · 运营费 ' + (dOps >= 0 ? '+' : '−') + U.fmtMoney(Math.abs(dOps)) + '/日'
+          + ' · 站台 ' + (((mc.platLenBySize || {})[a] || 114) === ((mc.platLenBySize || {})[b] || 114)
+            ? ((mc.platLenBySize || {})[a] || 114) + ' m 不变（站台长度与限界要单独加长 / 加宽）'
+            : ((mc.platLenBySize || {})[a] || 114) + ' → ' + ((mc.platLenBySize || {})[b] || 114) + ' m'))));
     }
     return wrap;
   };

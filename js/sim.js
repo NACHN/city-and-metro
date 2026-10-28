@@ -322,7 +322,7 @@
   }
 
   // 地铁网络中从车站 s 出发的最短路树（广义成本），记录到各站的广义时间、实际时间与乘车里程，以及加载客流用的前驱与访问顺序
-  function metroTree(net, cost, tAct, s, work, store, heap, tpen) {
+  function metroTree(net, cost, tAct, s, work, store, heap, tpen, xfer) {
     const N = net.N, nn = net.nNodes, outStart = net.outStart, outEdge = net.outEdge, eTo = net.eTo, eKm = net.eKm;
     const gt = store.gt, tm = store.tm, km = store.km, pred = store.pred, order = store.order, nOrd = store.nOrd;
     const dist = work.dist, dtm = work.dtm, dkm = work.dkm;
@@ -344,10 +344,15 @@
     }
     nOrd[s] = no;
     const ob = s * N;
+    // 起点那次「上车」不该收换乘时间（它不是换乘）：广义成本减掉成本里加的那份，实际时间减掉加进 tAct 的那份。
+    // 单线车站（xfer 为 null）沿用原来的固定罚时，与旧口径逐位一致。
+    const xv = xfer ? xfer[s] : null;
+    const xc = (xv == null) ? tpen : xv;
+    const xt = (xv == null) ? 0 : xv;
     for (let t = 0; t < N; t++) {
       // 至少包含一段实际乘车（乘车里程 > 0）；只靠站外步行连通的路径不算地铁行程
       if (dist[t] >= INF || t === s || !(dkm[t] > 0)) { gt[ob + t] = INF; continue; }
-      gt[ob + t] = dist[t] - tpen; tm[ob + t] = dtm[t]; km[ob + t] = dkm[t];
+      gt[ob + t] = dist[t] - xc; tm[ob + t] = dtm[t] - xt; km[ob + t] = dkm[t];
     }
   }
   // 从车站 s 出发的客流沿最短路树回溯到各区间（与此前内联的计算相同）；返回该站是否有客流
@@ -1264,13 +1269,16 @@
     if (!work || work.cost.length !== nE || work.dist.length !== nn) work = store.work = { cost: new Float32Array(nE), tAct: new Float32Array(nE), dist: new Float64Array(nn), dtm: new Float32Array(nn), dkm: new Float32Array(nn) };
     const cost = work.cost, tAct = work.tAct;
     cost.fill(0); tAct.fill(0);
+    const xfer = net.C && net.C.xfer;
     for (let e = 0; e < nE; e++) {
       const ty = net.eType[e];
       if (ty === 0) {
         const f = Math.max(0.5, P.freq[net.eRoute[e]]);
         const w = 60 / (2 * f);
-        cost[e] = prm.waitW * w + prm.tpen + P.stDelay[net.eSt[e]];
-        tAct[e] = w + P.stDelay[net.eSt[e]] * 0.5;
+        // 换乘时间按站算（站内走行 + 上下楼）；单线车站为 null，退回原来的固定罚时
+        const xi = xfer ? xfer[net.eSt[e]] : null;
+        cost[e] = prm.waitW * w + (xi == null ? prm.tpen : xi) + P.stDelay[net.eSt[e]];
+        tAct[e] = w + (xi == null ? 0 : xi) + P.stDelay[net.eSt[e]] * 0.5;
       } else if (ty === 2) {
         cost[e] = net.eT0[e] * P.crowd[e]; tAct[e] = net.eT0[e];
       } else if (ty === 3) {
@@ -1278,7 +1286,7 @@
       }
     }
     for (let s = 0; s < N; s++) {
-      metroTree(net, cost, tAct, s, work, store, this.heap, prm.tpen);
+      metroTree(net, cost, tAct, s, work, store, this.heap, prm.tpen, xfer);
       if ((s & 3) === 3) yield;
     }
   };
@@ -1395,7 +1403,9 @@
         const rt = net.C.routes[r], re = net.rideEdge[r];
         let mx = 0;
         for (let q = 0; q < re.length; q++) if (P.load[re[q]] > mx) mx = P.load[re[q]];
-        const need = U.clamp(Math.max(mx / (rt.cap * mc.targetLF), Model.serviceFloor(rt, p)), 1, mc.fMax);
+        // 车队上限：玩家手动配属了列数，就压到车队跑得出来的频率（不设时就是 fMax，与旧口径相同）
+        const fCap = rt.freqMax > 0 ? Math.max(1, Math.min(mc.fMax, rt.freqMax)) : mc.fMax;
+        const need = U.clamp(Math.max(mx / (rt.cap * mc.targetLF), Model.serviceFloor(rt, p)), 1, fCap);
         const oldFreq = P.freq[r]; P.freq[r] = oldFreq * 0.55 + need * 0.45;
         if (!eq(oldFreq, P.freq[r])) stable = false;
         for (let q = 0; q < re.length; q++) {
@@ -2023,6 +2033,28 @@
       result.progress = 0;
       const base = baseNet ? { wd: yield* runFor(baseNet, 'wd', 0), we: yield* runFor(baseNet, 'we', 0.25) } : null;
       const draft = { wd: yield* runFor(draftNet, 'wd', 0.5), we: yield* runFor(draftNet, 'we', 0.75) };
+      // 高峰断面（PHPDT）：每条线路取它在早/晚高峰里最大的那个区间断面，附上当时的运力。
+      // 选型判断要的是断面，不是站点上下客量——后者会把换乘站误当成瓶颈。
+      const peakOf = function (per, net) {
+        const out = {};
+        if (!per || !net) return out;
+        for (let p = 0; p < NP; p++) {
+          const P = per[p];
+          if (!P || (p !== 0 && p !== 2)) continue;          // 只取早高峰与晚高峰
+          for (let r = 0; r < net.R; r++) {
+            const rt = net.C.routes[r], re = net.rideEdge[r];
+            if (!re || !rt) continue;
+            const cap = Math.max(0.5, P.freq[r]) * rt.cap;
+            for (let q = 0; q < re.length; q++) {
+              const v = P.load[re[q]];
+              const o = out[rt.lineId];
+              if (!o || v > o.load) out[rt.lineId] = { load: v, cap: cap, slot: q >> 1, dir: q & 1, p: p, cars: rt.cars, freq: P.freq[r] };
+            }
+          }
+        }
+        return out;
+      };
+      result.peak = { base: peakOf(base && base.wd, baseNet), draft: peakOf(draft.wd, draftNet) };
       const empty = function () { return self.aggregate([0, 1, 2, 3].map(function () { return null; }), null); };
       const B = base ? { wd: self.aggregate(base.wd, baseNet), we: self.aggregate(base.we, baseNet) } : { wd: empty(), we: empty() };
       const Dr = { wd: self.aggregate(draft.wd, draftNet), we: self.aggregate(draft.we, draftNet) };

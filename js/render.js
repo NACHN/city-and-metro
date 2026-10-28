@@ -2145,7 +2145,7 @@
     // 车站
     this.stPx = [];
     const R0 = U.clamp(this.z * 0.11, 3.2, 9);
-    const mult = { S: 0.8, M: 1, L: 1.3 };
+    const mult = { S: 0.8, M: 1, L: 1.3, XL: 1.65, XXL: 2.0 };
     for (let i = 0; i < C.stations.length; i++) {
       const s = C.stations[i];
       if (s.x < v.x0 - 1 || s.x > v.x1 + 1 || s.y < v.y0 - 1 || s.y > v.y1 + 1) { this.stPx.push(null); continue; }
@@ -2167,6 +2167,24 @@
       if (s.type === 'elevated' && this.tEase > 0.05) {
         const gp = this.P(s.x, s.y, 0);
         ctx.strokeStyle = 'rgba(120,124,130,0.7)'; ctx.lineWidth = Math.max(2, r * 0.6); ctx.beginPath(); ctx.moveTo(gp.x, gp.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+      }
+      // 站台：层次不同于站体（天地换乘）或位置错开（两站并成的枢纽）时单独画出，用细线连到站体
+      if (s.plats && s.plats.length) {
+        for (const pl of s.plats) {
+          const px = pl.x == null ? s.x : pl.x, py = pl.y == null ? s.y : pl.y;
+          const off = U.dist(px, py, s.x, s.y) * CFG.CELL_M > 20;
+          if (!off && (!pl.lvl || pl.lvl === s.type)) continue;
+          const q = this.P(px, py, stH({ type: pl.lvl || s.type }));
+          const L0 = pl.lines && pl.lines.length ? C.net.lines[pl.lines[0]] : null;
+          ctx.strokeStyle = off ? 'rgba(150,156,168,0.42)' : 'rgba(150,156,168,0.55)';
+          ctx.lineWidth = Math.max(1.2, r * (off ? 0.2 : 0.26));
+          if (off) ctx.setLineDash([3, 3]);
+          ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
+          if (off) ctx.setLineDash([]);
+          ctx.beginPath(); ctx.arc(q.x, q.y, Math.max(2.6, r * 0.58), 0, Math.PI * 2);
+          ctx.fillStyle = TH.stFill; ctx.fill();
+          ctx.strokeStyle = L0 ? L0.color : '#8a8f98'; ctx.lineWidth = Math.max(1.4, r * 0.24); ctx.stroke();
+        }
       }
       ctx.beginPath();
       ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
@@ -3150,7 +3168,7 @@
       const fs = z >= 22 ? 12.5 : 11.5;
       ctx.font = fs + 'px ' + FONT;
       const order = this.stPx.map(function (p, i) { return [p, i]; }).filter(function (a) { return a[0]; });
-      order.sort(function (a, b) { return (C.stationLines[b[1]].size - C.stationLines[a[1]].size) || ({ L: 2, M: 1, S: 0 }[C.stations[b[1]].size] - { L: 2, M: 1, S: 0 }[C.stations[a[1]].size]); });
+      order.sort(function (a, b) { return (C.stationLines[b[1]].size - C.stationLines[a[1]].size) || ((CFG.metro.sizeOrd || []).indexOf(C.stations[b[1]].size) - (CFG.metro.sizeOrd || []).indexOf(C.stations[a[1]].size)); });
       for (const it of order) {
         const p = it[0], s = C.stations[it[1]];
         const w = this.textWidth(ctx, s.name);

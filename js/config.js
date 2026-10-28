@@ -2,7 +2,7 @@
 // 全局参数。PRD 中标注"待确认"的数值在此给出可调整的默认值（DEFAULT），评审确认后只需修改本文件。
 (function (CM) {
   CM.CFG = {
-    GAME_VERSION: '2.8.4',
+    GAME_VERSION: '2.9.0',
     TRAFFIC_MODEL: 2,      // 交通模型版本：2 = v1.9 起的出行目的、重要设施与工作日/周末模型（旧存档为 1，载入时升级）
     SAVE_FORMAT: 'city-metro-save',
     SAVE_VERSION: 2,
@@ -143,11 +143,24 @@
       accel: 0.9, dwell: 30, turnaround: 150,
       latAccel: 0.8,            // 弯道横向加速度上限 → 弯道限速
       carCap: 240,              // 每节车厢定员
-      carsBySize: { S: 4, M: 6, L: 8 }, // 列车编组受沿线最小站台限制
+      carsBySize: { S: 4, M: 6, L: 8, XL: 8, XXL: 8 }, // 旧口径残留（仅个别提示用）；编组现在由 M.platCars 算
       fMin: [8, 6, 8, 4],       // 各时段最低发车频率（列/小时）DEFAULT
       fMax: 30,                 // 最小间隔 2 分钟
       targetLF: 0.85,
-      stationCap: { S: 9000, M: 20000, L: 40000 }, // 车站每小时进出站+换乘能力 DEFAULT
+      // 站厅规模（车站 size）：**只管站厅**——进出站与换乘的吞吐能力、造价、运营费。
+      // 与站台条件（长度 / 限界）已经解耦：XL/XXL 只把站厅做大，默认站台长度与限界封顶在 L 的
+      // 152 m / 3.3 m。想停 8A 得单独加长站台，不会因为站厅大而白得。
+      stationCap: { S: 9000, M: 20000, L: 40000, XL: 80000, XXL: 160000 }, // 每小时进出站+换乘能力 DEFAULT
+      sizeOrd: ['S', 'M', 'L', 'XL', 'XXL'],
+      // 站厅运营费的规模倍率：XL ≈ 1.9 倍 L、XXL ≈ 3.6 倍 L（不是线性，大站的设备与人员被摊薄）。
+      // 放在 metro 而不是 ops，是因为地图数据会整块覆盖 ops.stationDaily，倍率得独立于城市成本水平。
+      sizeOpsK: { S: 0.33, M: 0.58, L: 1, XL: 1.9, XXL: 3.6 },
+      // 站内换乘时间（分钟）= base + 层差 × floor + (sizeWalk + 站台间距) / 步行速度。
+      // 同层中型站约 3.2 分钟，天地换乘约 6.2 分钟；用于取代全网固定的 transferPen 4 分钟。
+      // 站厅越大走得越远——巨型站的换乘本来就慢，这是扩容的代价之一。
+      xfer: { base: 2.0, floor: 1.5, sizeWalk: { S: 50, M: 90, L: 150, XL: 200, XXL: 260 }, maxMin: 15 },
+      // 枢纽合并距离上限（米）：两站相距在此以内可以并成一个换乘枢纽，站台各留原位（换乘走站内通道）
+      hubMergeM: 400,
       minSpacingM: 350,         // 最小站距 DEFAULT
       // 线形约束（参考城市轨道交通设计规范的量级，DEFAULT）
       minRadiusM: 250,          // 正线最小曲线半径：低于此值不允许
@@ -156,9 +169,39 @@
       platformHalfM: 70,        // 站台直线段半长
       maxGrade: 0.03,           // 最大坡度（地下/地面/高架转换坡道）
       levelM: { underground: -15, surface: 0, elevated: 12 }, // 轨面高程（米）
-      sizeName: { S: '小型', M: '中型', L: '大型' },
+      sizeName: { S: '小型', M: '中型', L: '大型', XL: '超大型', XXL: '巨型' },
       typeName: { underground: '地下', surface: '地面', elevated: '高架' },
       height: { underground: -0.11, surface: 0.0, elevated: 0.075 }, // 视觉高度（格）
+      // 车型：制式 × 速度等级（V1）。**B80 必须与旧口径逐位相同**：
+      // vmax 仍是 22 / 19 / 22 m/s、定员 240、造价倍率 1.00、半径 250/400。
+      // vmax 按等级线性缩放（kmh/80），所以「等级 80」就是旧值，不需要另写一套表。
+      // carLen 决定「同样的站台能放几节」，所以 A/D 这类长车必须配更长的站台。
+      // 顺序按车从小到大：C（轻轨）→ L（直线电机）→ B（主力）→ A（大运量）→ D（市域）。
+      // 车宽（gw）决定「能不能停进这座车站」；车长（carLen）决定「站台能放几节」。两把锁各管一维。
+      stdOrder: ['C', 'L', 'B', 'A', 'D'],
+      std: {
+        C: { name: 'C 型', note: '轻轨、支线', cap: 190, gw: 2.6, carLen: 11.6, cars: [2, 4], kmh: [70, 80], radius: 150, warn: 250, track: 0.70, station: 0.65, carUnit: 450 },
+        L: { name: 'L 型', note: '直线电机：小半径、大坡度（广州 4/5/6 号线）', cap: 230, gw: 2.8, carLen: 16.4, cars: [4, 6], kmh: [80, 100], radius: 100, warn: 180, track: 0.85, station: 0.85, carUnit: 600 },
+        B: { name: 'B 型', note: '主力制式', cap: 240, gw: 2.8, carLen: 19.0, cars: [4, 8], kmh: [80, 100, 120], radius: 250, warn: 400, track: 1.00, station: 1.00, carUnit: 700 },
+        A: { name: 'A 型', note: '大运量', cap: 310, gw: 3.0, carLen: 22.0, cars: [6, 8], kmh: [80], radius: 300, warn: 450, track: 1.15, station: 1.20, carUnit: 900 },
+        D: { name: 'D 型', note: '市域快线', cap: 360, gw: 3.3, carLen: 22.8, cars: [8, 8], kmh: [120, 140, 160], radius: 700, warn: 900, track: 1.25, station: 1.35, carUnit: 1400 },
+      },
+      stdDefault: 'B', stdKmhDefault: 80,
+      // 车站限界（米）：站台结构能容纳的最大车宽，按车站规模给基准。
+      //   S 站 2.8 m → 只停 C/L/B（C 2.6、L/B 2.8）
+      //   M 站 3.0 m → 再加 A
+      //   L 站 3.3 m → 再加 D
+      // 窄站要停宽车，只能「加宽车站」（M.setStationGauge）或把车站升级；加宽按增量逐米计价，
+      // 单价 = 站台每米造价 × 站台长 × gaugeWidenK（动的是柱网与结构，比单纯延长贵一倍）。
+      gaugeBySize: { S: 2.8, M: 3.0, L: 3.3, XL: 3.3, XXL: 3.3 },
+      gaugeWidenK: 2.0,
+      // 区间断面改建：隧道/桥梁的断面与线脱钩时（合并不同制式的线、将来的共线），要重挖断面。
+      // 重挖 ≈ 新建的 75%——不是按厘米线性加价，是整条断面重做，所以贵。
+      segWidenK: 0.75,
+      // 站台长度（米）按站厅规模给默认值：S/M/L = 76/114/152，正好是 B 型 4/6/8 编（19 m 车长）。
+      // **XL/XXL 封顶在 152 m**：站厅可以继续做大，站台不会跟着变长——两件事已经解耦。
+      // 编组上限 = floor(站台长度 / 车长)，再受制式上限约束——所以 A 型（22 m）在中型站只能 5 节。
+      platLenBySize: { S: 76, M: 114, L: 152, XL: 152, XXL: 152 },
     },
 
     // 建设成本（万元，1990 年价格，按年上涨）DEFAULT
@@ -170,9 +213,9 @@
       // 跨越地面铁路（每处）：按本城单价折算的等效长度（km）。地下线下穿需加固与监测，高架线需上跨铁路的大跨度桥
       railCrossKm: { underground: 0.25, elevated: 0.35 },
       station: {
-        underground: { S: 15000, M: 25000, L: 40000 },
-        elevated: { S: 8000, M: 13000, L: 20000 },
-        surface: { S: 5000, M: 8000, L: 12000 },
+        underground: { S: 15000, M: 25000, L: 40000, XL: 70000, XXL: 120000 },
+        elevated: { S: 8000, M: 13000, L: 20000, XL: 36000, XXL: 62000 },
+        surface: { S: 5000, M: 8000, L: 12000, XL: 22000, XXL: 38000 },
       },
       upgradeFactor: 1.2,
       demolishPerCell: 30000,   // 拆迁一个完全开发街区的费用（按开发强度折算）
@@ -188,7 +231,9 @@
 
     ops: {
       carKmCost: 0.0009,        // 万元/车厢公里（≈9 元）
-      stationDaily: { S: 1.5, M: 2.6, L: 4.5 }, // 万元/天
+      // 万元/天。地图数据会各自覆盖（城市运营成本不同），XL/XXL 按 CFG.metro.sizeOpsK 从 L 推，
+      // 所以各城市的数据不必补两个键，见 M.stationOps。
+      stationDaily: { S: 1.5, M: 2.6, L: 4.5, XL: 8.5, XXL: 16 },
       serviceHours: 18,
       inflation: 0.04,
     },

@@ -171,6 +171,8 @@
     this.rev++;
     if (this.clock.d > U.daysInMonth(this.clock.y, this.clock.m)) {
       this.clock.d = 1;
+      // 车辆购置：先按本月的高峰频率配车（只升不降），再结算本月
+      if (this.econ.caps && this.econ.caps.fleet) this.econ.fleetMonth(M.fleetNeed(this.model, this.compiled, this.net), this.clock.y, this.clock.m);
       this.econ.closeMonth();
       const f = this.econ.checkFailure(this.clock.y, this.inTransition(U.ymIndex(this.clock.y, this.clock.m) + 1));
       this.clock.m++;
@@ -759,7 +761,7 @@
       const ymNow = U.ymIndex(this.clock.y, this.clock.m);
       const hist = s.hist || (s.hist = []);
       if (!hist.length || hist[hist.length - 1][0] !== ymNow) {
-        const opsM = (CFG.ops.stationDaily[s.size] || 0) * this.econ.opsIndex(this.clock.y) * 30;
+        const opsM = M.stationOps(s.size) * this.econ.opsIndex(this.clock.y) * 30;
         hist.push([ymNow, Math.round((est.rent - est.maint) * 10) / 10, Math.round(opsM * 10) / 10, Math.round((est.rent - est.maint) * 10) / 10]);
         if (hist.length > 24) hist.shift();
       }

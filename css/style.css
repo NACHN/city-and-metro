@@ -314,7 +314,7 @@ body.info-closed #buildPanel { right: 12px; }
 /* ---------- 数据展示 ---------- */
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; align-items: baseline; }
 .kv .k { color: var(--muted); font-size: 12px; white-space: nowrap; }
-.kv .v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.kv .v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 6px 0 10px; }
 .stat { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 9px 11px; }
 .stat .k { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
@@ -1782,6 +1782,28 @@ td .tag { margin-left: 4px; padding: 0 6px; font-size: 10px; }
 .ln-meter .leg i { width: 6px; height: 6px; border-radius: 2px; display: inline-block; }
 
 /* 乘客：指标行 + 断面图 + 站序 */
+/* ---------- 车队：编组图示（按车长比例画车厢，右侧标站台长） ---------- */
+.trn { margin-top: 16px; min-width: 0; }
+.trn-head { display: flex; align-items: baseline; gap: 6px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.trn-head b { font-size: 13px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.trn-row { display: flex; align-items: center; gap: 7px; margin-top: 6px; min-width: 0; }
+.trn-std { flex: none; width: 13px; text-align: center; font-size: 12px; font-weight: 800; }
+.trn-bar { flex: 1 1 auto; min-width: 0; display: flex; align-items: stretch; gap: 1px; height: 18px; padding: 2px;
+  box-sizing: border-box; border-radius: 5px; background: var(--surface-3); overflow: hidden; }
+.trn-bar i { display: block; height: 100%; border-radius: 2px; background: currentColor; opacity: .88; }
+.trn-bar u { display: block; height: 100%; }
+.trn-len { flex: none; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.trn-sw { display: flex; align-items: center; gap: 8px; margin-top: 9px; font-size: 12px; color: var(--muted); min-width: 0; }
+.trn-sw .n { margin-left: auto; display: flex; align-items: center; gap: 3px; flex: none; }
+.trn-sw .n b { min-width: 20px; text-align: center; color: var(--text); font-variant-numeric: tabular-nums; }
+/* 开关：类名不能叫 .sw —— 那是线路色板 swatch 的类，会把色块压成开关 */
+.tsw { position: relative; flex: none; width: 34px; height: 20px; border: 0; padding: 0; border-radius: 10px;
+  background: var(--surface-3); cursor: pointer; transition: background .18s; }
+.tsw::after { content: ''; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--surface-solid); box-shadow: var(--shadow-sm); transition: transform .18s var(--ease); }
+.tsw.on { background: var(--accent); }
+.tsw.on::after { transform: translateX(14px); }
+.trn-note { font-size: 11px; line-height: 1.55; color: var(--faint); margin-top: 5px; }
 .ln-kpi { display: flex; gap: 10px; flex-wrap: wrap; }
 .ln-kpi .it { display: flex; align-items: baseline; gap: 4px; font-size: 10.5px; color: var(--muted); }
 .ln-kpi .it em { font-style: normal; }
@@ -1801,13 +1823,13 @@ td .tag { margin-left: 4px; padding: 0 6px; font-size: 10px; }
 .ln-strip { margin-top: 10px; }
 .ln-scroll { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
 .ln-inner { position: relative; width: max-content; min-width: 100%; padding: 0 8px; }
-.ln-rail { position: absolute; height: 4px; border-radius: 2px; top: 17px; z-index: 1; }
+.ln-rail { position: absolute; height: 6px; border-radius: 2px; top: 17px; z-index: 1; }
 .ln-stations { display: flex; align-items: flex-start; position: relative; z-index: 2; }
 .ln-st { flex: 1 0 34px; display: flex; flex-direction: column; align-items: center; background: transparent; border: 0; padding: 0; cursor: pointer; color: inherit; font: inherit; }
 .ln-st:hover .ln-name { color: var(--text); }
-.ln-stubzone { position: relative; height: 14px; width: 100%; }
-.ln-stub { position: absolute; bottom: -6px; width: 3px; height: 20px; z-index: 1; transform: translateX(-50%); }
-.ln-node { width: 10px; height: 10px; border-radius: 50%; background: var(--surface-solid); border: 3px solid var(--line-strong); z-index: 2; }
+.ln-stubzone { position: relative; height: 12px; width: 100%; }
+.ln-stub { position: absolute; bottom: -6px; width: 6px; height: 20px; z-index: 1; transform: translateX(-50%); }
+.ln-node { width: 16px; height: 16px; border-radius: 50%; background: var(--surface-solid); border: 3px solid var(--line-strong); z-index: 2; }
 .ln-name {
   writing-mode: vertical-rl; text-orientation: upright; height: 54px; margin-top: 6px;
   font-size: 10.5px; line-height: 1.15; letter-spacing: .02em; color: var(--muted);
