@@ -78,6 +78,7 @@
     this.overview = null; this.overviewStale = true; this.overviewAt = 0;
     this.frame = 0; this.time = 0;
     this.layer = 'none'; this.layerOpt = { flow: 'all', station: 'all', stView: 'flow', stDt: 'avg', cover: 'time', facP: 'all', facDt: 'wd', gapDt: 'wd' };
+    this.focusZone = -1;   // 出行方向图层里聚焦的交通小区（-1 = 看全城）
     this.heat = null; this.heatKey = '';
     this.bFade = 0; this.roadVer = -1;
     this.labelsOn = true;
@@ -2757,7 +2758,132 @@
     this._flLay = out; this._flLayKey = key;
     return out;
   };
+  // 聚焦一个小区：看「从这一带出发的人往哪去」。全城箭头每个片区只画最主要的 1–2 个方向，
+  // 判断不出快线该修哪；快线要回答的是「这一片的人是不是都往同一个方向跑，而且现在没车坐」。
+  // 数据取该小区所属 2 km block 的 OD 行（desTot / desMetro 有逐对的量与地铁占比，是现成的），
+  // 目的地按片区聚合——这样箭头尖端才有名字可标，玩家读得懂。
+  Renderer.prototype.zoneFlows = function (p, zz) {
+    const g = this.game, model = g.model, fa = this.flowAreas();
+    const z = (zz == null) ? this.focusZone : zz;
+    if (!(z >= 0) || !model.live || !model.live.per) return null;
+    const key = z + ':' + model.cycles + ':' + model.dayType + ':' + p + ':' + this.layerOpt.flow + ':' + fa.ver + ':' + g.netVersion;
+    if (this._zf && this._zfKey === key) return this._zf;
+    const P = model.live.per[p];
+    if (!P || !P.desTot) return null;
+    const B = model.B, BW = model.BW, ZW = model.ZW, n = fa.names.length, mode = this.layerOpt.flow;
+    // 1 km² 的交通小区 → 所属 2 km block（block 是 8×8 格，含 2×2 个小区）
+    const a = (((z / ZW) | 0) / 2 | 0) * BW + (((z % ZW) / 2) | 0);
+    const tot = new Float64Array(n), met = new Float64Array(n);
+    for (let bb = 0; bb < B; bb++) {
+      const db = fa.blk[bb]; if (db < 0) continue;
+      const k = a * B + bb, t = P.desTot[k]; if (!(t > 0)) continue;
+      const m = P.desMetro[k], f = mode === 'metro' ? m : (mode === 'car' ? t - m : t);
+      tot[db] += f; met[db] += m;
+    }
+    const here = fa.blk[a], list = [];
+    let sum = 0;
+    for (let d = 0; d < n; d++) {
+      const f = tot[d]; if (!(f > 0)) continue;
+      sum += f;
+      if (d === here) continue;   // 本区内部的出行不用画箭头，它不指向任何方向
+      list.push({ d: d, name: fa.names[d], f: f, share: mode === 'metro' ? 1 : Math.min(1, met[d] / f) });
+    }
+    list.sort(function (x, y) { return y.f - x.f; });
+    const mx = list.length ? list[0].f : 1;
+    const out = {
+      z: z, src: { x: model.zCx[z] || (z % ZW) * CFG.ZONE + CFG.ZONE / 2, y: model.zCy[z] || ((z / ZW) | 0) * CFG.ZONE + CFG.ZONE / 2 },
+      top: list.filter(function (e) { return e.f >= mx * 0.035; }).slice(0, 9),
+      mx: mx, sum: sum, here: here >= 0 ? fa.names[here] : '', n: list.length,
+    };
+    this._zf = out; this._zfKey = key;
+    return out;
+  };
+  Renderer.prototype.drawZoneFlows = function (ctx) {
+    const g = this.game, model = g.model, fa = this.flowAreas();
+    const p = model.weights(g.clock.minute).p0, mode = this.layerOpt.flow, dt = Math.min(0.1, this.dt || 0.016);
+    const zf = this.zoneFlows(p);
+    if (!zf) { this._zfShow = null; this._zfShowFor = null; return; }
+    const show = this._zfShow || (this._zfShow = new Map());
+    if (this._zfShowFor !== zf) { show.clear(); this._zfShowFor = zf; }
+    const want = new Set();
+    for (const e of zf.top) {
+      want.add(e.d);
+      let s = show.get(e.d);
+      if (!s) { s = { a: 0, w: e.f / zf.mx, share: e.share }; show.set(e.d, s); }
+      s.e = e; s.tw = e.f / zf.mx; s.ts = e.share;
+    }
+    show.forEach(function (s, k) {
+      const on = want.has(k);
+      s.a = U.clamp(s.a + (on ? dt : -dt) / 0.4, 0, 1);
+      if (on) { s.w += (s.tw - s.w) * Math.min(1, dt * 4); s.share += (s.ts - s.share) * Math.min(1, dt * 4); }
+      if (!on && s.a <= 0) show.delete(k);
+    });
+    const src = this.P(zf.src.x, zf.src.y, 0);
+    const rad = function (s) { return 4.5 + 5.5 * Math.sqrt(Math.max(0, s.w)); };
+    const metroCol = [33, 102, 204], carCol = mode === 'car' ? [222, 112, 46] : [128, 134, 148];
+    const items = Array.from(show.values()).filter(function (s) { return s.a > 0.004; }).sort(function (x, y) { return x.w - y.w; });
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    // 从一点放射出去的箭头会重叠（相邻两个片区可能在同一方位上，比如「下町→都心」与「下町→江东」），
+    // 按方位排序后强制一个最小角间隔，两条流向才分得开。偏转只影响箭头方向，指向的片区名称仍然准。
+    const places = items.map(function (s) {
+      const q = this.P(fa.x[s.e.d], fa.y[s.e.d], 0);
+      return { s: s, q: q, ang: Math.atan2(q.y - src.y, q.x - src.x), turn: 0 };
+    }, this);
+    places.sort(function (x, y) { return x.ang - y.ang; });
+    for (let k = 1; k < places.length; k++) {
+      const gap = places[k].ang - (places[k - 1].ang + places[k - 1].turn);
+      if (gap < 0.22) places[k].turn = 0.22 - gap;
+    }
+    const labels = [];
+    for (const pl of places) {
+      const s = pl.s, e = s.e;
+      const w = 2.5 + 8 * Math.sqrt(Math.max(0, s.w));
+      const G = flowGeo(src, pl.q, 9, rad(s), w, pl.turn, 1); if (!G) continue;
+      const share = mode === 'metro' ? 1 : U.clamp(s.share, 0, 1);
+      ctx.globalAlpha = s.a;
+      ctx.beginPath(); ctx.moveTo(G.sx, G.sy); ctx.lineTo(G.ex, G.ey);
+      ctx.strokeStyle = TH.halo; ctx.lineWidth = w + 4; ctx.stroke();
+      ctx.strokeStyle = U.rgb(carCol, 0.94); ctx.lineWidth = w; ctx.stroke();
+      if (share > 0.02) { ctx.strokeStyle = U.rgb(metroCol, 0.95); ctx.lineWidth = Math.max(1.5, w * share); ctx.stroke(); }
+      const hw = G.ah * 0.62, fill = U.rgb(share > 0.5 ? metroCol : carCol, 1);
+      const head = function (tx, ty, ux, uy) {
+        const bx = tx - ux * (G.ah + 2), by = ty - uy * (G.ah + 2);
+        ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(bx - uy * hw, by + ux * hw); ctx.lineTo(bx + uy * hw, by - ux * hw); ctx.closePath();
+        ctx.strokeStyle = TH.halo; ctx.lineWidth = 2; ctx.stroke(); ctx.fillStyle = fill; ctx.fill();
+      };
+      head(G.tx, G.ty, G.ux, G.uy);
+      labels.push({ G: G, t: fa.names[e.d], a: s.a, share: share });
+    }
+    // 起点：把这一平方公里框出来（虚线圈地 + 中心点），让玩家清楚"从哪出发"
+    const Z = CFG.ZONE, W = g.city.W, ZW = model.ZW;
+    const zi = zf.z % ZW, zj = (zf.z / ZW) | 0;
+    const c0 = this.P(zi * Z, zj * Z, 0), c1 = this.P((zi + 1) * Z, (zj + 1) * Z, 0);
+    const bx0 = Math.min(c0.x, c1.x), by0 = Math.min(c0.y, c1.y), bw = Math.abs(c1.x - c0.x), bh = Math.abs(c1.y - c0.y);
+    if (bw > 3) {
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = U.rgb(metroCol, 0.06); ctx.fillRect(bx0, by0, bw, bh);
+      ctx.setLineDash([4, 3]); ctx.strokeStyle = U.rgb(metroCol, 0.55); ctx.lineWidth = 1.5;
+      ctx.strokeRect(bx0, by0, bw, bh); ctx.setLineDash([]);
+    }
+    ctx.beginPath(); ctx.arc(src.x, src.y, 5, 0, Math.PI * 2);
+    ctx.fillStyle = TH.stFill; ctx.fill();
+    ctx.strokeStyle = U.rgb(metroCol, 0.95); ctx.lineWidth = 2.5; ctx.stroke();
+    // 目的地名称（箭头尖端），按流量从大到小占位，放不下的跳过
+    ctx.font = '600 11px ' + FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const used = [];
+    for (let k = labels.length - 1; k >= 0; k--) {
+      const L = labels[k], tw = ctx.measureText(L.t).width, hh = 13;
+      const cy = L.G.ty - 11, cx = L.G.tx;
+      const b = { x0: cx - tw / 2 - 3, y0: cy - hh / 2, x1: cx + tw / 2 + 3, y1: cy + hh / 2 };
+      if (used.some(function (r) { return b.x0 < r.x1 && b.x1 > r.x0 && b.y0 < r.y1 && b.y1 > r.y0; })) continue;
+      used.push(b);
+      ctx.globalAlpha = L.a; ctx.lineWidth = 3; ctx.strokeStyle = TH.halo; ctx.strokeText(L.t, cx, cy);
+      ctx.fillStyle = TH.night ? '#b9c4cf' : '#465264'; ctx.fillText(L.t, cx, cy);
+    }
+    ctx.globalAlpha = 1;
+  };
   Renderer.prototype.drawDesire = function (ctx) {
+    if (this.focusZone >= 0) { this.drawZoneFlows(ctx); return; }
     const fa = this.flowAreas(), fl = this.flowList(), mode = this.layerOpt.flow, dt = Math.min(0.1, this.dt || 0.016);
     // 平滑过渡：每条流向的透明度与粗细逐帧趋近目标值
     const show = this._flShow || (this._flShow = new Map());

@@ -36,3 +36,6 @@ tools/_*.png
 maps/*/source_bak.json
 # 工具留下的临时目录（浏览器探针的 user-data-dir 等）
 tools/_*/
+
+# 本地原型与临时截图（不进仓库）
+preview/

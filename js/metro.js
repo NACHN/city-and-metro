@@ -1238,6 +1238,22 @@
           item('construction', '加长站台 ' + s.name + '（' + Math.round(pl.len - oldLen) + ' m）', (pl.len - oldLen) * M.platPerM(s.type) * M.costIndex(year), id);
         }
       }
+      // 站台换层（天地换乘）：不动土建、不收费，但确实是「改了城市」——必须记进 changes，
+      // 否则「确认建设」会拿「草案没有变化」把整份草案拒掉。
+      if (o) {
+        const oldLvl = {};
+        (o.plats || []).forEach(function (q) { (q.lines || []).forEach(function (l) { if (q.lvl) oldLvl[l] = q.lvl; }); });
+        for (const plv of (s.plats || [])) {
+          for (const lv of (plv.lines || [])) {
+            const nv = plv.lvl || s.type, ov = oldLvl[lv] || o.type;
+            if (nv !== ov) {
+              const lnv = draft.lines[lv];
+              res.changes.mod.push('车站「' + s.name + '」' + (lnv ? lnv.name + ' 的' : '') + '站台从' +
+                CFG.metro.typeName[ov] + '改到' + CFG.metro.typeName[nv]);
+            }
+          }
+        }
+      }
       // 限界：站台结构能容纳的最大车宽。窄站停宽车只能加宽车站，或把车站升级 / 换窄车。
       const gNeed = M.gaugeNeedAt(draft, id), gCur = M.stationGauge(draft, id);
       if (gNeed > gCur + 1e-6) {

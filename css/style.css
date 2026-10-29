@@ -34,6 +34,9 @@
   --font: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, -apple-system, "Segoe UI", sans-serif;
   --ease: cubic-bezier(.2, .8, .2, 1);
   --spring: cubic-bezier(.34, 1.4, .64, 1);
+  /* 剖面图专用（车站改建面板）：天空 / 土 / 混凝土 / 隧道 */
+  --sky: #dcebfa; --sky2: #c6ddf5; --soil: #e6dfd4; --ground: #b9ac99;
+  --rock: #d9cfbf; --rock2: #b8a68e; --bore: #3d4855; --pillar: #998d7c;
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -65,6 +68,8 @@
   --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.32);
   --ring: 0 0 0 3px rgba(106, 166, 230, 0.35);
   --glass-edge: rgba(255, 255, 255, 0.06);
+  --sky: #16283c; --sky2: #1d3450; --soil: #232a30; --ground: #3b4550;
+  --rock: #1d242b; --rock2: #10161c; --bore: #0c1117; --pillar: #212931;
 }* { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 13px; -webkit-font-smoothing: antialiased; }
 #map { position: fixed; inset: 0; display: block; touch-action: none; }
@@ -1865,6 +1870,45 @@ td .tag { margin-left: 4px; padding: 0 6px; font-size: 10px; }
 .st-cols { display: grid; grid-template-columns: 1.15fr 1fr; gap: 14px; }
 .st-col { min-width: 0; }
 .st-sub { font-size: 11px; color: var(--muted); font-weight: 500; margin: 0 0 6px; letter-spacing: .02em; }
+
+/* ===== 车站剖面（改建）：每层一行，车按时间槽轮流进出站 =====
+   同层几条线共用一条轨行区，一次只让一列停站——百分比就是每列的时间槽 */
+.st-cut { margin: 6px 0 6px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: var(--surface-2); }
+.st-cut svg { display: block; width: 100%; height: auto; }
+@keyframes stTrain1 {
+  0% { transform: translateX(calc(-1 * var(--run))); }
+  14% { transform: translateX(0); } 36% { transform: translateX(0); }
+  50% { transform: translateX(var(--run)); } 100% { transform: translateX(var(--run)); }
+}
+@keyframes stTrain2 {
+  0% { transform: translateX(calc(-1 * var(--run))); }
+  12.9% { transform: translateX(0); } 33.1% { transform: translateX(0); }
+  46% { transform: translateX(var(--run)); } 100% { transform: translateX(var(--run)); }
+}
+@keyframes stTrain3 {
+  0% { transform: translateX(calc(-1 * var(--run))); }
+  8.6% { transform: translateX(0); } 22.1% { transform: translateX(0); }
+  30.7% { transform: translateX(var(--run)); } 100% { transform: translateX(var(--run)); }
+}
+@keyframes stTrain4 {
+  0% { transform: translateX(calc(-1 * var(--run))); }
+  6.4% { transform: translateX(0); } 16.6% { transform: translateX(0); }
+  23% { transform: translateX(var(--run)); } 100% { transform: translateX(var(--run)); }
+}
+.st-train { animation-timing-function: cubic-bezier(.25, .7, .35, 1); animation-iteration-count: infinite; }
+@media (prefers-reduced-motion: reduce) { .st-train { animation: none !important; } }
+/* 站厅规模：5×5 方格，填满几格就是几档容量 */
+.st-hall { display: flex; align-items: center; gap: 10px; margin: 4px 0 6px; }
+.st-hallgrid { flex: none; width: 44px; height: 44px; }
+.st-hallgrid svg { display: block; width: 100%; height: 100%; }
+.st-hallmeta { min-width: 0; }
+.st-hallmeta b { font-size: 15px; font-weight: 700; }
+
+/* 站台长度条：实心是车组、虚线是富余 */
+.st-lenbar { display: flex; gap: 1px; height: 14px; border-radius: 4px; background: var(--surface-3);
+  padding: 2px; margin: 6px 0 4px; overflow: hidden; }
+.st-lenbar i { display: block; height: 100%; border-radius: 2px; background: var(--accent); opacity: .7; }
+.st-lenbar u { display: block; height: 100%; border-radius: 2px; border: 1px dashed var(--line-strong); }
 
 /* 收支 */
 .st-net { font-size: 25px; font-weight: 720; letter-spacing: -.03em; line-height: 1; font-variant-numeric: tabular-nums; }

@@ -1060,7 +1060,7 @@
     card.classList.remove('hidden');
     this.placeFeed();
   };
-  UI.prototype.setLayer = function (id) { if (id !== this.layer) snd('soft'); this.layer = id; this.R.layer = id; this.R.heatKey = ''; this.renderDock(); };
+  UI.prototype.setLayer = function (id) { if (id !== this.layer) snd('soft'); this.layer = id; this.R.layer = id; this.R.heatKey = ''; if (id !== 'flow') this.R.focusZone = -1; this.renderDock(); };
   // 图例：只保留读图所需的色标与一句说明
   UI.prototype.legend = function (id) {
     const self = this, R = this.R;
@@ -1086,7 +1086,36 @@
         break;
       }
       case 'cong': li(CC[0], '畅通', 'line'); li(CC[1], '缓行', 'line'); li(CC[2], '拥堵', 'line'); li(CC[3], '严重拥堵', 'line'); note = '主要道路（快速路与主干道）当前时刻的拥堵程度（流量 ÷ 通行能力），随早晚高峰实时变化，夜间与平峰多为畅通；线越粗道路等级越高。'; break;
-      case 'flow': opts('flow', [['all', '全部'], ['car', '汽车'], ['metro', '地铁']]); if (R.layerOpt.flow === 'all') { li('#80869a', '汽车出行', 'line'); li('#2166cc', '其中乘地铁（箭头中间的蓝色部分）', 'line'); } note = '每个片区当前时段最主要的出行方向（第二方向接近时也画出）：箭头从片区指向目的地，尖端标出目的地名称；两个片区互为主要方向时画成双向箭头。线越粗出行越多，新区域开放、修建地铁后会随之变化。'; break;
+      case 'flow': {
+        opts('flow', [['all', '全部'], ['car', '汽车'], ['metro', '地铁']]);
+        if (R.layerOpt.flow === 'all') { li('#80869a', '汽车出行', 'line'); li('#2166cc', '其中乘地铁（箭头中间的蓝色部分）', 'line'); }
+        const g0 = self.g(), fz = R.focusZone;
+        const zf = (fz >= 0 && g0 && g0.model.live) ? R.zoneFlows(g0.model.weights(g0.clock.minute).p0) : null;
+        if (zf) {
+          box.appendChild(h('div', { class: 'st-sub', style: { marginTop: '10px' } }, '这一带的去向'));
+          if (!zf.top.length) box.appendChild(h('div', { class: 'note' }, zf.sum > 0
+            ? '这一带的出行几乎都落在本区内部（对外约 ' + U.fmtInt(zf.sum) + ' 人次），没有明确的方向。'
+            : '这一带目前没有可统计的出行（人口太少或还没开发）。'));
+          for (const e of zf.top) {
+            const col = e.share >= 0.6 ? '#2166cc' : (e.share >= 0.2 ? '#e8a33a' : '#d93a3a');
+            box.appendChild(h('div', { class: 'row between', style: { fontSize: '12px', marginTop: '3px' } },
+              h('span', null, h('span', { class: 'swatch', style: { background: col, border: 0, height: '8px', width: '8px', marginRight: '6px' } }), e.name),
+              h('span', { class: 'tiny muted', style: { fontVariantNumeric: 'tabular-nums' } },
+                U.fmtInt(e.f) + ' 人次 · 地铁 ' + U.fmtPct(e.share, 0))));
+          }
+          const bare = zf.top.filter(function (e) { return e.share < 0.2; });
+          note = '从这一带出发的去向，按人次排序（当前时段）。右边是地铁承担的比例——'
+            + '蓝 = 八成以上靠地铁，橙 = 一半上下，红 = 基本没车坐。'
+            + (bare.length ? '「' + bare.slice(0, 2).map(function (e) { return e.name; }).join('」「') + '」方向量大而地铁几乎没分担，'
+              + (bare[0].f >= zf.mx * 0.35 ? '是可以考虑快线或大站快车的走廊。' : '但量还不算最大，先看它会不会长。') : '')
+            + '再点一次同一处可以取消。';
+        } else {
+          note = '每个片区当前时段最主要的出行方向（第二方向接近时也画出）：箭头从片区指向目的地，尖端标出目的地名称；'
+            + '两个片区互为主要方向时画成双向箭头。线越粗出行越多，新区域开放、修建地铁后会随之变化。'
+            + '点地图上任意一处，可以看那一带的人具体往哪去（会列出全部主要去向并画出箭头）——判断快线修在哪，靠的就是这个。';
+        }
+        break;
+      }
       case 'cover': opts('cover', [['time', '步行时间'], ['station', '所属车站']]);
         if (R.layerOpt.cover === 'station') { li('rgba(20,162,82,0.5)', '每个颜色块为步行最近的车站（细线为分界）'); li('#d73027', '人口密集但无地铁'); }
         else { li('#1b7837', '步行 5 分钟内'); li('#5aae61', '步行 10 分钟内'); li('#acdc8c', '步行 15 分钟内'); li('#d73027', '人口密集但无地铁'); }
@@ -1315,7 +1344,7 @@
   // 上盖开发：进入草案（与升级车站同一路径，费用在草案里核算，确认建设后才扣款）
   UI.prototype.devStation = function (id, lv) {
     const g = this.g();
-    if (!g || g.draft) return;
+    if (!g) return;
     const y = g.clock.y, m = g.clock.m;
     const r = g.edit(function (n) {
       const s = n.stations[id];
@@ -1332,7 +1361,7 @@
   // 与上盖不同，接驳线的运营费按月摊销，所以「建早了」是持续亏，不是一次性。
   UI.prototype.busOpen = function (id, cand) {
     const g = this.g();
-    if (!g || g.draft || !CFG.bus) return;
+    if (!g || !CFG.bus) return;
     const y = g.clock.y, m = g.clock.m, B = CFG.bus;
     const r = g.edit(function (n) {
       const s = n.stations[id];
@@ -1450,7 +1479,7 @@
   // 建接驳站：一次性小额投入（候车亭、站牌、首末站车位），之后这个站才能开接驳线
   UI.prototype.busHub = function (id) {
     const g = this.g();
-    if (!g || g.draft || !CFG.bus) return;
+    if (!g || !CFG.bus) return;
     const r = g.edit(function (n) {
       const s = n.stations[id];
       if (!s) return { error: '车站不存在' };
@@ -1499,7 +1528,7 @@
   // 升级费按级差计（见 Metro.evaluate），建成后按原值 2%/年计提维护。
   UI.prototype.stFacility = function (id, kind, lv) {
     const g = this.g();
-    if (!g || g.draft || !CFG.stationFacility) return;
+    if (!g || !CFG.stationFacility) return;
     const SF = CFG.stationFacility, y = g.clock.y;
     const isPr = kind === 'pr', def = isPr ? SF.pr : SF.exit, key = isPr ? 'prLv' : 'exitLv';
     if (def && y < (def.openYear || 0)) { this.toast((def.openYear || 0) + ' 年才开放这项配套', 'bad'); return; }
@@ -1588,6 +1617,8 @@
   UI.prototype.select = function (sel, noPage) {
     if (!this.selection || !sel || this.selection.kind !== sel.kind || this.selection.id !== sel.id) this.busHi = null;
     this.selection = sel;
+    // 出行方向图层的聚焦跟着选中走：选中小区就画它的去向，选别的就收起
+    if (this.R) this.R.focusZone = (sel && sel.kind === 'zone') ? sel.id : -1;
     if (!sel) { this.highlightLine = null; if (!noPage && this.stack.length && ['station', 'line', 'road', 'zone', 'facility'].indexOf(this.stack[this.stack.length - 1].kind) >= 0) this.back(); return; }
     if (noPage) return;
     const g = this.g();

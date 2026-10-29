@@ -363,6 +363,14 @@
           else if (fid) ui.select({ kind: 'facility', id: fid });
           else {
             const c = g.city.cellAt(w.x, w.y);
+            if (c >= 0 && this.ui.layer === 'flow') {
+              // 出行方向图层：点一处 = 聚焦这一带（再点同一处取消）。不打开片区页——
+              // 否则右侧换成片区详情、图层选项就没了，而玩家这时正在看流向。
+              const z = g.city.zoneOf(c);
+              R.focusZone = (R.focusZone === z ? -1 : z);
+              ui.renderDock();
+              return;
+            }
             if (c >= 0 && this.ui.layer !== 'none') ui.select({ kind: 'zone', id: g.city.zoneOf(c) });
             else ui.select(null);
           }

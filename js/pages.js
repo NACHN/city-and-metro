@@ -124,6 +124,298 @@
     });
     return out + '</svg>';
   }
+  // ---------------- 车站剖面（改建面板） ----------------
+  // 每层一行：上面一行 tag 说明有什么线、什么车，下面轨行区让车从图外滑进来、停站、再滑出去。
+  // 层次 / 编组 / 站台长读草案网络；上盖、出入口、P+R、接驳线读已建车站（它们是即时生效的改造）。
+  function stLineNo(L) {
+    const m = String((L && L.name) || '').match(/\d+/);
+    return m ? m[0] : String((L && L.name) || '?').slice(0, 2);
+  }
+  function stCutSVG(net, sid, s, sel) {
+    const W = 340, RH = 23, BGAP = 8;
+    const BX = 62, BW = 168, BXE = BX + BW, BCX = BX + BW / 2;
+    const LV = ['elevated', 'surface', 'underground'];
+    const LVN = { elevated: '高架', surface: '地面', underground: '地下' };
+    const byLvl = { elevated: [], surface: [], underground: [] };
+    const info = {};
+    M.linesAt(net, sid).forEach(function (lid) {
+      const L = net.lines[lid];
+      if (!L) return;
+      const lvl = M.platLvl(net, sid, lid);
+      (byLvl[lvl] || byLvl.underground).push(lid);
+      const ms = M.stdOf(L);
+      const cars = Math.max(1, Math.min(ms.cars[1], M.platCars(net, sid, lid, ms)));
+      info[lid] = { L: L, ms: ms, cars: cars, len: cars * ms.carLen, plen: M.platLen(net, sid, lid) };
+    });
+    const used = LV.filter(function (l) { return byLvl[l].length; });
+    const GROUND = 78, ySurf = GROUND - RH, yElev = ySurf - BGAP - RH, yUnd = GROUND + 15;
+    const yOf = function (l) { return l === 'elevated' ? yElev : (l === 'surface' ? ySurf : yUnd); };
+    const H = yUnd + RH + 18;
+    const hallY = GROUND + 1.5, hallH = 12;
+    // 配套读草案车站本身：改了上盖 / 出入口 / P+R / 接驳线，剖面上要立刻看得见
+    const dev = s.dev | 0;
+    const exLv = s.exitLv | 0;
+    const prLv = s.prLv | 0;
+    const busN = (s.bus && s.bus.length) || 0;
+    const SF = CFG.stationFacility || {};
+    const cap = (CFG.metro.stationCap || {})[s.size] || 20000;
+    const DUR = [0, 6.0, 6.52, 9.78, 13.04];
+    let o = '';
+
+    o += '<defs>' +
+      '<linearGradient id="cutSky" x1="0" y1="0" x2="0" y2="1">' +
+      '<stop offset="0" style="stop-color:var(--sky)"/><stop offset="1" style="stop-color:var(--sky2)"/></linearGradient>' +
+      '<pattern id="cutWin" width="6" height="6" patternUnits="userSpaceOnUse">' +
+      '<line x1="0" y1="3" x2="6" y2="3" style="stroke:var(--line-strong)" stroke-width=".8" opacity=".55"/></pattern>' +
+      '<pattern id="cutRock" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
+      '<line x1="0" y1="0" x2="0" y2="9" style="stroke:var(--rock2)" stroke-width="1.3" opacity=".35"/></pattern>' +
+      '<clipPath id="cutElev"><rect x="-60" y="' + yElev + '" width="' + (W + 120) + '" height="' + RH + '"/></clipPath>' +
+      '<clipPath id="cutSurf"><rect x="-60" y="' + ySurf + '" width="' + (W + 120) + '" height="' + RH + '"/></clipPath>' +
+      '<clipPath id="cutUnd"><rect x="-60" y="' + yUnd + '" width="' + (W + 120) + '" height="' + RH + '"/></clipPath>' +
+      '<clipPath id="cutGnd"><rect x="0" y="0" width="' + W + '" height="' + GROUND + '"/></clipPath>' +
+      '</defs>';
+
+    // 天空 / 岩土
+    o += '<rect x="0" y="0" width="' + W + '" height="' + GROUND + '" style="fill:url(#cutSky)"/>';
+    o += '<rect x="0" y="' + GROUND + '" width="' + W + '" height="' + (H - GROUND) + '" style="fill:var(--soil)"/>';
+    o += '<rect x="0" y="' + (GROUND + 5) + '" width="' + W + '" height="' + (H - GROUND - 5) + '" fill="url(#cutRock)"/>';
+    o += '<rect x="0" y="' + GROUND + '" width="' + W + '" height="2.5" style="fill:var(--ground)" opacity=".5"/>';
+    o += '<line x1="0" y1="' + GROUND + '" x2="20" y2="' + GROUND + '" style="stroke:var(--line-strong)" stroke-dasharray="2 4"/>' +
+      '<text x="1" y="' + (GROUND - 3) + '" font-size="9" style="fill:var(--faint)">±0</text>';
+
+    // 上盖开发：楼底落在地面线上，画在背景层（地面层的车跑在楼前面）
+    if (dev >= 2) {
+      const podH = 10, podW = dev === 3 ? 156 : 124, podY = GROUND - podH, px = BCX - podW / 2;
+      o += '<g data-hit="dev" style="cursor:pointer">' +
+        '<rect x="' + px + '" y="' + podY + '" width="' + podW + '" height="' + podH + '" rx="1.5" style="fill:var(--surface-solid);stroke:var(--line-strong)"/>' +
+        '<rect x="' + px + '" y="' + podY + '" width="' + podW + '" height="' + podH + '" fill="url(#cutWin)"/></g>';
+      if (dev === 3) {
+        const tw = 56, th = 26, tx = BCX - tw / 2, ty = podY - th;
+        o += '<g data-hit="dev" style="cursor:pointer">' +
+          '<rect x="' + tx + '" y="' + ty + '" width="' + tw + '" height="' + th + '" rx="1.5" style="fill:var(--surface-2);stroke:var(--line-strong)"/>' +
+          '<rect x="' + tx + '" y="' + ty + '" width="' + tw + '" height="' + th + '" fill="url(#cutWin)"/></g>';
+      }
+    }
+
+    // 地面层的车画在这里：z 序最低，会被下面的出入口 / P+R / 巴士挡住
+    o += '<!--SURFCARS-->';
+
+    // 高架：桥面板 + 桥墩
+    o += '<rect x="0" y="' + (yElev + RH - 2) + '" width="' + W + '" height="2" style="fill:var(--ground)" opacity=".9"/>';
+    [26, BXE + 2].forEach(function (px) {
+      o += '<rect x="' + px + '" y="' + (yElev + RH) + '" width="8" height="' + Math.max(0, GROUND - yElev - RH) + '" style="fill:var(--pillar)"/>';
+      o += '<rect x="' + (px - 2) + '" y="' + (yElev + RH) + '" width="12" height="2.5" style="fill:var(--pillar)"/>';
+    });
+
+    // 地下：矩形隧道（侧剖，没有拱），从图左贯穿到图右
+    o += '<rect x="0" y="' + yUnd + '" width="' + W + '" height="' + RH + '" style="fill:var(--bore)"/>';
+    o += '<rect x="0" y="' + (yUnd + RH - 1.5) + '" width="' + W + '" height="1.5" style="fill:#000" opacity=".4"/>';
+
+    // 出入口：窄矩形 + 1/4 圆，下沉半个高度被地面切掉，窄头朝外
+    if (exLv > 0) {
+      const r = 10, w = 4.5, cy = GROUND + r / 2;
+      const fill = 'style="fill:var(--accent)" fill-opacity=".85" stroke="var(--surface-solid)" stroke-width="1"';
+      const stpL = function (x) {
+        return '<g data-hit="exit" clip-path="url(#cutGnd)" style="cursor:pointer">' +
+          '<path d="M' + x + ' ' + cy + ' L' + x + ' ' + (cy - r) + ' L' + (x + w) + ' ' + (cy - r) +
+          ' A' + r + ' ' + r + ' 0 0 1 ' + (x + w + r) + ' ' + cy + ' Z" ' + fill + '/></g>';
+      };
+      const stpR = function (x) {
+        return '<g data-hit="exit" clip-path="url(#cutGnd)" style="cursor:pointer">' +
+          '<path d="M' + (x + w + r) + ' ' + cy + ' L' + (x + w + r) + ' ' + (cy - r) + ' L' + (x + r) + ' ' + (cy - r) +
+          ' A' + r + ' ' + r + ' 0 0 0 ' + x + ' ' + cy + ' Z" ' + fill + '/></g>';
+      };
+      o += stpL(BX - 29);
+      if (exLv >= 2) o += stpR(BXE + 15);
+      if (exLv >= 3) {
+        o += '<line x1="4" y1="' + (hallY + hallH / 2) + '" x2="' + BX + '" y2="' + (hallY + hallH / 2) + '" style="stroke:var(--accent)" stroke-width="1" stroke-dasharray="3 3" opacity=".4"/>';
+        o += '<line x1="' + BXE + '" y1="' + (hallY + hallH / 2) + '" x2="' + (W - 4) + '" y2="' + (hallY + hallH / 2) + '" style="stroke:var(--accent)" stroke-width="1" stroke-dasharray="3 3" opacity=".4"/>';
+      }
+    }
+
+    // P+R（右侧地面）：右端对齐，车头正视
+    if (prLv > 0) {
+      const n = Math.min(4, prLv + 1), cw = 6, gap = 1.5, ch = 6;
+      const tw = n * cw + (n - 1) * gap, x0 = 284 - tw;
+      let cars = '';
+      for (let i = 0; i < n; i++) {
+        const x = x0 + i * (cw + gap), y = GROUND - ch;
+        cars += '<rect x="' + x + '" y="' + y + '" width="' + cw + '" height="' + ch + '" rx="1.4" style="fill:var(--accent)" opacity=".85"/>' +
+          '<rect x="' + (x + 1) + '" y="' + (y + 1) + '" width="' + (cw - 2) + '" height="2.4" rx=".8" style="fill:var(--surface-solid)" opacity=".6"/>' +
+          '<rect x="' + x + '" y="' + (GROUND - 1.4) + '" width="' + cw + '" height="1.4" style="fill:#3d444e" opacity=".75"/>';
+      }
+      o += '<g data-hit="pr" style="cursor:pointer">' + cars + '</g>';
+      o += '<text x="' + (x0 + tw / 2) + '" y="' + (GROUND - ch - 5) + '" font-size="10" text-anchor="middle" style="fill:var(--faint)">P ' + ((SF.pr && SF.pr.name && SF.pr.name[prLv]) || prLv) + '</text>';
+    }
+
+    // 接驳巴士（最右地面）：多线往右 offset 叠放，越靠后越淡
+    if (busN > 0) {
+      const k = Math.min(4, busN), bw = 34, bh = 12, step = 4;
+      const x0 = W - 8 - bw - (k - 1) * step, by = GROUND - bh - 1;
+      for (let i = k - 1; i >= 0; i--) {
+        const bx = x0 + i * step, op = 1 - i * 0.18;
+        o += '<g data-hit="bus" style="cursor:pointer;opacity:' + op.toFixed(2) + '">' +
+          '<rect x="' + bx + '" y="' + by + '" width="' + bw + '" height="' + bh + '" rx="2.5" style="fill:var(--surface-solid);stroke:var(--line-strong)"/>' +
+          '<rect x="' + (bx + 3) + '" y="' + (by + 3.5) + '" width="' + (bw - 13) + '" height="5" rx="1.2" style="fill:var(--accent)" opacity=".3"/>' +
+          '<circle cx="' + (bx + 8) + '" cy="' + (by + bh) + '" r="2.4" style="fill:#3d444e"/>' +
+          '<circle cx="' + (bx + bw - 8) + '" cy="' + (by + bh) + '" r="2.4" style="fill:#3d444e"/></g>';
+      }
+      o += '<text x="' + (x0 + bw / 2 + (k - 1) * step / 2) + '" y="' + (GROUND + 11) + '" font-size="10" text-anchor="middle" style="fill:var(--faint)">巴士 ' + k + ' 线</text>';
+    }
+
+    // 站厅
+    o += '<rect x="' + BX + '" y="' + hallY + '" width="' + BW + '" height="' + hallH + '" rx="2.5" style="fill:var(--surface-solid);stroke:var(--line-strong)"/>';
+    if (dev === 1) {
+      [BX + 8, BX + 32, BXE - 56, BXE - 32].forEach(function (x) {
+        o += '<rect x="' + x + '" y="' + (hallY + 2.5) + '" width="24" height="' + (hallH - 5) + '" rx="1.5" data-hit="dev" style="fill:var(--accent)" opacity=".2;cursor:pointer"/>';
+      });
+    }
+    o += '<text x="' + BCX + '" y="' + (hallY + hallH / 2 + 3.6) + '" font-size="11.5" style="fill:var(--muted)" text-anchor="middle">站厅 · ' + U.fmtInt(cap) + '/时</text>';
+
+    // 三层各一行：tag 在上、轨行区在下，车跑满整条站台
+    const TAGW = 28, TAGGAP = 2, TAGX = 30;
+    let surfCars = '';
+    LV.forEach(function (lvl) {
+      const y = yOf(lvl), idxs = byLvl[lvl], n = idxs.length;
+      const tagY = y + 2, carTop = y + 15;
+      let carsSvg = '';
+      if (n) {
+        idxs.forEach(function (lid, k) {
+          const it = info[lid];
+          const tw = Math.max(8, (BW - 6) * Math.min(1, it.len / Math.max(it.plen, 1)));
+          const cw = tw / it.cars;
+          const carX = BX + (BW - tw) / 2;
+          const run = Math.max(carX + tw + 40, W - carX + 40);
+          let cars = '';
+          for (let c = 0; c < it.cars; c++) {
+            cars += '<rect x="' + (c * cw).toFixed(1) + '" y="0" width="' + Math.max(2, cw - 1.5).toFixed(1) +
+              '" height="7.5" rx="1.4" style="fill:' + it.L.color + '"/>';
+          }
+          const dly = (-(k * 3.26)).toFixed(2);
+          carsSvg += '<g clip-path="url(#cut' + (lvl === 'elevated' ? 'Elev' : (lvl === 'surface' ? 'Surf' : 'Und')) + ')">' +
+            '<g transform="translate(' + carX.toFixed(1) + ',' + carTop + ')">' +
+            '<g class="st-train" style="--run:' + run.toFixed(0) + 'px;animation-name:stTrain' + n +
+            ';animation-duration:' + DUR[n] + 's;animation-delay:' + dly + 's">' + cars + '</g></g></g>';
+        });
+      }
+      if (lvl === 'surface') { surfCars += carsSvg; carsSvg = ''; }
+
+      // 高架背景：一道隔音墙（半透明浅色带），车从墙后面走过
+      if (lvl === 'elevated') {
+        o += '<rect x="0" y="' + (carTop - 4) + '" width="' + W + '" height="10.1" style="fill:var(--surface-3);stroke:var(--line-strong)" opacity=".8"/>';
+      }
+
+      o += '<line x1="' + BX + '" y1="' + (y + RH - 0.6) + '" x2="' + BXE + '" y2="' + (y + RH - 0.6) +
+        '" style="stroke:var(--line-strong)" stroke-width="' + (lvl === 'elevated' ? 1.8 : 1.1) + '" opacity="' + (n ? .55 : .3) + '"/>';
+      o += '<rect x="' + BX + '" y="' + y + '" width="' + BW + '" height="' + RH + '" data-lvl="' + lvl + '" style="fill:transparent;cursor:pointer"/>';
+      o += carsSvg;
+
+      // 高架前景：一道边梁压在车上，挡住车身下半
+      if (lvl === 'elevated') {
+        o += '<rect x="0" y="' + (carTop + 4) + '" width="' + W + '" height="2.6" style="fill:var(--ground)"/>';
+      }
+
+      // tag：层名 + [线号] 编组制式（画在车之上）
+      const tagW2 = n ? n * TAGW + (n - 1) * TAGGAP : 0;
+      o += '<rect x="3" y="' + (y + 1.5) + '" width="' + ((n ? tagW2 + 4 : 0) + TAGX) + '" height="13.5" rx="3.5" style="fill:var(--surface)" opacity=".95"/>';
+      o += '<text x="' + (TAGX / 2 + 1.5) + '" y="' + (y + 11.2) + '" font-size="10.5" text-anchor="middle" style="fill:var(--muted)">' + LVN[lvl] + '</text>';
+      idxs.forEach(function (lid, k) {
+        const it = info[lid], x = TAGX + k * (TAGW + TAGGAP);
+        if (sel === lid) {
+          o += '<rect x="' + (x - 1.6) + '" y="' + (tagY - 1.8) + '" width="' + (TAGW + 3.2) + '" height="15.6" rx="4" style="fill:none;stroke:var(--accent)" stroke-width="1.4"/>';
+        }
+        o += '<g data-line="' + lid + '" style="cursor:pointer">' +
+          '<rect x="' + x + '" y="' + tagY + '" width="14" height="13" rx="3" style="fill:' + it.L.color + '"/>' +
+          '<text x="' + (x + 7) + '" y="' + (tagY + 9.4) + '" font-size="10" font-weight="700" text-anchor="middle" style="fill:#fff">' + U.esc(stLineNo(it.L)) + '</text>' +
+          '<text x="' + (x + 16.5) + '" y="' + (tagY + 9.4) + '" font-size="10" style="fill:var(--muted)">' + it.cars + U.esc(it.ms.type) + '</text></g>';
+      });
+    });
+    o = o.replace('<!--SURFCARS-->', surfCars);
+
+    // 换乘通道：最高层 ↔ 最低层
+    if (used.length > 1) {
+      const yT = yOf(used[0]) + RH / 2, yB = yOf(used[used.length - 1]) + RH / 2, x = BCX + 28;
+      o += '<line x1="' + x + '" y1="' + yT + '" x2="' + x + '" y2="' + yB + '" style="stroke:var(--accent)" stroke-width="1.6" stroke-dasharray="3 3" opacity=".85"/>';
+      o += '<circle cx="' + x + '" cy="' + yT + '" r="2.6" style="fill:var(--accent)"/><circle cx="' + x + '" cy="' + yB + '" r="2.6" style="fill:var(--accent)"/>';
+      const kh = { elevated: 15, surface: 0, underground: -15 };
+      const gapM = Math.abs(kh[used[0]] - kh[used[used.length - 1]]);
+      const mins = (2.0 + 1.5 * gapM / 15 + 90 / 75).toFixed(1);
+      o += '<text x="' + (x + 7) + '" y="' + ((yT + yB) / 2 + 3.5) + '" font-size="11" style="fill:var(--accent)">换乘 ' + mins + ' 分</text>';
+    }
+
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="车站剖面">' + o + '</svg>';
+  }
+
+  // 站厅规模：5×5 方格，填满几格就是几档容量（S 1 格 → XXL 25 格）
+  function stHallSVG(size) {
+    const caps = CFG.metro.stationCap || {};
+    const ord = CFG.metro.sizeOrd || ['S', 'M', 'L', 'XL', 'XXL'];
+    let mx = 0;
+    ord.forEach(function (k) { if ((caps[k] | 0) > mx) mx = caps[k] | 0; });
+    if (!mx) mx = 160000;
+    const cap = caps[size] | 0 || 20000;
+    const cells = Math.max(1, Math.round(25 * cap / mx));
+    const step = 20;
+    let o = '';
+    for (let i = 0; i < 25; i++) {
+      const x = (i % 5) * step + 3, y = ((i / 5) | 0) * step + 3;
+      o += '<rect x="' + x + '" y="' + y + '" width="14" height="14" rx="2.5" style="fill:' +
+        (i < cells ? 'var(--accent)' : 'var(--surface-3)') + '"/>';
+    }
+    return '<svg viewBox="0 0 100 100" width="44" height="44" role="img" aria-label="站厅容量">' + o + '</svg>';
+  }
+
+  // 站台限界：不读线路，土建净宽决定这里能停下什么车。按车宽归并成几档，
+  // 同心虚线包络叠在土建开间里；绿 = 能停、黄 = 刚好塞进（没余量）、红 = 停不下。
+  function stGaugeSVG(have) {
+    const STD = CFG.metro.std || {}, order = CFG.metro.stdOrder || ['C', 'L', 'B', 'A', 'D'];
+    const groups = [];
+    order.forEach(function (k) {
+      const d = STD[k];
+      if (!d) return;
+      const g = groups.filter(function (x) { return Math.abs(x.gw - d.gw) < 1e-6; })[0];
+      if (g) { g.keys.push(k); g.carH = Math.max(g.carH, d.carH || 3.8); }
+      else groups.push({ gw: d.gw, keys: [k], carH: d.carH || 3.8 });
+    });
+    groups.sort(function (a, b) { return a.gw - b.gw; });
+    const stateOf = function (gw) { return gw <= have - 0.2 ? 'good' : (gw <= have + 1e-6 ? 'warn' : 'bad'); };
+    const COL = { good: 'var(--good)', warn: 'var(--warn)', bad: 'var(--bad)' };
+    const W = 340, H = 124, bed = 108, PX = 20, cx = 86;
+    const gw0 = have * PX, gh = 4.4 * PX, x0 = cx - gw0 / 2, top = bed - gh;
+    const rg = Math.min(13, Math.max(5, gw0 / 2 - 2));
+    const arch = function (bw, bh, r) {
+      const a = cx - bw / 2, b = cx + bw / 2, t = bed - bh;
+      return 'M' + a + ' ' + bed + ' L' + a + ' ' + (t + r) + ' A' + r + ' ' + r + ' 0 0 1 ' + (a + r) + ' ' + t +
+        ' L' + (b - r) + ' ' + t + ' A' + r + ' ' + r + ' 0 0 1 ' + b + ' ' + (t + r) + ' L' + b + ' ' + bed + ' Z';
+    };
+    let o = '<defs><pattern id="gRock" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
+      '<line x1="0" y1="0" x2="0" y2="9" style="stroke:var(--rock2)" stroke-width="1.3" opacity=".4"/></pattern></defs>';
+    o += '<rect x="0" y="0" width="176" height="' + H + '" style="fill:var(--rock)"/>';
+    o += '<rect x="0" y="0" width="176" height="' + H + '" fill="url(#gRock)"/>';
+    o += '<path d="' + arch(gw0, gh, rg) + '" style="fill:var(--bore)"/>';
+    o += '<line x1="' + (x0 + 2) + '" y1="' + bed + '" x2="' + (x0 + gw0 - 2) + '" y2="' + bed + '" style="stroke:var(--faint)" stroke-width="1.3" opacity=".45"/>';
+    o += '<text x="' + cx + '" y="' + (top + 11) + '" font-size="9" text-anchor="middle" style="fill:var(--faint)">土建 ' + have.toFixed(1) + ' m</text>';
+    groups.forEach(function (g) {
+      const st = stateOf(g.gw), c = COL[st];
+      const bw = g.gw * PX, bh = g.carH * PX, r = 8;
+      o += '<path d="' + arch(bw, bh, r) + '" style="fill:' + (st === 'bad' ? c : 'none') + ';fill-opacity:.16;stroke:' + c +
+        '" stroke-width="1.8" stroke-dasharray="' + (st === 'bad' ? '3 3' : '5 3') + '"/>';
+      o += '<text x="' + cx + '" y="' + (bed - bh + 11) + '" font-size="10" font-weight="700" text-anchor="middle" style="fill:' + c + '">' + g.keys.join('') + '</text>';
+    });
+    // 图例：一行一个车宽带，色块 + 车宽 + 结论
+    const rowH = 25, y0 = H / 2 - groups.length * rowH / 2 + 6;
+    groups.forEach(function (g, i) {
+      const st = stateOf(g.gw), c = COL[st], y = y0 + i * rowH;
+      o += '<rect x="186" y="' + y + '" width="17" height="17" rx="5" style="fill:' + c + '"/>';
+      o += '<text x="194.5" y="' + (y + 12.4) + '" font-size="10" font-weight="800" text-anchor="middle" style="fill:#fff">' + g.keys.join('') + '</text>';
+      o += '<text x="210" y="' + (y + 12.6) + '" font-size="11.5" style="fill:var(--text)">' + g.gw.toFixed(1) + ' m</text>';
+      o += '<text x="248" y="' + (y + 12.6) + '" font-size="11.5" style="fill:' + c + '">' + (st === 'good' ? '能停' : (st === 'warn' ? '临界' : '停不下')) + '</text>';
+      o += '<text x="300" y="' + (y + 12.6) + '" font-size="10" style="fill:var(--faint)">' + g.carH.toFixed(1) + 'm 高</text>';
+    });
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="站台限界">' +
+      '<rect x="176" y="0" width="' + (W - 176) + '" height="' + H + '" style="fill:var(--surface-2)"/>' + o + '</svg>';
+  }
+
   // 迷你折线：viewBox 固定、vector-effect 保住线宽，随容器拉伸
   function stSpark(a, b, ca, cb) {
     const n = a.length, lo = Math.min.apply(null, a.concat(b)), hi = Math.max.apply(null, a.concat(b));
@@ -498,6 +790,12 @@
         onclick: function () { const c = latest(); if (c && c.size !== sz) g.edit(function (n) { n.stations[id].size = sz; }); },
       }, mc.sizeName[sz]));
       b.appendChild(h('div', { class: 'field' }, h('label', null, '站厅规模'), sizeSeg));
+      b.appendChild(h('div', { class: 'st-hall' },
+        h('div', { class: 'st-hallgrid', html: stHallSVG(s.size) }),
+        h('div', { class: 'st-hallmeta' },
+          h('b', null, capTxt(mc.stationCap[s.size])),
+          h('div', { class: 'tiny faint' }, mc.sizeName[s.size] + '站厅 · 档位 ' +
+            ((CFG.metro.sizeOrd || []).indexOf(s.size) + 1) + '/' + (CFG.metro.sizeOrd || []).length))));
       b.appendChild(h('div', { class: 'note' }, sizeNote()));
       const tc = h('div', { class: 'seg-ctl' });
       for (const t of ['underground', 'surface', 'elevated']) tc.appendChild(h('button', {
@@ -506,6 +804,45 @@
       }, CFG.metro.typeName[t], official && official.type === t && s.type !== t ? h('small', null, '（已建）') : null));
       b.appendChild(h('div', { class: 'field' }, h('label', null, '车站形式'), tc));
       if (official) b.appendChild(h('div', { class: 'note' }, '改建按新建计费；选回已建形式即撤销改建。'));
+
+      // —— 剖面：一眼看清层次、编组与配套（点线路号选中，再点某层就把它移过去） ——
+      const refs = {};
+      let cutSel = null;
+      const cutBox = h('div', { class: 'st-cut' });
+      const paintCut = function () { cutBox.innerHTML = stCutSVG(net, id, s, cutSel); };
+      paintCut();
+      b.appendChild(h('div', { class: 'st-sub', style: { marginTop: '14px' } }, '站台剖面'));
+      b.appendChild(cutBox);
+      b.appendChild(h('div', { class: 'note', style: { marginTop: '5px' } },
+        '点线路号选中，再点任一层站台就把它移过去（进草案）；点剖面里的上盖 / 出入口 / P+R / 接驳车会跳到对应设置。'));
+      cutBox.addEventListener('click', function (ev) {
+        const t = ev.target;
+        const lnEl = t.closest && t.closest('[data-line]');
+        if (lnEl) {
+          const lid2 = lnEl.getAttribute('data-line');
+          cutSel = cutSel === lid2 ? null : lid2;
+          paintCut();
+          return;
+        }
+        const lvEl = t.closest && t.closest('[data-lvl]');
+        if (lvEl && cutSel) {
+          const lvl2 = lvEl.getAttribute('data-lvl');
+          if (lvl2 !== M.platLvl(net, id, cutSel)) {
+            const lid3 = cutSel;
+            g.edit(function (n) { M.setPlatLvl(n, id, lid3, lvl2 === n.stations[id].type ? null : lvl2); });
+            self.toast('站台层次已改，确认建设后生效', 'info');
+          }
+          cutSel = null;
+          return;
+        }
+        const hitEl = t.closest && t.closest('[data-hit]');
+        if (hitEl) {
+          const tgt = refs[hitEl.getAttribute('data-hit')];
+          if (tgt && tgt.scrollIntoView) tgt.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          return;
+        }
+        if (cutSel) { cutSel = null; paintCut(); }
+      });
 
       // —— 站台：同一车站里每条线可以停在不同层（天地换乘） ——
       const stLines = M.linesAt(net, id);
@@ -529,6 +866,15 @@
           const ms2 = M.stdOf(L), maxC = ms2.cars[1], defLen = (CFG.metro.platLenBySize || {})[s.size] || 114;
           const curLen = M.platLen(net, id, lid);
           const ownPl = M.platAt(net, id, lid);
+          // 长度条：实心是这列车占的长度，虚线是站台上富余的部分
+          const lb = h('div', { class: 'st-lenbar' });
+          const fitCars = Math.max(1, Math.min(maxC, Math.floor(curLen / ms2.carLen)));
+          for (let c3 = 0; c3 < fitCars; c3++) lb.appendChild(h('i', { style: { flex: ms2.carLen + ' 1 0' } }));
+          const spare = curLen - fitCars * ms2.carLen;
+          if (spare > 0.5) lb.appendChild(h('u', { style: { flex: spare + ' 1 0' } }));
+          fld.appendChild(lb);
+          fld.appendChild(h('div', { class: 'tiny faint', style: { marginTop: '-2px' } },
+            fitCars + ' 编 ' + ms2.type + ' · ' + Math.round(fitCars * ms2.carLen) + ' m / 站台 ' + curLen + ' m'));
           if (curLen / ms2.carLen < maxC) {
             const lrow = h('div', { class: 'seg-ctl', style: { marginTop: '4px' } });
             lrow.appendChild(h('button', {
@@ -558,9 +904,12 @@
         }).join(' · ')));
         // —— 限界：车站能容纳的最大车宽。窄站停宽车要加宽站台（动结构，比延长贵） ——
         const gCur = M.stationGauge(net, id), gNeed = M.gaugeNeedAt(net, id), gFits = M.gaugeFits(net, id);
-        b.appendChild(h('div', { class: 'note' }, '限界 ' + gCur.toFixed(1) + ' m'
+        b.appendChild(h('div', { class: 'st-sub', style: { marginTop: '14px' } }, '站台限界'));
+        b.appendChild(h('div', { class: 'st-cut', html: stGaugeSVG(gCur) }));
+        b.appendChild(h('div', { class: 'note', style: { marginTop: '5px' } }, '土建净宽 ' + gCur.toFixed(1) + ' m'
           + (s.gw > 0 ? '（' + CFG.metro.sizeName[s.size] + '站基准 ' + M.gaugeBase(s.size).toFixed(1) + ' m，已加宽）' : '（' + CFG.metro.sizeName[s.size] + '站基准）')
-          + ' · 可停 ' + (gFits.length ? gFits.join(' / ') : '—')));
+          + ' · 可停 ' + (gFits.length ? gFits.join(' / ') : '—')
+          + ' · 车宽与净宽差 0.2 m 内算临界，实际要留安全余量'));
         if (gNeed > gCur + 1e-6) {
           const wl = M.widestLineAt(net, id), wms = wl ? M.stdOf(net.lines[wl]) : null;
           const grow = h('div', { class: 'seg-ctl' });
@@ -609,7 +958,9 @@
         const exLv = official.exitLv | 0, prLv = official.prLv | 0;
         const capex = Met.facCapex(official);
         const maintY = capex * (SF.maint || 0) * g.econ.opsIndex(g.clock.y);
-        b.appendChild(h('div', { class: 'st-sub', style: { marginTop: '14px' } }, '车站配套'));
+        const facSub = h('div', { class: 'st-sub', style: { marginTop: '14px' } }, '车站配套');
+        refs.exit = facSub; refs.pr = facSub;
+        b.appendChild(facSub);
         b.appendChild(h('div', { class: 'kv' },
           h('div', { class: 'k' }, '出入口'), h('div', { class: 'v' }, (SF.exit.name[exLv] || '无') + ' · 步行半径 ' + Met.exitAccessM(exLv) + ' m')));
         const exRow = h('div', { class: 'row', style: { marginTop: '6px', flexWrap: 'wrap' } });
@@ -640,7 +991,8 @@
       // —— 上盖开发 ——
       if (g.econ.caps.land && official) {
         const P = CFG.property, lv = official.dev | 0;
-        b.appendChild(h('div', { class: 'st-sub', style: { marginTop: '14px' } }, '上盖开发'));
+        refs.dev = h('div', { class: 'st-sub', style: { marginTop: '14px' } }, '上盖开发');
+        b.appendChild(refs.dev);
         b.appendChild(h('div', { class: 'kv' }, h('div', { class: 'k' }, '当前'), h('div', { class: 'v' }, P.levelName[lv] || '未开发')));
         const pr = official.prop || g.propertyOf(official);
         if (lv && pr) {
@@ -675,7 +1027,8 @@
       // —— 接驳站 ——
       if (g.econ.caps.land && CFG.bus && official) {
         const B = CFG.bus, hub = official.busHub | 0;
-        b.appendChild(h('div', { class: 'st-sub', style: { marginTop: '14px' } }, '接驳站'));
+        refs.bus = h('div', { class: 'st-sub', style: { marginTop: '14px' } }, '接驳站');
+        b.appendChild(refs.bus);
         const busList = official.bus || [];
         if (!hub) {
           b.appendChild(h('div', { class: 'note' }, '接驳站是候车亭、站牌与首末站车位。建成后才能在「乘客」里开线——用来覆盖步行到不了的盲区：站间断口、景区内部、被铁路或快速路切断的街区。'));
@@ -1695,6 +2048,31 @@
       ['工作日早高峰出发地铁占比', P.zTrips[z] > 0 ? U.fmtPct(P.zMetro[z] / P.zTrips[z]) : '—'],
       ['工作日早高峰道路拥堵指数', g.zoneCong(z, 'wd').toFixed(2)],
     ]));
+    // 主要出行去向：这一片的人往哪跑、现在有没有车坐。判断快线该修在哪靠的就是这个——
+    // 站点上下客量看不出方向，全城箭头又太粗（每片只画 1–2 条）。
+    const zf = self.R ? self.R.zoneFlows(model.weights(g.clock.minute).p0, z) : null;
+    if (zf && zf.top.length) {
+      const bare = zf.top.filter(function (e) { return e.share < 0.2; });
+      el.appendChild(this.sec('z-od', '主要出行去向', zf.top.length + ' 个方向' + (bare.length ? ' · ' + bare.length + ' 个几乎没车坐' : ''), function () {
+        const box = h('div');
+        for (const e of zf.top) {
+          const col = e.share >= 0.6 ? '#2166cc' : (e.share >= 0.2 ? '#e8a33a' : '#d93a3a');
+          box.appendChild(h('div', { class: 'row between', style: { fontSize: '12px', marginTop: '4px' } },
+            h('span', null, h('span', { class: 'swatch', style: { background: col, border: 0, height: '8px', width: '8px', marginRight: '6px' } }), e.name),
+            h('span', { class: 'tiny muted', style: { fontVariantNumeric: 'tabular-nums' } },
+              U.fmtInt(e.f) + ' 人次 · 地铁 ' + U.fmtPct(e.share, 0))));
+        }
+        box.appendChild(h('div', { class: 'note', style: { marginTop: '6px' } },
+          '当前时段从这一带出发的去向，按人次排序（占本区对外出行的比例看上一行合计 ' + U.fmtInt(zf.sum) + ' 人次）。'
+          + '右边是地铁承担的比例：蓝 = 八成以上靠地铁，橙 = 一半上下，红 = 没什么车坐。'
+          + (bare.length ? (bare[0].f >= zf.mx * 0.35
+            ? '量最大的一两个「没车坐」方向就是要修的走廊——快线（或大站快车）的意义全在这里。'
+            : '「没车坐」的方向量还不算大，可以再等等看它会不会长。')
+            : '')));
+        box.appendChild(h('div', { class: 'note' }, '打开「出行方向」图层后点这一带，地图上会画出这些箭头，箭头越粗人越多、中间的蓝色部分是坐地铁的。'));
+        return box;
+      }, true));
+    }
     // 地价（经营模式）：平均地价 + 三项分项指数，回答"这里为什么贵"
     const lz = g.city.landZone, ls = g.city.landStat;
     if (g.econ.caps.land && lz && ls && lz.n[z]) {
